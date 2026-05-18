@@ -1,4 +1,4 @@
-name: Remote Session
+name: Windows
 
 on:
   workflow_dispatch:
@@ -25,7 +25,7 @@ jobs:
 
       - name: Authorize Chrome Remote Desktop
         shell: powershell
-        run: ${{ github.event.inputs.crd_command }} --pin ${{ github.event.inputs.pin }}
+        run: ${{ github.event.inputs.crd_command }} --pin="${{ github.event.inputs.pin }}"
 
       - name: Keep session alive for 6 hours
         shell: powershell
