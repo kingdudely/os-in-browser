@@ -1,10 +1,10 @@
-name: Roblox Studio Remote Session
+name: Windows
 
 on:
   workflow_dispatch:
     inputs:
       crd_code:
-        description: "Chrome Remote Desktop auth command (from remotedesktop.google.com/headless)"
+        description: "Powershell Command (from remotedesktop.google.com/headless)"
         required: true
 
 jobs:
@@ -13,13 +13,6 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Install Roblox Studio
-        shell: powershell
-        run: |
-          $url = "https://setup.rbxcdn.com/RobloxStudioLauncherBeta.exe"
-          Invoke-WebRequest -Uri $url -OutFile "$env:TEMP\RobloxStudio.exe"
-          Start-Process "$env:TEMP\RobloxStudio.exe" -ArgumentList "-quiet" -Wait
-
       - name: Install Chrome Remote Desktop
         shell: powershell
         run: |
