@@ -1,0 +1,34 @@
+name: Remote Session
+
+on:
+  workflow_dispatch:
+    inputs:
+      crd_command:
+        description: "PowerShell command (from remotedesktop.google.com/headless)"
+        required: true
+      pin:
+        description: "PIN to access the session (minimum 6 digits)"
+        required: true
+
+jobs:
+  session:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Install Chrome Remote Desktop
+        shell: powershell
+        run: |
+          $url = "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi"
+          Invoke-WebRequest -Uri $url -OutFile "$env:TEMP\crd.msi"
+          Start-Process msiexec.exe -ArgumentList "/i `"$env:TEMP\crd.msi`" /quiet /norestart" -Wait
+
+      - name: Authorize Chrome Remote Desktop
+        shell: powershell
+        run: ${{ github.event.inputs.crd_command }} --pin ${{ github.event.inputs.pin }}
+
+      - name: Keep session alive for 6 hours
+        shell: powershell
+        run: |
+          Write-Host "Connect at: https://remotedesktop.google.com/access"
+          Start-Sleep -Seconds 21600
