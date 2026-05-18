@@ -1,0 +1,111 @@
+name: Remote Session
+
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        description: "Operating system"
+        required: true
+        default: "windows-latest"
+        type: choice
+        options:
+          - windows-latest
+          - windows-2022
+          - windows-2019
+          - ubuntu-latest
+          - ubuntu-22.04
+          - ubuntu-20.04
+          - macos-latest
+          - macos-14
+          - macos-13
+      crd_code:
+        description: "The --code value from remotedesktop.google.com/headless (just the 4/0A... part)"
+        required: true
+      pin:
+        description: "PIN to access the session (minimum 6 digits)"
+        required: true
+
+jobs:
+  session-windows:
+    if: startsWith(inputs.os, 'windows')
+    runs-on: ${{ inputs.os }}
+    timeout-minutes: 360
+
+    steps:
+      - name: Install Chrome Remote Desktop
+        shell: powershell
+        run: |
+          $url = "https://dl.google.com/chrome-remote-desktop/chromeremotedesktophost.msi"
+          Invoke-WebRequest -Uri $url -OutFile "$env:TEMP\crd.msi"
+          Start-Process msiexec.exe -ArgumentList "/i `"$env:TEMP\crd.msi`" /quiet /norestart" -Wait
+
+      - name: Authorize Chrome Remote Desktop
+        shell: powershell
+        run: |
+          & "${Env:PROGRAMFILES(X86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe" `
+            --code="${{ github.event.inputs.crd_code }}" `
+            --redirect-url="https://remotedesktop.google.com/_/oauthredirect" `
+            --name=$Env:COMPUTERNAME `
+            --pin="${{ github.event.inputs.pin }}"
+
+      - name: Keep session alive for 6 hours
+        shell: powershell
+        run: |
+          Write-Host "Connect at: https://remotedesktop.google.com/access"
+          Start-Sleep -Seconds 21600
+
+  session-linux:
+    if: startsWith(inputs.os, 'ubuntu')
+    runs-on: ${{ inputs.os }}
+    timeout-minutes: 360
+
+    steps:
+      - name: Install Chrome Remote Desktop
+        run: |
+          curl -fsSL https://dl.google.com/linux/linux_signing_key.pub \
+            | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/google.gpg
+          echo "deb [arch=amd64] https://dl.google.com/linux/chrome-remote-desktop/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/chrome-remote-desktop.list
+          sudo apt-get update -qq
+          sudo apt-get install -y chrome-remote-desktop
+
+      - name: Authorize Chrome Remote Desktop
+        run: |
+          /opt/google/chrome-remote-desktop/start-host \
+            --code="${{ github.event.inputs.crd_code }}" \
+            --redirect-url="https://remotedesktop.google.com/_/oauthredirect" \
+            --name=$(hostname) \
+            --pin="${{ github.event.inputs.pin }}"
+
+      - name: Keep session alive for 6 hours
+        run: |
+          echo "Connect at: https://remotedesktop.google.com/access"
+          sleep 21600
+
+  session-macos:
+    if: startsWith(inputs.os, 'macos')
+    runs-on: ${{ inputs.os }}
+    timeout-minutes: 360
+
+    steps:
+      - name: Install Chrome Remote Desktop
+        run: |
+          curl -fsSL "https://dl.google.com/chrome-remote-desktop/chromeremotedesktop.dmg" \
+            -o /tmp/crd.dmg
+          sudo hdiutil attach /tmp/crd.dmg -nobrowse -quiet
+          sudo installer -pkg "/Volumes/Chrome Remote Desktop/Install Chrome Remote Desktop.pkg" -target /
+          sudo hdiutil detach "/Volumes/Chrome Remote Desktop" -quiet
+
+      - name: Authorize Chrome Remote Desktop
+        run: |
+          /Library/LaunchAgents/org.chromium.chromoting.plist
+          /opt/google/chrome-remote-desktop/start-host \
+            --code="${{ github.event.inputs.crd_code }}" \
+            --redirect-url="https://remotedesktop.google.com/_/oauthredirect" \
+            --name=$(hostname) \
+            --pin="${{ github.event.inputs.pin }}"
+
+      - name: Keep session alive for 6 hours
+        run: |
+          echo "Connect at: https://remotedesktop.google.com/access"
+          sleep 21600
