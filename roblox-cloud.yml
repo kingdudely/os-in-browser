@@ -1,0 +1,45 @@
+name: Run Roblox Studio & Chrome Remote Desktop
+
+on:
+  workflow_dispatch:
+
+jobs:
+  roblox_remote_desktop:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download & Install Chrome Remote Desktop
+        run: |
+          Invoke-WebRequest -Uri "https://google.com" -OutFile "chromeremotedesktop.msi"
+          Start-Process "chromeremotedesktop.msi" -ArgumentList "/qn" -Wait
+
+      - name: Start Chrome Remote Desktop (Authorization)
+        shell: pwsh
+        env:
+          # Get this token from https://google.com
+          CRD_AUTH_CODE: ${{ secrets.CRD_AUTH_CODE }}
+        run: |
+          $authCode = $env:CRD_AUTH_CODE
+          $name = "GitHub Runner"
+          & "C:\Program Files\Google\Chrome Remote Desktop\Application\remotedesktop.exe" --add-host --name=$name --pin=$authCode --headless
+          Start-Sleep -Seconds 15
+
+      - name: Download & Install Roblox Studio
+        run: |
+          Invoke-WebRequest -Uri "https://roblox.com" -OutFile "RobloxStudioLauncherBeta.exe"
+          Start-Process "RobloxStudioLauncherBeta.exe" -ArgumentList "-silent" -Wait
+
+      - name: Run Roblox Studio
+        run: |
+          $studioPath = "$env:LOCALAPPDATA\Roblox\Versions\*\RobloxStudioBeta.exe"
+          # Resolve the wildcard path to the actual executable
+          $actualPath = (Get-Item $studioPath).FullName
+          Start-Process $actualPath -WindowStyle Maximized
+
+      - name: Keep Workflow Active (8 hours)
+        run: |
+          Write-Host "Roblox Studio is now running! Connect via Chrome Remote Desktop."
+          Write-Host "Workflow will stay alive for 8 hours. Cancel manually if finished."
+          Start-Sleep -Seconds 28800
