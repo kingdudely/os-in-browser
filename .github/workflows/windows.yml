@@ -1,5 +1,4 @@
 name: Windows
-
 on:
   workflow_dispatch:
     inputs:
@@ -14,14 +13,10 @@ jobs:
   session:
     runs-on: windows-latest
     timeout-minutes: 360
-
     steps:
       - name: Install Chrome Remote Desktop
         shell: powershell
-        run: |
-          $url = "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi"
-          Invoke-WebRequest -Uri $url -OutFile "$env:TEMP\crd.msi"
-          Start-Process msiexec.exe -ArgumentList "/i `"$env:TEMP\crd.msi`" /quiet /norestart" -Wait
+        run: choco install chrome-remote-desktop-host -y --no-progress
 
       - name: Authorize Chrome Remote Desktop
         shell: powershell
