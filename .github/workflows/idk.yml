@@ -1,0 +1,105 @@
+name: Zero-Setup Browser Remote Desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      os_choice:
+        description: 'Select the operating system to boot:'
+        required: true
+        default: 'ubuntu'
+        type: choice
+        options:
+          - ubuntu
+          - macos
+          - windows
+
+jobs:
+  launch-desktop:
+    runs-on: ${{ github.event.inputs.os_choice }}-latest
+
+    steps:
+    # === STEP 1: INSTALL OPERATING SYSTEM DISPLAY SERVERS ===
+    - name: Install System Dependencies (Linux)
+      if: github.event.inputs.os_choice == 'ubuntu'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y x11vnc xvfb fluxbox
+
+    - name: Install System Dependencies (Windows)
+      if: github.event.inputs.os_choice == 'windows'
+      run: |
+        choco install tightvnc -y
+
+    # === STEP 2: INSTALL BROWSER INTERFACE VIA NPM ===
+    - name: Install noVNC and Websockify cleanly via npm
+      run: |
+        npm install -g novnc websockify
+
+    # === STEP 3: INITIALIZE SYSTEM REMOTE ENVIRONMENTS ===
+    - name: Configure and Start Environments
+      shell: bash
+      run: |
+        if [ "${{ github.event.inputs.os_choice }}" = "ubuntu" ]; then
+          Xvfb :99 -screen 0 1280x1024x24 &
+          export DISPLAY=:99
+          fluxbox &
+          x11vnc -display :99 -nopw -listen localhost -shared -forever &
+          
+        elif [ "${{ github.event.inputs.os_choice }}" = "macos" ]; then
+          # Configures basic access credentials for Mac desktop console
+          sudo dscl . -passwd /Users/runner "password123"
+          sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCAlwaysStartOnConsole -bool true
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -allowAccessFor -allUsers -privs -all -clientopts -setvnclegacy -vnclegacy yes
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
+
+        elif [ "${{ github.event.inputs.os_choice }}" = "windows" ]; then
+          net user runneradmin "password123"
+          cat << 'EOF' > set_vnc.ps1
+          $Path = "HKLM:\SOFTWARE\TightVNC\Server"
+          if (!(Test-Path $Path)) { New-Item -Path $Path -Force }
+          New-ItemProperty -Path $Path -Name "Password" -Value ([byte[]](18,174,120,42,112,85,152,192)) -PropertyType Binary -Force
+          EOF
+          powershell -ExecutionPolicy Bypass -File set_vnc.ps1
+          net start tvnserver || true
+        fi
+
+    # === STEP 4: GENERATE INSTANT PUBLIC URL & HOLD 6 HOURS ===
+    - name: Native Port Forwarding & Link Generation
+      shell: bash
+      run: |
+        # Bridge local VNC protocol to web browser protocol on port 8080
+        websockify 8080 localhost:5900 --web $(npm root -g)/novnc &
+        sleep 3
+        
+        echo "📡 Initializing instant secure tunnel..."
+        # Request an instant HTTP proxy link from localhost.run in the background
+        ssh -R 80:localhost:8080 nokey@localhost.run -o StrictHostKeyChecking=no > tunnel.log 2>&1 &
+        
+        # Give the SSH tunnel connection 5 seconds to establish and receive its link
+        sleep 5
+        
+        # Parse out the live domain address provided by the proxy
+        PUBLIC_URL=$(grep -oE "https://[a-zA-Z0-9.-]+\.localhost\.run" tunnel.log | head -n 1)
+        
+        # Fallback parsing check if format changes slightly
+        if [ -z "$PUBLIC_URL" ]; then
+          PUBLIC_URL=$(cat tunnel.log)
+        fi
+        
+        # 1. Print the text block cleanly into terminal logs
+        echo "=========================================================="
+        echo "🌐 YOUR CHOSEN REMOTE INTERFACE IS ONLINE:"
+        echo "🔗 $PUBLIC_URL"
+        echo "=========================================================="
+        
+        # 2. Render a functional click-and-go canvas button on the GitHub Job Summary dashboard
+        echo "## 🖥️ Virtual Browser Environment Ready!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Click the public endpoint link below to instantly access your container desk:" >> $GITHUB_STEP_SUMMARY
+        echo "### 👉 **$PUBLIC_URL**" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "🔓 **VNC UI Password:** \`password123\` *(Only required for Windows/macOS)*" >> $GITHUB_STEP_SUMMARY
+        echo "⚠️ *This completely configuration-free session expires automatically in 6 hours.*" >> $GITHUB_STEP_SUMMARY
+        
+        # Keep environment active for 6 hours
+        sleep 21600
