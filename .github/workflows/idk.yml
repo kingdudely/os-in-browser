@@ -23,28 +23,14 @@ jobs:
       if: github.event.inputs.os_choice == 'ubuntu'
       run: |
         sudo apt-get update
-        sudo apt-get install -y x11vnc xvfb fluxbox python3-pip python3-websockify
+        sudo apt-get install -y x11vnc xvfb fluxbox
 
     - name: Install System Dependencies (Windows)
       if: github.event.inputs.os_choice == 'windows'
       run: |
         choco install tightvnc -y
-        pip install websockify
 
-    - name: Install System Dependencies (macOS)
-      if: github.event.inputs.os_choice == 'macos'
-      run: |
-        pip3 install websockify --break-system-packages
-
-    # === STEP 2: DOWNLOAD THE GENUINE NOVNC FRONTEND ===
-    - name: Fetch and Extract noVNC Client
-      shell: bash
-      run: |
-        curl -L https://github.com -o novnc.tar.gz
-        tar -xzf novnc.tar.gz
-        mv noVNC-1.5.0 novnc
-
-    # === STEP 3: INITIALIZE SYSTEM REMOTE ENVIRONMENTS ===
+    # === STEP 2: INITIALIZE SYSTEM REMOTE ENVIRONMENTS ===
     - name: Configure and Start Environments
       shell: bash
       run: |
@@ -67,14 +53,19 @@ jobs:
           net start tvnserver || true
         fi
 
+    # === STEP 3: RUN THE AUTOMATED PIPX CLIENT BROWSERS ===
+    - name: Fetch and Launch noVNC via pipx
+      shell: bash
+      run: |
+        # Pulls the standard distribution directly to avoid messy local directories
+        # Directly hosts the browser-accessible canvas via the standard internal virtual env structure
+        pipx run --spec websockify websockify 8080 localhost:5900 --web=$(python3 -c "import pkg_resources; print(pkg_resources.resource_filename('websockify', 'include'))" 2>/dev/null || python -c "import os, websockify; print(os.path.join(os.path.dirname(websockify.__file__), 'include'))" 2>/dev/null || echo ".") &
+
     # === STEP 4: GENERATE INSTANT PUBLIC URL & HOLD 6 HOURS ===
     - name: Native Port Forwarding & Link Generation
       shell: bash
       run: |
-        # Use the native novnc script helper to stitch the VNC backend to the proxy web layer safely
-        ./novnc/utils/novnc_proxy --vnc localhost:5900 --listen 8080 &
         sleep 3
-        
         echo "📡 Initializing instant secure tunnel..."
         ssh -R 80:localhost:8080 nokey@localhost.run -o StrictHostKeyChecking=no > tunnel.log 2>&1 &
         sleep 8
@@ -92,12 +83,8 @@ jobs:
           echo "---------------------"
         fi
         
-        # Append /vnc.html to direct users to the login canvas interface
-        if [[ "$PUBLIC_URL" == "https://"* ]]; then
-          FINAL_LINK="${PUBLIC_URL}/vnc.html"
-        else
-          FINAL_LINK="$PUBLIC_URL"
-        fi
+        # Point users cleanly to the standard root connection landing view
+        FINAL_LINK="${PUBLIC_URL}"
         
         echo "=========================================================="
         echo "🌐 YOUR CHOSEN REMOTE INTERFACE IS ONLINE:"
