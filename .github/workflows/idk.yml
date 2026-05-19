@@ -1,0 +1,38 @@
+name: Windows
+on:
+  workflow_dispatch:
+    inputs:
+      password:
+        description: "RustDesk password (min 8 chars, uppercase, lowercase, and a number)"
+        required: true
+
+jobs:
+  session:
+    runs-on: windows-latest
+    timeout-minutes: 360
+    steps:
+      - name: Install RustDesk
+        shell: powershell
+        run: choco install rustdesk -y --no-progress
+
+      - name: Wait for RustDesk service and get ID
+        shell: powershell
+        run: |
+          $ServiceName = 'RustDesk'
+          $arrService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+          while ($arrService.Status -ne 'Running') {
+            Start-Service $ServiceName -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 5
+            $arrService.Refresh()
+            Write-Host "Waiting for RustDesk service..."
+          }
+          Write-Host "RustDesk service is running"
+          & "C:\Program Files\RustDesk\RustDesk.exe" --password "${{ github.event.inputs.password }}"
+          $id = & "C:\Program Files\RustDesk\RustDesk.exe" --get-id
+          Write-Host "RustDesk ID: $id"
+
+      - name: Keep session alive for 6 hours
+        shell: powershell
+        run: |
+          Write-Host "Download RustDesk client at: https://rustdesk.com/downloads"
+          Start-Sleep -Seconds 21600
