@@ -19,14 +19,14 @@ jobs:
       - name: Enable macOS Screen Sharing
         run: |
           echo "Enabling Screen Sharing..."
-
+      
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -activate \
             -configure \
             -access -on \
             -privs -all \
             -clientopts -setvnclegacy -vnclegacy yes \
-            -clientopts -setvncpw "${{ github.event.inputs.password }}" \
+            -clientopts -setvncpw -vncpw "admin" \
             -restart -agent
 
       # Install cloudflared
