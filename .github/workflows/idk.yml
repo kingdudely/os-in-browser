@@ -54,14 +54,12 @@ jobs:
 
         elif [ "${{ github.event.inputs.os_choice }}" = "windows" ]; then
           net user runneradmin "password123"
-          cat << 'EOF' > set_vnc.ps1
-          $Path = "HKLM:\SOFTWARE\TightVNC\Server"
-          if (!(Test-Path $Path)) { New-Item -Path $Path -Force }
-          New-ItemProperty -Path $Path -Name "Password" -Value ([byte[]](18,174,120,42,112,85,152,192)) -PropertyType Binary -Force
-          EOF
+          # Clean, single-line file creation to bypass the Bash EOF parser bug
+          echo '$Path = "HKLM:\SOFTWARE\TightVNC\Server"; if (!(Test-Path $Path)) { New-Item -Path $Path -Force }; New-ItemProperty -Path $Path -Name "Password" -Value ([byte[]](18,174,120,42,112,85,152,192)) -PropertyType Binary -Force' > set_vnc.ps1
           powershell -ExecutionPolicy Bypass -File set_vnc.ps1
           net start tvnserver || true
         fi
+
 
     # === STEP 4: GENERATE INSTANT PUBLIC URL & HOLD 6 HOURS ===
     - name: Native Port Forwarding & Link Generation
