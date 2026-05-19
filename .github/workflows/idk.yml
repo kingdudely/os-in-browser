@@ -61,7 +61,7 @@ jobs:
               ;;
           esac
 
-          $CRD_PATH --code="${{ inputs.crd_code }}" --pin="${{ inputs.crd_pin }}" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name="$(hostname)"
+          "$CRD_PATH" --code="${{ inputs.crd_code }}" --pin="${{ inputs.crd_pin }}" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name="$(hostname)"
 
       - name: Keep session alive
         shell: bash
