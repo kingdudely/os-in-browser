@@ -23,17 +23,26 @@ jobs:
       if: github.event.inputs.os_choice == 'ubuntu'
       run: |
         sudo apt-get update
-        sudo apt-get install -y x11vnc xvfb fluxbox
+        sudo apt-get install -y x11vnc xvfb fluxbox python3-pip python3-websockify
 
     - name: Install System Dependencies (Windows)
       if: github.event.inputs.os_choice == 'windows'
       run: |
         choco install tightvnc -y
+        pip install websockify
 
-    # === STEP 2: INSTALL BROWSER INTERFACE VIA NPM ===
-    - name: Install noVNC and Websockify cleanly via npm
+    - name: Install System Dependencies (macOS)
+      if: github.event.inputs.os_choice == 'macos'
       run: |
-        npm install -g novnc websockify
+        pip3 install websockify --break-system-packages
+
+    # === STEP 2: DOWNLOAD THE GENUINE NOVNC FRONTEND ===
+    - name: Fetch and Extract noVNC Client
+      shell: bash
+      run: |
+        curl -L https://github.com -o novnc.tar.gz
+        tar -xzf novnc.tar.gz
+        mv noVNC-1.5.0 novnc
 
     # === STEP 3: INITIALIZE SYSTEM REMOTE ENVIRONMENTS ===
     - name: Configure and Start Environments
@@ -46,7 +55,6 @@ jobs:
           x11vnc -display :99 -nopw -listen localhost -shared -forever &
           
         elif [ "${{ github.event.inputs.os_choice }}" = "macos" ]; then
-          # Configures basic access credentials for Mac desktop console
           sudo dscl . -passwd /Users/runner "password123"
           sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCAlwaysStartOnConsole -bool true
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -allowAccessFor -allUsers -privs -all -clientopts -setvnclegacy -vnclegacy yes
@@ -54,58 +62,54 @@ jobs:
 
         elif [ "${{ github.event.inputs.os_choice }}" = "windows" ]; then
           net user runneradmin "password123"
-          # Clean, single-line file creation to bypass the Bash EOF parser bug
           echo '$Path = "HKLM:\SOFTWARE\TightVNC\Server"; if (!(Test-Path $Path)) { New-Item -Path $Path -Force }; New-ItemProperty -Path $Path -Name "Password" -Value ([byte[]](18,174,120,42,112,85,152,192)) -PropertyType Binary -Force' > set_vnc.ps1
           powershell -ExecutionPolicy Bypass -File set_vnc.ps1
           net start tvnserver || true
         fi
 
-
     # === STEP 4: GENERATE INSTANT PUBLIC URL & HOLD 6 HOURS ===
     - name: Native Port Forwarding & Link Generation
       shell: bash
       run: |
-        # Bridge local VNC protocol to web browser protocol on port 8080
-        websockify 8080 localhost:5900 --web $(npm root -g)/novnc &
+        # Use the native novnc script helper to stitch the VNC backend to the proxy web layer safely
+        ./novnc/utils/novnc_proxy --vnc localhost:5900 --listen 8080 &
         sleep 3
         
         echo "📡 Initializing instant secure tunnel..."
-        # Request an instant HTTP proxy link from localhost.run in the background
         ssh -R 80:localhost:8080 nokey@localhost.run -o StrictHostKeyChecking=no > tunnel.log 2>&1 &
-        
-        # Give the SSH tunnel connection 8 seconds to safely hand over its unique domain link
         sleep 8
         
-        # Target only the active lhr.life domain line (filtering out the admin promotion text)
         PUBLIC_URL=$(grep -oE "https://[a-zA-Z0-9.-]+\.lhr\.life" tunnel.log | head -n 1)
         
-        # Robust alternate fallback parser block
         if [ -z "$PUBLIC_URL" ]; then
           PUBLIC_URL=$(grep -oE "https://[a-zA-Z0-9.-]+\.localhost\.run" tunnel.log | grep -v "admin" | head -n 1)
         fi
         
-        # Absolute safety check: if parsing strings fails, spit out raw text safely
         if [ -z "$PUBLIC_URL" ]; then
-          PUBLIC_URL="⚠️ Link delayed. Check raw log file snippet below."
+          PUBLIC_URL="⚠️ Link delayed. Check raw log snippet below."
           echo "--- RAW LOG BLOCK ---"
           cat tunnel.log
           echo "---------------------"
         fi
         
-        # 1. Print the text block cleanly into terminal logs
+        # Append /vnc.html to direct users to the login canvas interface
+        if [[ "$PUBLIC_URL" == "https://"* ]]; then
+          FINAL_LINK="${PUBLIC_URL}/vnc.html"
+        else
+          FINAL_LINK="$PUBLIC_URL"
+        fi
+        
         echo "=========================================================="
         echo "🌐 YOUR CHOSEN REMOTE INTERFACE IS ONLINE:"
-        echo "🔗 $PUBLIC_URL"
+        echo "🔗 $FINAL_LINK"
         echo "=========================================================="
         
-        # 2. Render a functional click-and-go canvas button on the GitHub Job Summary dashboard
         echo "## 🖥️ Virtual Browser Environment Ready!" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "Click the public endpoint link below to instantly access your container desk:" >> $GITHUB_STEP_SUMMARY
-        echo "### 👉 **$PUBLIC_URL**" >> $GITHUB_STEP_SUMMARY
+        echo "### 👉 **[$FINAL_LINK]($FINAL_LINK)**" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "🔓 **VNC UI Password:** \`password123\` *(Only required for Windows/macOS)*" >> $GITHUB_STEP_SUMMARY
         echo "⚠️ *This completely configuration-free session expires automatically in 6 hours.*" >> $GITHUB_STEP_SUMMARY
         
-        # Keep environment active for 6 hours
         sleep 21600
