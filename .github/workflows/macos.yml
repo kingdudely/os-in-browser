@@ -1,0 +1,37 @@
+name: mac-gui
+
+on:
+  workflow_dispatch:
+    inputs:
+      vnc_user:
+        description: "VNC username"
+        required: true
+        default: "admin"
+
+      vnc_password:
+        description: "VNC password"
+        required: true
+
+jobs:
+  build:
+    runs-on: macos-11
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install cloudflared
+        run: brew install cloudflared
+
+      - name: Enable macOS VNC (Screen Sharing)
+        run: |
+          echo "Enabling VNC access..."
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+          -activate -configure -access -on \
+          -setvnclegacy -vnclegacy yes \
+          -setvncpw "${{ inputs.vnc_password }}" \
+          -restart -agent
+
+      - name: Start cloudflared tunnel to VNC
+        run: |
+          echo "Starting VNC tunnel on port 5900..."
+          cloudflared tunnel --url tcp://localhost:5900
