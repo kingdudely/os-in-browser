@@ -1,4 +1,4 @@
-name: macos-novnc
+name: macos-novnc-full
 
 on:
   workflow_dispatch:
@@ -8,48 +8,62 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       # ----------------------------
-      # Enable macOS Screen Sharing (real display)
+      # Enable macOS Screen Sharing (REAL DISPLAY)
       # ----------------------------
-      - name: Enable Screen Sharing
+      - name: Enable macOS Screen Sharing
         run: |
+          echo "Enabling Screen Sharing..."
+
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-          -activate -configure -access -on \
-          -privs -all \
-          -clientopts -setvnclegacy -vnclegacy yes \
-          -restart -agent
+            -activate \
+            -configure \
+            -access -on \
+            -privs -all \
+            -clientopts -setvnclegacy -vnclegacy yes \
+            -restart -agent
 
       # ----------------------------
       # Install dependencies
       # ----------------------------
-      - name: Install tools
+      - name: Install cloudflared
         run: |
           brew update
-          brew install cloudflared novnc websockify
+          brew install cloudflared
 
       # ----------------------------
-      # Start noVNC bridge (VNC -> WebSocket)
+      # Install noVNC (correct way - NOT brew)
+      # ----------------------------
+      - name: Install noVNC
+        run: |
+          git clone https://github.com/novnc/noVNC.git
+          git clone https://github.com/novnc/websockify.git noVNC/utils/websockify
+
+      # ----------------------------
+      # Start VNC -> Web bridge (noVNC)
       # ----------------------------
       - name: Start noVNC server
         run: |
-          echo "Starting websockify on port 6080..."
+          cd noVNC
 
-          websockify \
-            --web=/opt/homebrew/share/novnc \
-            6080 \
-            127.0.0.1:5900 &
+          echo "Starting noVNC on port 6080..."
 
-          sleep 2
+          ./utils/novnc_proxy \
+            --vnc 127.0.0.1:5900 \
+            --listen 0.0.0.0:6080 &
+
+          sleep 3
 
           lsof -nP -iTCP:6080 -sTCP:LISTEN || true
 
       # ----------------------------
-      # Start Cloudflare tunnel (WEB, not TCP)
+      # Start Cloudflare tunnel (HTTP ONLY)
       # ----------------------------
       - name: Start cloudflared tunnel
         run: |
-          echo "Starting cloudflared tunnel to noVNC..."
+          echo "Starting cloudflared tunnel..."
 
           cloudflared tunnel --url http://127.0.0.1:6080
