@@ -45,6 +45,7 @@ jobs:
 
             macos)
               brew install --cask chrome-remote-desktop-host # https://dl.google.com/dl/chrome-remote-desktop/chromeremotedesktop.dmg or https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktop.dmg
+              brew list --cask chrome-remote-desktop-host
 
               CRD_PATH="/Library/Google/Chrome Remote Desktop/CurrentVersion/remoting_start_host"
               ;;
