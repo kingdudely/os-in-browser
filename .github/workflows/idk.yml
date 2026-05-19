@@ -28,7 +28,7 @@ jobs:
           }
           Write-Host "RustDesk service is running"
           & "C:\Program Files\RustDesk\RustDesk.exe" --password "${{ github.event.inputs.password }}"
-          $id = & "C:\Program Files\RustDesk\RustDesk.exe" --get-id
+          $id = (& "C:\Program Files\RustDesk\RustDesk.exe" --get-id 2>&1 | Out-String).Trim()
           Write-Host "RustDesk ID: $id"
 
       - name: Keep session alive for 6 hours
