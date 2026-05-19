@@ -4,9 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       os:
-        description: "windows | ubuntu | macos"
-        required: true
+        type: choice
+        description: 'Operating system'
+        options:
+        - ubuntu
+        - windows
+        - macos
         default: ubuntu
+        required: true
 
       crd_code:
         description: 'Paste CRD code ("4/0A...") from https://g.co/crd/headless'
