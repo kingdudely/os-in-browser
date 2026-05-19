@@ -3,35 +3,49 @@ name: mac-gui
 on:
   workflow_dispatch:
     inputs:
-      vnc_user:
-        description: "VNC username"
-        required: true
-        default: "admin"
-
       vnc_password:
         description: "VNC password"
         required: true
 
 jobs:
-  build:
+  mac-vnc:
     runs-on: macos-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-      - name: Install cloudflared
-        run: brew install cloudflared
-
-      - name: Enable macOS VNC (Screen Sharing)
+      # ----------------------------
+      # Install dependencies
+      # ----------------------------
+      - name: Install cloudflared + VNC server
         run: |
-          echo "Enabling VNC access..."
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-          -activate -configure -access -on \
-          -setvnclegacy -vnclegacy yes \
-          -setvncpw "${{ inputs.vnc_password }}" \
-          -restart -agent
+          brew update
+          brew install cloudflared tigervnc
 
-      - name: Start cloudflared tunnel to VNC
+      # ----------------------------
+      # Setup VNC password
+      # ----------------------------
+      - name: Configure VNC password
         run: |
-          echo "Starting VNC tunnel on port 5900..."
-          cloudflared tunnel --url tcp://localhost:5900
+          mkdir -p ~/.vnc
+          echo "${{ inputs.vnc_password }}" | vncpasswd -f > ~/.vnc/passwd
+          chmod 600 ~/.vnc/passwd
+
+      # ----------------------------
+      # Start VNC server
+      # ----------------------------
+      - name: Start VNC server
+        run: |
+          echo "Starting VNC server on :1 (port 5901)..."
+          vncserver :1 -geometry 1440x900 -depth 24 -localhost no
+
+          echo "Checking listener..."
+          lsof -nP -iTCP:5901 -sTCP:LISTEN || true
+
+      # ----------------------------
+      # Start Cloudflare Tunnel
+      # ----------------------------
+      - name: Start cloudflared tunnel
+        run: |
+          echo "Starting tunnel to VNC..."
+          cloudflared tunnel --url tcp://127.0.0.1:5901
