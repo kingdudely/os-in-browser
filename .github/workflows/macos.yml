@@ -10,31 +10,46 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # -------------------------
-      # Enable macOS Screen Sharing (REAL DESKTOP)
-      # -------------------------
-      - name: Enable Screen Sharing (no password)
+      # ----------------------------
+      # Enable macOS Screen Sharing (real display)
+      # ----------------------------
+      - name: Enable Screen Sharing
         run: |
-          echo "Enabling macOS Screen Sharing..."
-
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
           -activate -configure -access -on \
           -privs -all \
           -clientopts -setvnclegacy -vnclegacy yes \
           -restart -agent
 
-      # -------------------------
-      # Install cloudflared + noVNC tools
-      # -------------------------
-      - name: Install cloudflared
+      # ----------------------------
+      # Install dependencies
+      # ----------------------------
+      - name: Install tools
         run: |
           brew update
-          brew install cloudflared
+          brew install cloudflared novnc websockify
 
-      # -------------------------
-      # Start cloudflared tunnel to macOS VNC (5900)
-      # -------------------------
+      # ----------------------------
+      # Start noVNC bridge (VNC -> WebSocket)
+      # ----------------------------
+      - name: Start noVNC server
+        run: |
+          echo "Starting websockify on port 6080..."
+
+          websockify \
+            --web=/opt/homebrew/share/novnc \
+            6080 \
+            127.0.0.1:5900 &
+
+          sleep 2
+
+          lsof -nP -iTCP:6080 -sTCP:LISTEN || true
+
+      # ----------------------------
+      # Start Cloudflare tunnel (WEB, not TCP)
+      # ----------------------------
       - name: Start cloudflared tunnel
         run: |
-          echo "Starting tunnel to macOS Screen Sharing on port 5900..."
-          cloudflared tunnel --url tcp://127.0.0.1:5900
+          echo "Starting cloudflared tunnel to noVNC..."
+
+          cloudflared tunnel --url http://127.0.0.1:6080
