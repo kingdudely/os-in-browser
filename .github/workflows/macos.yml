@@ -2,6 +2,10 @@ name: macos-novnc-full
 
 on:
   workflow_dispatch:
+    inputs:
+      password:
+        description: "Password"
+        required: true
 
 jobs:
   mac:
@@ -11,9 +15,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ----------------------------
-      # Enable macOS Screen Sharing (REAL DISPLAY)
-      # ----------------------------
+      # Enable macOS Screen Sharing
       - name: Enable macOS Screen Sharing
         run: |
           echo "Enabling Screen Sharing..."
@@ -24,46 +26,35 @@ jobs:
             -access -on \
             -privs -all \
             -clientopts -setvnclegacy -vnclegacy yes \
+            -clientopts -setvncpw "${{ github.event.inputs.password }}" \
             -restart -agent
 
-      # ----------------------------
-      # Install dependencies
-      # ----------------------------
+      # Install cloudflared
       - name: Install cloudflared
         run: |
           brew update
           brew install cloudflared
 
-      # ----------------------------
-      # Install noVNC (correct way - NOT brew)
-      # ----------------------------
+      # Install noVNC
       - name: Install noVNC
         run: |
           git clone https://github.com/novnc/noVNC.git
           git clone https://github.com/novnc/websockify.git noVNC/utils/websockify
 
-      # ----------------------------
-      # Start VNC -> Web bridge (noVNC)
-      # ----------------------------
+      # Start noVNC bridge
       - name: Start noVNC server
         run: |
           cd noVNC
-
-          echo "Starting noVNC on port 6080..."
 
           ./utils/novnc_proxy \
             --vnc 127.0.0.1:5900 \
             --listen 0.0.0.0:6080 &
 
-          sleep 3
+          sleep 5
 
-          lsof -nP -iTCP:6080 -sTCP:LISTEN || true
+          echo "noVNC listening on 6080"
 
-      # ----------------------------
-      # Start Cloudflare tunnel (HTTP ONLY)
-      # ----------------------------
+      # Start cloudflared tunnel
       - name: Start cloudflared tunnel
         run: |
-          echo "Starting cloudflared tunnel..."
-
           cloudflared tunnel --url http://127.0.0.1:6080
