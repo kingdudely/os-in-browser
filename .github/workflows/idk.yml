@@ -73,15 +73,23 @@ jobs:
         # Request an instant HTTP proxy link from localhost.run in the background
         ssh -R 80:localhost:8080 nokey@localhost.run -o StrictHostKeyChecking=no > tunnel.log 2>&1 &
         
-        # Give the SSH tunnel connection 5 seconds to establish and receive its link
-        sleep 5
+        # Give the SSH tunnel connection 8 seconds to safely hand over its unique domain link
+        sleep 8
         
-        # Parse out the live domain address provided by the proxy
-        PUBLIC_URL=$(grep -oE "https://[a-zA-Z0-9.-]+\.localhost\.run" tunnel.log | head -n 1)
+        # Target only the active lhr.life domain line (filtering out the admin promotion text)
+        PUBLIC_URL=$(grep -oE "https://[a-zA-Z0-9.-]+\.lhr\.life" tunnel.log | head -n 1)
         
-        # Fallback parsing check if format changes slightly
+        # Robust alternate fallback parser block
         if [ -z "$PUBLIC_URL" ]; then
-          PUBLIC_URL=$(cat tunnel.log)
+          PUBLIC_URL=$(grep -oE "https://[a-zA-Z0-9.-]+\.localhost\.run" tunnel.log | grep -v "admin" | head -n 1)
+        fi
+        
+        # Absolute safety check: if parsing strings fails, spit out raw text safely
+        if [ -z "$PUBLIC_URL" ]; then
+          PUBLIC_URL="⚠️ Link delayed. Check raw log file snippet below."
+          echo "--- RAW LOG BLOCK ---"
+          cat tunnel.log
+          echo "---------------------"
         fi
         
         # 1. Print the text block cleanly into terminal logs
