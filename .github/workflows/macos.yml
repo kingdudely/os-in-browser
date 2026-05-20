@@ -19,20 +19,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Step 1: Handle user account management safely without destroying the runner environment
+      # Step 1: Force macOS to spin up a virtual display frame buffer
+      - name: Initialize Virtual Display
+        run: |
+          echo "Configuring headless window management..."
+          # Tell the window server to initialize a default fallback workspace
+          sudo defaults write /Library/Preferences/com.apple.windowserver.plist DisplayResolutionEnabled -bool true
+          sudo defaults write /Library/Preferences/com.apple.windowserver.plist DisplayAnyUserOnConsole -bool true
+
+      # Step 2: Configure user accounts cleanly
       - name: Configure macOS User Account
         run: |
           TARGET_USER="${{ github.event.inputs.username }}"
           PASS="${{ github.event.inputs.password }}"
           
-          # SAFETY CHECK: If the target is 'runner', do not delete it! Just alter its password.
           if [ "$TARGET_USER" = "runner" ]; then
-            echo "Target user is 'runner'. Adjusting password safely to prevent environment collapse..."
-            # Using sysadminctl as a fallback rescue for password updates on the live user
+            echo "Target user is 'runner'. Adjusting password..."
             sudo sysadminctl -deletePassword runner || true
             sudo sysadminctl -resetPasswordFor runner -newPassword "$PASS"
           else
-            # Purge existing conflicting account if it's a secondary user
             if dscl . -read /Users/$TARGET_USER >/dev/null 2>&1; then
               echo "Conflict detected: User '$TARGET_USER' already exists. Purging..."
               sudo dseditgroup -o edit -d "$TARGET_USER" -t user admin || true
@@ -57,7 +62,7 @@ jobs:
             sudo chown -R $TARGET_USER:staff /Users/$TARGET_USER
           fi
 
-      # Step 2: Enable modern Screen Sharing for the targeted user
+      # Step 3: Enable modern Screen Sharing
       - name: Enable macOS Screen Sharing
         run: |
           USER="${{ github.event.inputs.username }}"
@@ -74,19 +79,18 @@ jobs:
             -users $USER \
             -privs -all
 
-      # Step 3: Install cloudflared
+      # Step 4: Install cloudflared
       - name: Install cloudflared
         run: |
-          brew update
           brew install cloudflared
 
-      # Step 4: Install noVNC & Websockify
+      # Step 5: Install noVNC & Websockify
       - name: Install noVNC
         run: |
           git clone https://github.com/novnc/noVNC.git
           git clone https://github.com/novnc/websockify.git noVNC/utils/websockify
 
-      # Step 5: Start noVNC bridge
+      # Step 6: Start noVNC bridge in background
       - name: Start noVNC server
         run: |
           cd noVNC
@@ -96,7 +100,19 @@ jobs:
           sleep 5
           echo "noVNC listening on 6080"
 
-      # Step 6: Start cloudflared tunnel
+      # Step 7: Start cloudflared tunnel in background and loop indefinitely
       - name: Start cloudflared tunnel
         run: |
-          cloudflared tunnel --url http://127.0.0.1:6080
+          echo "Starting Cloudflare Tunnel..."
+          # Run tunnel in background and save its process ID (PID)
+          cloudflared tunnel --url http://127.0.0.1:6080 &
+          TUNNEL_PID=$!
+          
+          # Give the tunnel some time to secure its dynamic routing URL
+          sleep 10
+          
+          echo "Tunnel running (PID: $TUNNEL_PID). Keeping workflow alive..."
+          # Infinite loop ensuring the job stays active for up to 6 hours
+          while kill -0 $TUNNEL_PID 2>/dev/null; do
+            sleep 30
+          done
