@@ -3,8 +3,12 @@ name: macos-novnc-full
 on:
   workflow_dispatch:
     inputs:
+      username:
+        description: "Username for macOS login"
+        required: true
+        default: "vncuser"
       password:
-        description: "Password for the 'runner' account"
+        description: "Password for macOS login"
         required: true
 
 jobs:
@@ -15,15 +19,42 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Step 1: Set the password for the existing 'runner' user
-      - name: Configure Runner Password
+      # Step 1: Create the custom macOS user account requested by the workflow inputs
+      - name: Create macOS User Account
         run: |
-          sudo dscl . -passwd /Users/runner "${{ github.event.inputs.password }}"
+          USER="${{ github.event.inputs.username }}"
+          PASS="${{ github.event.inputs.password }}"
+          
+          echo "Creating user account: $USER"
+          
+          # Find a safe, unique ID for the new user
+          LAST_ID=$(dscl . -list /Users UniqueID | awk '{print $2}' | sort -n | tail -n 1)
+          NEW_ID=$((LAST_ID + 1))
+          
+          # Provision the account details
+          sudo dscl . -create /Users/$USER
+          sudo dscl . -create /Users/$USER UserShell /bin/bash
+          sudo dscl . -create /Users/$USER RealName "$USER"
+          sudo dscl . -create /Users/$USER UniqueID $NEW_ID
+          sudo dscl . -create /Users/$USER PrimaryGroupID 20
+          sudo dscl . -create /Users/$USER NFSHomeDirectory /Users/$USER
+          
+          # Set the user's password safely
+          sudo dscl . -passwd /Users/$USER "$PASS"
+          
+          # Add user to the admin group so they can control the system
+          sudo dscl . -append /Groups/admin GroupMembership $USER
+          
+          # Build the home directory structure so the macOS GUI loads properly
+          sudo mkdir -p /Users/$USER
+          sudo chown -R $USER:staff /Users/$USER
 
-      # Step 2: Enable Modern macOS Screen Sharing for the runner user
+      # Step 2: Enable modern Screen Sharing for the newly created user
       - name: Enable macOS Screen Sharing
         run: |
-          # Activate the Remote Management service
+          USER="${{ github.event.inputs.username }}"
+          
+          # Turn on the Screen Sharing/Remote Management service
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -activate \
             -configure \
@@ -31,10 +62,10 @@ jobs:
             -allowAccessFor -specifiedUsers \
             -restart -agent
             
-          # Explicitly grant full control privileges to the 'runner' user
+          # Explicitly bind remote control permissions to our custom user
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -configure \
-            -users runner \
+            -users $USER \
             -privs -all
 
       # Step 3: Install cloudflared
