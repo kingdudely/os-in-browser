@@ -18,15 +18,14 @@ jobs:
       # Enable macOS Screen Sharing
       - name: Enable macOS Screen Sharing
         run: |
-          echo "Enabling Screen Sharing..."
-      
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -activate \
             -configure \
             -access -on \
+            -allowAccessFor -allUsers \
             -privs -all \
             -clientopts -setvnclegacy -vnclegacy yes \
-            -clientopts -setvncpw -vncpw "admin" \
+            -clientopts -setvncpw -vncpw admin \
             -restart -agent
 
       # Install cloudflared
