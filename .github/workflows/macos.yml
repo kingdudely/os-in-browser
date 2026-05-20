@@ -19,42 +19,49 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Step 1: Create the custom macOS user account requested by the workflow inputs
-      - name: Create macOS User Account
+      # Step 1: Handle user account management safely without destroying the runner environment
+      - name: Configure macOS User Account
         run: |
-          USER="${{ github.event.inputs.username }}"
+          TARGET_USER="${{ github.event.inputs.username }}"
           PASS="${{ github.event.inputs.password }}"
           
-          echo "Creating user account: $USER"
-          
-          # Find a safe, unique ID for the new user
-          LAST_ID=$(dscl . -list /Users UniqueID | awk '{print $2}' | sort -n | tail -n 1)
-          NEW_ID=$((LAST_ID + 1))
-          
-          # Provision the account details
-          sudo dscl . -create /Users/$USER
-          sudo dscl . -create /Users/$USER UserShell /bin/bash
-          sudo dscl . -create /Users/$USER RealName "$USER"
-          sudo dscl . -create /Users/$USER UniqueID $NEW_ID
-          sudo dscl . -create /Users/$USER PrimaryGroupID 20
-          sudo dscl . -create /Users/$USER NFSHomeDirectory /Users/$USER
-          
-          # Set the user's password safely
-          sudo dscl . -passwd /Users/$USER "$PASS"
-          
-          # Add user to the admin group so they can control the system
-          sudo dscl . -append /Groups/admin GroupMembership $USER
-          
-          # Build the home directory structure so the macOS GUI loads properly
-          sudo mkdir -p /Users/$USER
-          sudo chown -R $USER:staff /Users/$USER
+          # SAFETY CHECK: If the target is 'runner', do not delete it! Just alter its password.
+          if [ "$TARGET_USER" = "runner" ]; then
+            echo "Target user is 'runner'. Adjusting password safely to prevent environment collapse..."
+            # Using sysadminctl as a fallback rescue for password updates on the live user
+            sudo sysadminctl -deletePassword runner || true
+            sudo sysadminctl -resetPasswordFor runner -newPassword "$PASS"
+          else
+            # Purge existing conflicting account if it's a secondary user
+            if dscl . -read /Users/$TARGET_USER >/dev/null 2>&1; then
+              echo "Conflict detected: User '$TARGET_USER' already exists. Purging..."
+              sudo dseditgroup -o edit -d "$TARGET_USER" -t user admin || true
+              sudo dscl . -delete /Users/$TARGET_USER
+              sudo rm -rf "/Users/$TARGET_USER"
+            fi
+            
+            echo "Creating fresh account: $TARGET_USER"
+            LAST_ID=$(dscl . -list /Users UniqueID | awk '{print $2}' | sort -n | tail -n 1)
+            NEW_ID=$((LAST_ID + 1))
+            
+            sudo dscl . -create /Users/$TARGET_USER
+            sudo dscl . -create /Users/$TARGET_USER UserShell /bin/bash
+            sudo dscl . -create /Users/$TARGET_USER RealName "$TARGET_USER"
+            sudo dscl . -create /Users/$TARGET_USER UniqueID $NEW_ID
+            sudo dscl . -create /Users/$TARGET_USER PrimaryGroupID 20
+            sudo dscl . -create /Users/$TARGET_USER NFSHomeDirectory /Users/$TARGET_USER
+            sudo dscl . -passwd /Users/$TARGET_USER "$PASS"
+            sudo dscl . -append /Groups/admin GroupMembership $TARGET_USER
+            
+            sudo mkdir -p /Users/$TARGET_USER
+            sudo chown -R $TARGET_USER:staff /Users/$TARGET_USER
+          fi
 
-      # Step 2: Enable modern Screen Sharing for the newly created user
+      # Step 2: Enable modern Screen Sharing for the targeted user
       - name: Enable macOS Screen Sharing
         run: |
           USER="${{ github.event.inputs.username }}"
           
-          # Turn on the Screen Sharing/Remote Management service
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -activate \
             -configure \
@@ -62,7 +69,6 @@ jobs:
             -allowAccessFor -specifiedUsers \
             -restart -agent
             
-          # Explicitly bind remote control permissions to our custom user
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -configure \
             -users $USER \
