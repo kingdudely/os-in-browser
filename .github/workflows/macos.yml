@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       password:
-        description: "Password"
+        description: "Password for the 'runner' account"
         required: true
 
 jobs:
@@ -15,45 +15,51 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Enable macOS Screen Sharing
+      # Step 1: Set the password for the existing 'runner' user
+      - name: Configure Runner Password
+        run: |
+          sudo dscl . -passwd /Users/runner "${{ github.event.inputs.password }}"
+
+      # Step 2: Enable Modern macOS Screen Sharing for the runner user
       - name: Enable macOS Screen Sharing
         run: |
+          # Activate the Remote Management service
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -activate \
             -configure \
             -access -on \
-            -allowAccessFor -allUsers \
-            -privs -all \
-            -clientopts -setvnclegacy -vnclegacy yes \
-            -clientopts -setvncpw -vncpw admin \
+            -allowAccessFor -specifiedUsers \
             -restart -agent
+            
+          # Explicitly grant full control privileges to the 'runner' user
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -configure \
+            -users runner \
+            -privs -all
 
-      # Install cloudflared
+      # Step 3: Install cloudflared
       - name: Install cloudflared
         run: |
           brew update
           brew install cloudflared
 
-      # Install noVNC
+      # Step 4: Install noVNC & Websockify
       - name: Install noVNC
         run: |
           git clone https://github.com/novnc/noVNC.git
           git clone https://github.com/novnc/websockify.git noVNC/utils/websockify
 
-      # Start noVNC bridge
+      # Step 5: Start noVNC bridge
       - name: Start noVNC server
         run: |
           cd noVNC
-
           ./utils/novnc_proxy \
             --vnc 127.0.0.1:5900 \
             --listen 0.0.0.0:6080 &
-
           sleep 5
-
           echo "noVNC listening on 6080"
 
-      # Start cloudflared tunnel
+      # Step 6: Start cloudflared tunnel
       - name: Start cloudflared tunnel
         run: |
           cloudflared tunnel --url http://127.0.0.1:6080
