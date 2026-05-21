@@ -1,0 +1,88 @@
+name: Main
+
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        type: choice
+        description: 'Operating system'
+        options:
+        - ubuntu
+        - windows
+        - macos
+        default: ubuntu
+        required: true
+
+      password:
+        description: "Password"
+        required: true
+
+jobs:
+  vm:
+    runs-on: ${{ github.event.inputs.os }}-latest
+    timeout-minutes: 360
+
+    env:
+      OS: ${{ github.event.inputs.os }}
+      VNC_PORT: 5901
+      NOVNC_PORT: 6080
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup VNC server
+        shell: bash
+        run: |
+          case "${OS}" in
+            ubuntu)
+              sudo apt-get update -y
+              sudo apt-get install -y wget
+              wget https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb
+              sudo dpkg -i chrome-remote-desktop_current_amd64.deb || sudo apt-get -f install -y
+
+              CRD_PATH="/opt/google/chrome-remote-desktop/start-host"
+              ;;
+
+            macos)
+              brew install git python cloudflared libvncserver
+              ./macVNC -rfbport "${VNC_PORT}" -passwd "${{ github.event.inputs.password }}" &
+              ;;
+
+            windows)
+              choco install chrome-remote-desktop-host -y --no-progress # https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi
+
+              CRD_PATH="/c/Program Files (x86)/Google/Chrome Remote Desktop/CurrentVersion/remoting_start_host.exe"
+              ;;
+
+            *)
+              echo "Unsupported OS: ${OS}"
+              exit 1
+              ;;
+          esac
+
+          until nc -z -G 1 localhost "${VNC_PORT}" &>/dev/null; do
+            sleep 1
+          done
+
+      - name: Setup noVNC
+        run: |
+          git clone https://github.com/novnc/noVNC.git
+          cd noVNC
+
+          echo "[*] Starting noVNC proxy..."
+          nohup ./utils/novnc_proxy \
+            --vnc "localhost:${VNC_PORT}" \
+            --listen "${NOVNC_PORT}" &
+
+          until nc -z -G 1 localhost "${NOVNC_PORT}" &>/dev/null; do
+            sleep 1
+          done
+
+      - name: Start tunnel
+        run: |
+          cloudflared tunnel --url http://localhost:6080/vnc.html 2>&1 | grep --line-buffered -o 'https://[^ ]*trycloudflare.com'
