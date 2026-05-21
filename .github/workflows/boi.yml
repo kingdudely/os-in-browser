@@ -32,3 +32,15 @@ jobs:
         run: |
           echo "First sleep timed out, entering second sleep..."
           sleep infinity
+
+      - name: Always Run Sleep
+        if: always()        # <-- Forces execution after timeout
+        run: |
+          echo "First sleep timed out, entering second sleep..."
+          sleep infinity
+
+      - name: Always Run Sleep
+        if: always()        # <-- Forces execution after timeout
+        run: |
+          echo "First sleep timed out, entering second sleep..."
+          sleep infinity
