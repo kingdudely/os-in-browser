@@ -1,0 +1,46 @@
+name: DO NOT RUN
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write 
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  run-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    
+    strategy:
+      matrix:
+        job-id: [1] # Kept to 1 for testing safety
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Sleep
+        run: |
+          sleep infinity
+
+      - name: Repeat
+        if: always() # Ensures it triggers even after a timeout
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 1. Get everything BEFORE the @ (the file path)
+          CLEANED_PATH="${GITHUB_WORKFLOW_REF%%@*}"
+          FILE_NAME=$(basename "$CLEANED_PATH")
+          
+          # 2. Get everything AFTER the @ (the git ref)
+          GIT_REF="${GITHUB_WORKFLOW_REF#*@}"
+          
+          echo "Extracted File: $FILE_NAME"
+          echo "Extracted Ref:  $GIT_REF"
+          
+          # 3. Trigger the next run perfectly
+          gh workflow run "$FILE_NAME" --ref "$GIT_REF"
