@@ -19,7 +19,7 @@ env:
 jobs:
   stream:
     runs-on: ${{ github.event.inputs.os }}
-    timeout-minutes: ${{ fromJSON(env.TIMEOUT_MINUTES) }}
+    timeout-minutes: ${{ fromJSON(github.env.TIMEOUT_MINUTES) }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
