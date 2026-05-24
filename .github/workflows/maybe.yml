@@ -186,8 +186,18 @@ jobs:
           EOF
         shell: bash
 
-      - name: Run Server
+      - name: Run Server with Free Tunnel
         run: |
-          export PUBLIC_IP=$(curl -s https://ipify.org)
-          node server.js
+          # 1. Start your Node.js server in the background
+          node server.js &
+          
+          # 2. Wait 3 seconds for the server to spin up
+          sleep 3
+          
+          # 3. Open a free, instant tunnel using localhost.run
+          # This forwards web traffic from the internet to your GitHub runner on port 4433
+          echo "=================================================="
+          echo "YOUR PUBLIC ACCESS LINK WILL APPEAR BELOW:"
+          echo "=================================================="
+          ssh -R 80:localhost:4433 nokey@localhost.run
         shell: bash
