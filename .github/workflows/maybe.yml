@@ -121,7 +121,7 @@ jobs:
           });
 
           server.listen(4433, '0.0.0.0', async () => {
-              const tunnel = await localtunnel({ port: 3000 });
+              const tunnel = await localtunnel({ port: server.address().port });
               console.log(tunnel.url);
           });
           EOF
