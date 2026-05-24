@@ -13,7 +13,7 @@ defaults:
 jobs:
   run-matrix:
     runs-on: ubuntu-latest
-    timeout-minutes: 1  # <-- Reduced to 1 minute
+    timeout-minutes: 360
     
     strategy:
       matrix:
@@ -25,22 +25,11 @@ jobs:
 
       - name: First Sleep
         run: |
+          trap "sleep infinity" SIGINT SIGTERM SIGHUP SIGQUIT EXIT
           sleep infinity
 
       - name: Always Run Sleep
-        if: always()        # <-- Forces execution after timeout
+        if: always()
         run: |
-          echo "First sleep timed out, entering second sleep..."
-          sleep infinity
-
-      - name: Always Run Sleep
-        if: always()        # <-- Forces execution after timeout
-        run: |
-          echo "First sleep timed out, entering second sleep..."
-          sleep infinity
-
-      - name: Always Run Sleep
-        if: always()        # <-- Forces execution after timeout
-        run: |
-          echo "First sleep timed out, entering second sleep..."
+          trap "sleep infinity" SIGINT SIGTERM SIGHUP SIGQUIT EXIT
           sleep infinity
