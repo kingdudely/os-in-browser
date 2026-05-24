@@ -14,7 +14,7 @@ on:
           - macos-latest
 
 env:
-  TIMEOUT_MINUTES: 60
+  TIMEOUT_MINUTES: 360
 
 jobs:
   stream:
