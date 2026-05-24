@@ -1,4 +1,4 @@
-name: Remote Stream Direct IP (Pure Node.js)
+name: Remote Stream Direct IP (Pure Node.js - ESM)
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ on:
           - macos-latest
 
 env:
-  TIMEOUT_MINUTES: 360
+  TIMEOUT_MINUTES: 60
 
 jobs:
   stream:
@@ -40,18 +40,20 @@ jobs:
       - name: Initialize NPM and Install Packages
         run: |
           npm init -y
-          # Added node-forge for native cryptographic certificate generation
+          # Configure package.json to treat all native .js files as ESM modules
+          npm pkg set type="module"
           npm install quico screenshot-desktop node-forge
         shell: bash
 
-      - name: Create Combined Node.js Server & Cert Generator
+      - name: Create Node.js WebTransport Server (ESM)
         run: |
           cat << 'EOF' > server.js
-          const quico = require('quico');
-          const screenshot = require('screenshot-desktop');
-          const forge = require('node-forge');
-          const fs = require('fs');
-          const crypto = require('crypto');
+          // Native ESM imports
+          import quico from 'quico';
+          import screenshot from 'screenshot-desktop';
+          import forge from 'node-forge';
+          import fs from 'fs';
+          import crypto from 'crypto';
 
           // ==========================================
           // NATIVE 6-HOUR CERTIFICATE GENERATION
@@ -63,7 +65,6 @@ jobs:
           cert.publicKey = pkeys.publicKey;
           cert.serialNumber = '01' + crypto.randomBytes(19).toString('hex');
           
-          // Set valid window strictly to 6 hours
           cert.validity.notBefore = new Date();
           cert.validity.notAfter = new Date();
           cert.validity.notAfter.setHours(cert.validity.notBefore.getHours() + 6);
@@ -72,7 +73,6 @@ jobs:
           cert.setSubject(attrs);
           cert.setIssuer(attrs);
           
-          // Self-sign the cert
           cert.sign(pkeys.privateKey, forge.md.sha256.create());
 
           const pemKey = forge.pki.privateKeyToPem(pkeys.privateKey);
@@ -152,7 +152,6 @@ jobs:
                           serverCertificateHashes: [
                               {
                                   algorithm: "sha-256",
-                                  // Server injects this value natively at startup
                                   value: Uint8Array.from(atob("__CERT_HASH_PLACEHOLDER__"), c => c.charCodeAt(0))
                               }
                           ]
