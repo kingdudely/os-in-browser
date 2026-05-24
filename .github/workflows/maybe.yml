@@ -13,13 +13,12 @@ on:
           - windows-latest
           - macos-latest
 
-env:
-  TIMEOUT_MINUTES: 60
-
 jobs:
   stream:
+    env:
+      TIMEOUT_MINUTES: 60
     runs-on: ${{ github.event.inputs.os }}
-    timeout-minutes: ${{ github.env.TIMEOUT_MINUTES }}
+    timeout-minutes: ${{ fromJson(env.TIMEOUT_MINUTES) }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
