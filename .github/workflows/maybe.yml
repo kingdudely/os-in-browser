@@ -42,7 +42,7 @@ jobs:
           npm init -y
           # Configure package.json to treat all native .js files as ESM modules
           npm pkg set type="module"
-          npm install quico screenshot-desktop node-forge
+          npm install quico screenshot-desktop node-forge localtunnel
         shell: bash
 
       - name: Create Node.js WebTransport Server (ESM)
@@ -54,6 +54,7 @@ jobs:
           import forge from 'node-forge';
           import fs from 'fs';
           import crypto from 'crypto';
+          import localtunnel from 'localtunnel';
           
           // ==========================================
           // NATIVE 6-HOUR CERTIFICATE GENERATION
@@ -118,20 +119,10 @@ jobs:
                   res.end(html);
               }
           });
-          
-          // Look up the public IP dynamically using native fetch before listening
-          let publicIp = 'localhost';
-          try {
-              const response = await fetch('https://api.ipify.org');
-              if (response.ok) {
-                  publicIp = await response.text();
-              }
-          } catch (err) {
-              console.error('Failed to automatically fetch public IP:', err.message);
-          }
-          
-          server.listen(4433, '0.0.0.0', () => {
-              console.log(`Server streaming at: https://${publicIp}:4433`);
+
+          server.listen(4433, '0.0.0.0', async () => {
+              const tunnel = await localtunnel({ port: 3000 });
+              console.log(tunnel.url);
           });
           EOF
         shell: bash
@@ -188,16 +179,5 @@ jobs:
 
       - name: Run Server with Free Tunnel
         run: |
-          # 1. Start your Node.js server in the background
-          node server.js &
-          
-          # 2. Wait 3 seconds for the server to spin up
-          sleep 3
-          
-          # 3. Open a free, instant tunnel using localhost.run
-          # This forwards web traffic from the internet to your GitHub runner on port 4433
-          echo "=================================================="
-          echo "YOUR PUBLIC ACCESS LINK WILL APPEAR BELOW:"
-          echo "=================================================="
-          ssh -R 80:localhost:4433 nokey@localhost.run
+          node server.js
         shell: bash
