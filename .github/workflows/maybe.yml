@@ -15,10 +15,8 @@ on:
 
 jobs:
   stream:
-    env:
-      TIMEOUT_MINUTES: 60
     runs-on: ${{ github.event.inputs.os }}
-    timeout-minutes: ${{ fromJson(env.TIMEOUT_MINUTES) }}
+    timeout-minutes: 360
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -196,8 +194,7 @@ jobs:
 
       - name: Generate Self-Signed Certificate
         run: |
-          DAYS=$(( (TIMEOUT_MINUTES + 1439) / 1440 ))
-          openssl req -newkey rsa:2048 -nodes -keyout key.pem -x509 -days $DAYS -out cert.pem -subj "/CN=localhost"
+          openssl req -newkey rsa:2048 -nodes -keyout key.pem -x509 -days 0.25 -out cert.pem -subj /CN=localhost
         shell: bash
 
       - name: Get Public IP Address
