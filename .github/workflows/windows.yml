@@ -24,12 +24,7 @@ jobs:
       - name: Authorize Chrome Remote Desktop
         run: ${{ github.event.inputs.crd_command }} --pin="${{ github.event.inputs.pin }}"
 
-      - name: Keep session alive
-        run: |
-          Write-Host "Connect at: https://remotedesktop.google.com/access"
-          Wait-Event
-
-      - name: Still keep it alive
+      - name: Keep alive
         if: always()
         run: |
           Write-Host "Connect at: https://remotedesktop.google.com/access"
