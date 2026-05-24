@@ -1,0 +1,216 @@
+name: Remote Stream Direct IP
+
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        description: 'Choose Operating System'
+        required: true
+        default: 'ubuntu-latest'
+        type: choice
+        options:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+
+env:
+  TIMEOUT_MINUTES: 60
+
+jobs:
+  stream:
+    runs-on: ${{ github.event.inputs.os }}
+    timeout-minutes: ${{ fromJSON(env.TIMEOUT_MINUTES) }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Create Server Script Inline
+        run: |
+          cat << 'EOF' > server.py
+          import asyncio
+          import io
+          from PIL import ImageGrab
+          import pyautogui
+          from aiohttp import web
+          from google.aiohttp_wt import WebTransportServer
+
+          pyautogui.FAILSAFE = False
+
+          async def handle_transport(transport):
+              while True:
+                  try:
+                      stream = await transport.accept_bi_stream()
+                      asyncio.create_task(handle_stream(stream))
+                  except Exception:
+                      break
+
+          async def handle_stream(stream):
+              reader, writer = stream
+              asyncio.create_task(send_screen(writer))
+              await read_inputs(reader)
+
+          async def send_screen(writer):
+              while True:
+                  try:
+                      img = ImageGrab.grab()
+                      buf = io.BytesIO()
+                      img.save(buf, format="JPEG", quality=50)
+                      data = buf.getvalue()
+                      writer.write(len(data).to_bytes(4, byteorder="big") + data)
+                      await writer.drain()
+                      await asyncio.sleep(0.1)
+                  except Exception:
+                      break
+
+          async def read_inputs(reader):
+              while True:
+                  try:
+                      header = await reader.readexactly(1)
+                      action = header
+                      if action == 1:
+                          data = await reader.readexactly(4)
+                          x = int.from_bytes(data[0:2], byteorder="big")
+                          y = int.from_bytes(data[2:4], byteorder="big")
+                          pyautogui.moveTo(x, y)
+                      elif action == 2:
+                          pyautogui.click()
+                      elif action == 3:
+                          data = await reader.readexactly(1)
+                          key = data.decode("utf-8")
+                          pyautogui.press(key)
+                  except Exception:
+                      break
+
+          async def main():
+              app = web.Application()
+              server = WebTransportServer(app, port=4433, cert_file="cert.pem", key_file="key.pem")
+              await server.start()
+              await asyncio.sleep(float("inf"))
+
+          if __name__ == "__main__":
+              asyncio.run(main())
+          EOF
+        shell: bash
+
+      - name: Create Client Webpage Inline
+        run: |
+          cat << 'EOF' > index.html
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Remote Desktop</title>
+              <style>
+                  body { margin: 0; overflow: hidden; background: #000; text-align: center; }
+                  canvas { max-width: 100%; max-height: 100vh; display: block; margin: 0 auto; }
+              </style>
+          </head>
+          <body>
+              <canvas id="screen"></canvas>
+              <script>
+                  const canvas = document.getElementById("screen");
+                  const ctx = canvas.getContext("2d");
+                  
+                  async function init() {
+                      const url = "https://" + window.location.host + ":4433/wt";
+                      const transport = new WebTransport(url);
+                      await transport.ready;
+                      
+                      const stream = await transport.createBidirectionalStream();
+                      const writer = stream.writable.getWriter();
+                      const reader = stream.readable.getReader();
+                      
+                      canvas.addEventListener("mousemove", (e) => {
+                          const rect = canvas.getBoundingClientRect();
+                          const x = Math.round(e.clientX - rect.left);
+                          const y = Math.round(e.clientY - rect.top);
+                          const buf = new ArrayBuffer(5);
+                          const view = new DataView(buf);
+                          view.setUint8(0, 1);
+                          view.setUint16(1, x);
+                          view.setUint16(3, y);
+                          writer.write(buf);
+                      });
+
+                      canvas.addEventListener("click", () => {
+                          const buf = new ArrayBuffer(1);
+                          new DataView(buf).setUint8(0, 2);
+                          writer.write(buf);
+                      });
+
+                      window.addEventListener("keydown", (e) => {
+                          const encoder = new TextEncoder();
+                          const keyData = encoder.encode(e.key);
+                          let buf = new Uint8Array(1 + keyData.length);
+                          buf[0] = 3;
+                          buf.set(keyData, 1);
+                          writer.write(buf);
+                      });
+
+                      readScreen(reader);
+                  }
+
+                  async function readScreen(reader) {
+                      while (true) {
+                          const { value, done } = await reader.read();
+                          if (done) break;
+                          let offset = 0;
+                          while (offset < value.length) {
+                              const size = new DataView(value.buffer, value.byteOffset + offset, 4).getUint32(0);
+                              offset += 4;
+                              const imgBlob = new Blob([value.subarray(offset, offset + size)], { type: "image/jpeg" });
+                              offset += size;
+                              const img = new Image();
+                              img.src = URL.createObjectURL(imgBlob);
+                              img.onload = () => {
+                                  canvas.width = img.width;
+                                  canvas.height = img.height;
+                                  ctx.drawImage(img, 0, 0);
+                                  URL.revokeObjectURL(img.src);
+                              };
+                          }
+                      }
+                  }
+
+                  init();
+              </script>
+          </body>
+          </html>
+          EOF
+        shell: bash
+
+      - name: Install System Dependencies (Linux Only)
+        if: ${{ github.event.inputs.os == 'ubuntu-latest' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb python3-tk python3-dev
+          Xvfb :99 -screen 0 1280x1024x24 &
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+
+      - name: Install Python Libraries
+        run: |
+          pip install pillow pyautogui aiohttp google-aiohttp-wt
+
+      - name: Generate Self-Signed Certificate
+        run: |
+          DAYS=$(( (TIMEOUT_MINUTES + 1439) / 1440 ))
+          openssl req -newkey rsa:2048 -nodes -keyout key.pem -x509 -days $DAYS -out cert.pem -subj "/CN=localhost"
+        shell: bash
+
+      - name: Get Public IP Address
+        run: |
+          PUBLIC_IP=$(curl -s https://ipify.org)
+          echo "=================================================="
+          echo "PUBLIC IP ADDRESS: $PUBLIC_IP"
+          echo "CONNECT VIA: https://$PUBLIC_IP:4433"
+          echo "=================================================="
+        shell: bash
+
+      - name: Start Server
+        run: |
+          python server.py
+        shell: bash
