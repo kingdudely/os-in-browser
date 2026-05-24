@@ -33,7 +33,6 @@ jobs:
         if: ${{ github.event.inputs.os == 'ubuntu-latest' }}
         run: |
           sudo apt-get update
-          # xvfb for virtual display, plus native tools needed for screenshot utilities
           sudo apt-get install -y xvfb libasound2 devhelp-common
           Xvfb :99 -screen 0 1280x1024x24 &
           echo "DISPLAY=:99" >> $GITHUB_ENV
@@ -41,39 +40,66 @@ jobs:
       - name: Initialize NPM and Install Packages
         run: |
           npm init -y
-          # Installing quico for WebTransport and screenshot-desktop to kill off Python
-          npm install quico screenshot-desktop
+          # Added node-forge for native cryptographic certificate generation
+          npm install quico screenshot-desktop node-forge
         shell: bash
 
-      - name: Generate Self-Signed Certificate Tokens
-        id: certs
-        run: |
-          openssl req -newkey rsa:2048 -nodes -keyout key.pem -x509 -days 0.25 -out cert.pem -subj "/CN=localhost"
-          FINGERPRINT=$(openssl x509 -in cert.pem -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256 -binary | base64)
-          echo "HASH=$FINGERPRINT" >> $GITHUB_OUTPUT
-        shell: bash
-
-      - name: Create Node.js WebTransport Server
+      - name: Create Combined Node.js Server & Cert Generator
         run: |
           cat << 'EOF' > server.js
           const quico = require('quico');
           const screenshot = require('screenshot-desktop');
+          const forge = require('node-forge');
           const fs = require('fs');
+          const crypto = require('crypto');
 
-          const options = {
-              key: fs.readFileSync('key.pem'),
-              cert: fs.readFileSync('cert.pem')
-          };
+          // ==========================================
+          // NATIVE 6-HOUR CERTIFICATE GENERATION
+          // ==========================================
+          console.log("Generating 6-hour self-signed certificate...");
+          const pkeys = forge.pki.rsa.generateKeyPair(2048);
+          const cert = forge.pki.createCertificate();
+          
+          cert.publicKey = pkeys.publicKey;
+          cert.serialNumber = '01' + crypto.randomBytes(19).toString('hex');
+          
+          // Set valid window strictly to 6 hours
+          cert.validity.notBefore = new Date();
+          cert.validity.notAfter = new Date();
+          cert.validity.notAfter.setHours(cert.validity.notBefore.getHours() + 6);
 
-          const server = quico.createServer(options, (req, res) => {
+          const attrs = [{ name: 'commonName', value: 'localhost' }];
+          cert.setSubject(attrs);
+          cert.setIssuer(attrs);
+          
+          // Self-sign the cert
+          cert.sign(pkeys.privateKey, forge.md.sha256.create());
+
+          const pemKey = forge.pki.privateKeyToPem(pkeys.privateKey);
+          const pemCert = forge.pki.certificateToPem(cert);
+
+          // Calculate the SHA-256 fingerprint browser token for WebTransport
+          const der = forge.asn1.toDer(forge.pki.certificateToAsn1(cert)).getBytes();
+          const shasum = crypto.createHash('sha256');
+          shasum.update(Buffer.from(der, 'binary'));
+          const fingerprintB64 = shasum.digest('base64');
+
+          console.log("==================================================");
+          console.log(`WEBTRANSPORT CERT HASH: ${fingerprintB64}`);
+          console.log("==================================================");
+
+          // Dynamically inject the computed token into our index.html file
+          let html = fs.readFileSync('index.html', 'utf8');
+          html = html.replace('__CERT_HASH_PLACEHOLDER__', fingerprintB64);
+          fs.writeFileSync('index.html', html);
+
+          // ==========================================
+          // WEBTRANSPORT QUICO SERVER
+          // ==========================================
+          const server = quico.createServer({ key: pemKey, cert: pemCert }, (req, res) => {
               if (req.headers[':protocol'] === 'webtransport') {
                   res.writeHead(200);
-                  console.log('WebTransport session active');
-
                   req.on('stream', (stream) => {
-                      console.log('Streaming interface bound');
-
-                      // Capture and stream loop handled completely within Node.js
                       const frameInterval = setInterval(async () => {
                           try {
                               const imgBuffer = await screenshot({ format: 'jpeg' });
@@ -87,24 +113,22 @@ jobs:
 
                       stream.on('close', () => {
                           clearInterval(frameInterval);
-                          console.log('Stream disconnected');
                       });
                   });
               } else {
-                  fs.readFile('index.html', (err, data) => {
-                      res.writeHead(200, { 'Content-Type': 'text/html' });
-                      res.end(data);
-                  });
+                  res.writeHead(200, { 'Content-Type': 'text/html' });
+                  res.end(html);
               }
           });
 
           server.listen(4433, '0.0.0.0', () => {
-              console.log('Server streaming on port 4433');
+              const publicIp = process.env.PUBLIC_IP || 'localhost';
+              console.log(`Server streaming at: https://${publicIp}:4433`);
           });
           EOF
         shell: bash
 
-      - name: Create Frontend Client
+      - name: Create Frontend Client Blueprint
         run: |
           cat << 'EOF' > index.html
           <!DOCTYPE html>
@@ -128,7 +152,8 @@ jobs:
                           serverCertificateHashes: [
                               {
                                   algorithm: "sha-256",
-                                  value: Uint8Array.from(atob("${{ steps.certs.outputs.HASH }}"), c => c.charCodeAt(0))
+                                  // Server injects this value natively at startup
+                                  value: Uint8Array.from(atob("__CERT_HASH_PLACEHOLDER__"), c => c.charCodeAt(0))
                               }
                           ]
                       });
@@ -154,11 +179,8 @@ jobs:
           EOF
         shell: bash
 
-      - name: Start Server & Display Info
+      - name: Run Server
         run: |
-          PUBLIC_IP=$(curl -s https://ipify.org)
-          echo "=================================================="
-          echo "SERVER ADDR: https://$PUBLIC_IP:4433"
-          echo "=================================================="
+          export PUBLIC_IP=$(curl -s https://ipify.org)
           node server.js
         shell: bash
