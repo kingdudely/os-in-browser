@@ -9,21 +9,28 @@ on:
         description: "PIN to access the session (minimum 6 digits)"
         required: true
 
+defaults:
+  run:
+    shell: powershell
+
 jobs:
   session:
     runs-on: windows-latest
     timeout-minutes: 360
     steps:
       - name: Install Chrome Remote Desktop
-        shell: powershell
         run: choco install chrome-remote-desktop-host -y --no-progress
 
       - name: Authorize Chrome Remote Desktop
-        shell: powershell
         run: ${{ github.event.inputs.crd_command }} --pin="${{ github.event.inputs.pin }}"
 
-      - name: Keep session alive for 6 hours
-        shell: powershell
+      - name: Keep session alive
         run: |
           Write-Host "Connect at: https://remotedesktop.google.com/access"
-          Start-Sleep -Seconds 21600
+          Wait-Event
+
+      - name: Still keep it alive
+        if: always()
+        run: |
+          Write-Host "Connect at: https://remotedesktop.google.com/access"
+          Wait-Event
