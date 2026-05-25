@@ -23,23 +23,31 @@ let hostSocket = null
 let pendingOffer = null
 
 wss.on('connection', (ws) => {
+  console.log('WS connection opened')
   ws.on('message', (raw) => {
     const msg = JSON.parse(raw)
+    console.log('got message:', msg.type, '| hostSocket:', !!hostSocket, '| viewerSocket:', !!viewerSocket, '| pendingOffer:', !!pendingOffer)
     if (msg.type === 'viewer') {
       viewerSocket = ws
-      if (pendingOffer) { ws.send(pendingOffer); pendingOffer = null }
+      if (pendingOffer) {
+        console.log('flushing pending offer to viewer')
+        ws.send(pendingOffer)
+        pendingOffer = null
+      }
     }
     if (msg.type === 'host') hostSocket = ws
     if (msg.type === 'offer') {
-      if (viewerSocket) viewerSocket.send(raw)
-      else pendingOffer = raw
+      if (viewerSocket) { console.log('relaying offer to viewer'); viewerSocket.send(raw) }
+      else { console.log('no viewer yet, queuing offer'); pendingOffer = raw }
     }
-    if (msg.type === 'answer') hostSocket?.send(raw)
+    if (msg.type === 'answer') { console.log('relaying answer to host'); hostSocket?.send(raw) }
     if (msg.type === 'candidate') {
-      if (ws === hostSocket) viewerSocket?.send(raw)
-      else hostSocket?.send(raw)
+      if (ws === hostSocket) { console.log('relaying candidate host→viewer'); viewerSocket?.send(raw) }
+      else { console.log('relaying candidate viewer→host'); hostSocket?.send(raw) }
     }
   })
+  ws.on('close', () => console.log('WS closed'))
+  ws.on('error', (e) => console.log('WS error', e))
 })
 
 server.listen(8080, () => console.log('HTTP + WS server running on :8080'))
