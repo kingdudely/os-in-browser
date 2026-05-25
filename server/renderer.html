@@ -2,9 +2,9 @@
 <!DOCTYPE html>
 <html>
 <body>
-<script type="module">
-import { ipcRenderer, desktopCapturer } from 'electron'
-
+<script>
+const { ipcRenderer, desktopCapturer } = require('electron');
+  
 const log = (...args) => {
   console.log('[renderer]', ...args)
   fetch('/log', { method: 'POST', body: args.join(' ') }).catch(() => {})
