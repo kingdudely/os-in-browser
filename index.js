@@ -1,145 +1,84 @@
-import express from 'express'
+import { createServer } from 'node:http'
+import { WebSocketServer } from 'ws'
 import { app, BrowserWindow, desktopCapturer } from 'electron'
-import robot from 'robotjs'
-import wrtc from 'wrtc'
+import { RTCPeerConnection, RTCSessionDescription } from 'wrtc'
+import { mouse, keyboard, Button, straightTo } from '@nut-tree/nut-js'
 
-global.RTCPeerConnection = wrtc.RTCPeerConnection
-global.RTCSessionDescription = wrtc.RTCSessionDescription
-global.RTCIceCandidate = wrtc.RTCIceCandidate
+const server = createServer()
+const wss = new WebSocketServer({ server })
 
-const expressApp = express()
+let hostSocket = null
+let viewerSocket = null
 
-expressApp.use(express.json())
-expressApp.use(express.static('public'))
+wss.on('connection', ws => {
+  ws.on('message', raw => {
+    const msg = JSON.parse(raw)
 
-let offer = null
-let answer = null
+    if (msg.type === 'host')   { hostSocket = ws }
+    if (msg.type === 'viewer') { viewerSocket = ws }
 
-expressApp.post('/offer', (req, res) => {
-  offer = req.body
-  res.send('ok')
+    // relay offer/answer directly instead of polling
+    if (msg.type === 'offer')  viewerSocket?.send(raw)
+    if (msg.type === 'answer') hostSocket?.send(raw)
+  })
 })
 
-expressApp.get('/offer', (req, res) => {
-  res.json(offer)
-})
+server.listen(8080, () => console.log('server running on 8080'))
 
-expressApp.post('/answer', (req, res) => {
-  answer = req.body
-  res.send('ok')
-})
-
-expressApp.get('/answer', (req, res) => {
-  res.json(answer)
-})
-
-expressApp.listen(8080, () => {
-  console.log('server running on 8080')
-})
-
-let win
-let pc
-
-async function waitForAnswer() {
-  while (true) {
-    try {
-      const r = await fetch('http://localhost:8080/answer')
-      const data = await r.json()
-
-      if (data?.type) {
-        return data
-      }
-    } catch {}
-
-    await new Promise(r => setTimeout(r, 1000))
-  }
-}
-
-async function startWebRTC() {
-  pc = new RTCPeerConnection({
-    iceServers: [
-      {
-        urls: [
-          'stun:stun.cloudflare.com:3478',
-          'stun:stun.l.google.com:19302'
-        ]
-      }
-    ]
+async function startWebRTC(win) {
+  const pc = new RTCPeerConnection({
+    iceServers: [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] }]
   })
 
   const channel = pc.createDataChannel('control')
-
-  channel.onmessage = (ev) => {
+  channel.onmessage = async (ev) => {
     const msg = JSON.parse(ev.data)
-
     if (msg.type === 'mouse') {
-      robot.moveMouse(msg.x, msg.y)
-
-      if (msg.click) {
-        robot.mouseClick()
-      }
+      await mouse.move(straightTo({ x: msg.x, y: msg.y }))
+      if (msg.click) await mouse.click(Button.LEFT)
     }
-
-    if (msg.type === 'key') {
-      robot.keyTap(msg.key)
-    }
+    if (msg.type === 'key') await keyboard.type(msg.key)
   }
 
-  const sources = await desktopCapturer.getSources({
-    types: ['screen']
-  })
-
-  const sourceId = sources[0].id
-
+  const sources = await desktopCapturer.getSources({ types: ['screen'] })
   const stream = await win.webContents.executeJavaScript(`
     navigator.mediaDevices.getUserMedia({
       audio: false,
       video: {
         mandatory: {
           chromeMediaSource: 'desktop',
-          chromeMediaSourceId: '${sourceId}'
+          chromeMediaSourceId: '${sources[0].id}'
         }
       }
     })
   `)
+  stream.getTracks().forEach(track => pc.addTrack(track, stream))
 
-  stream.getTracks().forEach(track => {
-    pc.addTrack(track, stream)
-  })
+  // register as host then send offer
+  const ws = new WebSocket('ws://localhost:8080')
+  ws.onopen = async () => {
+    ws.send(JSON.stringify({ type: 'host' }))
 
-  const offer = await pc.createOffer()
+    const offer = await pc.createOffer()
+    await pc.setLocalDescription(offer)
+    ws.send(JSON.stringify({ type: 'offer', ...offer }))
+  }
 
-  await pc.setLocalDescription(offer)
-
-  await fetch('http://localhost:8080/offer', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(pc.localDescription)
-  })
-
-  console.log('offer uploaded')
-
-  const remoteAnswer = await waitForAnswer()
-
-  await pc.setRemoteDescription(
-    new RTCSessionDescription(remoteAnswer)
-  )
-
-  console.log('connected')
+  // answer comes back via push, no polling
+  ws.onmessage = async (ev) => {
+    const msg = JSON.parse(ev.data)
+    if (msg.type === 'answer') {
+      await pc.setRemoteDescription(new RTCSessionDescription(msg))
+      console.log('connected')
+    }
+  }
 }
 
 app.whenReady().then(async () => {
-  win = new BrowserWindow({
+  const win = new BrowserWindow({
     show: false,
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
-    }
+    webPreferences: { nodeIntegration: true, contextIsolation: false }
   })
-
   await win.loadURL('about:blank')
-
-  await startWebRTC()
+  await startWebRTC(win)
 })
