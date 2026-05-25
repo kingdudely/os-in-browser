@@ -3,8 +3,8 @@
 <html>
 <body>
 <script>
-const { ipcRenderer, desktopCapturer } = require('electron')
-
+const { getSources, sendControl } = window.api;
+  
 const log = (...args) => {
   console.log('[renderer]', ...args)
   fetch('/log', { method: 'POST', body: args.join(' ') }).catch(() => {})
@@ -45,14 +45,14 @@ pc.onconnectionstatechange = () => {
 }
 pc.ondatachannel = (e) => {
   log('data channel received:', e.channel.label)
-  e.channel.onmessage = (ev) => ipcRenderer.send('control', JSON.parse(ev.data))
+  e.channel.onmessage = (ev) => sendControl(JSON.parse(ev.data))
 }
 
 async function main() {
   log('calling desktopCapturer.getSources')
   let sources
   try {
-    sources = await desktopCapturer.getSources({ types: ['screen'] })
+    sources = await getSources()
     log('getSources returned', sources.length, 'source(s):', sources.map(s => s.name).join(', '))
   } catch (e) {
     log('getSources FAILED:', e.message, e.stack)
