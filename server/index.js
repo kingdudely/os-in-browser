@@ -13,6 +13,14 @@ const server = createServer((req, res) => {
     res.end(html)
     return
   }
+
+  if (req.url === '/log') {
+  let body = ''
+  req.on('data', d => body += d)
+  req.on('end', () => { console.log('RENDERER ERROR:', body); res.end() })
+  return
+}
+  
   if (req.url === '/health') { res.writeHead(200); res.end('ok'); return }
   res.writeHead(404); res.end('Not found')
 })
