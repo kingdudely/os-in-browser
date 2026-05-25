@@ -11,6 +11,6 @@
     "@nut-tree-fork/nut-js": "^4.2.6",
     "express": "^4.19.0",
     "peer": "^9.0.0",
-    "peerjs": "^1.5.4"
+    "peerjs": "^1.5.5"
   }
 }
