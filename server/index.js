@@ -1,109 +1,65 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer } from 'electron'
+import { app, BrowserWindow, desktopCapturer } from 'electron'
 import { createServer } from 'node:http'
-import { WebSocketServer } from 'ws'
-import { readFileSync } from 'node:fs'
-import path from 'node:path'
-import { mouse, keyboard, Button, straightTo } from '@nut-tree-fork/nut-js'
+import { ExpressPeerServer } from 'peer'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+import express from 'express'
 
-const server = createServer((req, res) => {
-  if (req.url === '/' || req.url === '/index.html') {
-    const html = readFileSync(path.resolve('client/index.html'))
-    res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-store' })
-    res.end(html)
-    return
-  }
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
-  if (req.url === '/log') {
-    let body = ''
-    req.on('data', d => body += d)
-    req.on('end', () => {
-      console.log('[client-log]', body)
-      res.end('ok')
-    })
-    return
-  }
+const expressApp = express()
+const server = createServer(expressApp)
 
-  if (req.url === '/health') {
-    res.writeHead(200)
-    res.end('ok')
-    return
-  }
+const peerServer = ExpressPeerServer(server, { path: '/myapp' })
+expressApp.use('/myapp', peerServer)
 
-  res.writeHead(404)
-  res.end('Not found')
-})
+expressApp.use(express.static(join(__dirname, 'client')))
 
-const wss = new WebSocketServer({ server })
-
-let viewerSocket = null
-let hostSocket = null
-let pendingOffer = null
-
-wss.on('connection', (ws) => {
-  console.log('WS connected')
-
-  ws.on('message', (raw) => {
-    const msg = JSON.parse(raw)
-
-    if (msg.type === 'viewer') {
-      viewerSocket = ws
-      if (pendingOffer) {
-        viewerSocket.send(pendingOffer)
-        pendingOffer = null
-      }
-    }
-
-    if (msg.type === 'host') {
-      hostSocket = ws
-    }
-
-    if (msg.type === 'offer') {
-      if (viewerSocket) viewerSocket.send(raw)
-      else pendingOffer = raw
-    }
-
-    if (msg.type === 'answer') {
-      hostSocket?.send(raw)
-    }
-
-    if (msg.type === 'candidate') {
-      if (ws === hostSocket) viewerSocket?.send(raw)
-      else hostSocket?.send(raw)
+function createHostWindow() {
+  const win = new BrowserWindow({
+    show: true,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
     }
   })
 
-  ws.on('close', () => console.log('WS closed'))
-  ws.on('error', console.error)
-})
+  win.loadURL('about:blank')
+
+  win.webContents.on('did-finish-load', async () => {
+    const sources = await desktopCapturer.getSources({ types: ['screen'] })
+    const source = sources[0]
+
+    win.webContents.executeJavaScript(`
+      const { Peer } = require('peerjs')
+
+      const peer = new Peer('${process.env.PASSWORD}', {
+        host: 'localhost',
+        port: 8080,
+        path: '/myapp'
+      })
+
+      peer.on('open', async () => {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: '${source.id}'
+            }
+          }
+        })
+
+        peer.on('call', call => call.answer(stream))
+      })
+    `)
+  })
+}
 
 server.listen(8080, () => {
-  console.log('HTTP + WS server running on :8080')
+  console.log('HTTP + PeerJS broker running on :8080')
 })
 
-ipcMain.handle('GET_SOURCES', async () => {
-  return await desktopCapturer.getSources({ types: ['screen'] })
-})
-
-ipcMain.on('control', async (_, msg) => {
-  if (msg.type === 'mouse') {
-    await mouse.move(straightTo({ x: msg.x, y: msg.y }))
-    if (msg.click) await mouse.click(Button.LEFT)
-  }
-
-  if (msg.type === 'key') {
-    await keyboard.type(msg.key)
-  }
-})
-
-app.whenReady().then(async () => {
-  const win = new BrowserWindow({
-    show: false,
-    webPreferences: {
-      preload: path.join(process.cwd(), 'server/preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false
-    }
-  })
-
-  win.loadFile('server/renderer.html')
+app.whenReady().then(() => {
+  createHostWindow()
 })
