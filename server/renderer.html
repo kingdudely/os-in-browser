@@ -3,6 +3,9 @@
 <html>
 <body>
 <script type="module">
+  window.onerror = (msg, src, line, col, err) => {
+  fetch('/log', { method: 'POST', body: JSON.stringify({ error: msg, line }) })
+}
 import { ipcRenderer, desktopCapturer } from 'electron'
 const pc = new RTCPeerConnection({
   iceServers: [
