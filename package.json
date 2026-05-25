@@ -1,14 +1,14 @@
 {
   "name": "gha-remote",
+  "version": "1.0.0",
   "type": "module",
-  "main": "index.js",
+  "main": "server/index.js",
   "scripts": {
-    "start": "electron index.js"
+    "start": "electron ."
   },
   "dependencies": {
     "electron": "^31.0.0",
     "ws": "^8.18.0",
-    "wrtc": "^0.4.7",
     "@nut-tree-fork/nut-js": "^4.2.6"
   }
 }
