@@ -7,10 +7,10 @@
     "start": "electron ."
   },
   "dependencies": {
-    "electron": "^31.0.0",
+    "electron": "^42.2.0",
     "@nut-tree-fork/nut-js": "^4.2.6",
-    "express": "^4.19.0",
-    "peer": "^9.0.0",
+    "express": "^5.2.1",
+    "peer": "^1.0.2",
     "peerjs": "^1.5.5"
   }
 }
