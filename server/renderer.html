@@ -51,15 +51,38 @@ async function main() {
   ws = new WebSocket('ws://localhost:8080')
 
   ws.onopen = async () => {
-    ws.send(JSON.stringify({ type: 'host' }))
+  console.log("WS OPEN")
 
-    const offer = await pc.createOffer()
-    await pc.setLocalDescription(offer)
+  ws.send(JSON.stringify({ type: 'host' }))
 
-    await waitForIceComplete()
+  console.log("Getting sources...")
+  const sources = await api.getSources()
+  console.log("Sources:", sources)
 
-    ws.send(JSON.stringify(pc.localDescription))
-  }
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: {
+      mandatory: {
+        chromeMediaSource: 'desktop',
+        chromeMediaSourceId: sources[0].id
+      }
+    }
+  })
+
+  console.log("Got stream")
+
+  stream.getTracks().forEach(t => pc.addTrack(t, stream))
+
+  const offer = await pc.createOffer()
+  console.log("Created offer")
+
+  await pc.setLocalDescription(offer)
+
+  await waitForIceComplete()
+
+  console.log("Sending offer")
+  ws.send(JSON.stringify(pc.localDescription))
+}
 
   ws.onmessage = async (ev) => {
     const msg = JSON.parse(ev.data)
