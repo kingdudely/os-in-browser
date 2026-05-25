@@ -73,5 +73,34 @@ app.whenReady().then(async () => {
     show: false,
     webPreferences: { nodeIntegration: true, contextIsolation: false }
   })
-  await win.loadFile('server/renderer.html')
+
+  win.webContents.session.setPermissionRequestHandler((wc, permission, cb) => cb(true))
+  win.webContents.session.setPermissionCheckHandler(() => true)
+
+  win.webContents.on('console-message', (e, level, message, line) => {
+    console.log(`[renderer:${line}]`, message)
+  })
+  win.webContents.on('did-fail-load', (e, code, desc, url) => {
+    console.log('[renderer] did-fail-load', code, desc, url)
+  })
+  win.webContents.on('did-finish-load', () => {
+    console.log('[renderer] did-finish-load')
+  })
+  win.webContents.on('dom-ready', () => {
+    console.log('[renderer] dom-ready')
+  })
+  win.webContents.on('render-process-gone', (e, details) => {
+    console.log('[renderer] render-process-gone', details.reason, details.exitCode)
+  })
+  win.webContents.on('unresponsive', () => {
+    console.log('[renderer] unresponsive')
+  })
+
+  console.log('[main] loading renderer.html')
+  try {
+    await win.loadFile('server/renderer.html')
+    console.log('[main] loadFile resolved')
+  } catch (e) {
+    console.log('[main] loadFile FAILED:', e.message, e.stack)
+  }
 })
