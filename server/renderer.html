@@ -1,133 +1,77 @@
-<!-- server/renderer.html -->
 <!DOCTYPE html>
 <html>
 <body>
 <script>
-const { getSources, sendControl } = window.api;
-  
-const log = (...args) => {
-  console.log('[renderer]', ...args)
-  fetch('/log', { method: 'POST', body: args.join(' ') }).catch(() => {})
-}
-
-window.onerror = (msg, src, line, col, err) => log('UNCAUGHT ERROR:', msg, 'line:', line, err?.stack)
-window.onunhandledrejection = (e) => log('UNHANDLED REJECTION:', e.reason?.message, e.reason?.stack)
-
-log('renderer started')
+const api = window.api
 
 const pc = new RTCPeerConnection({
   iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun.cloudflare.com:3478' }
+    { urls: 'stun:stun.l.google.com:19302' }
   ]
 })
-log('RTCPeerConnection created')
 
 let ws
-let wsClosed = false
 
 pc.onicecandidate = (e) => {
-  log('ICE candidate:', e.candidate ? e.candidate.candidate : 'null (gathering complete)')
   if (e.candidate && ws?.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'candidate', candidate: e.candidate }))
   }
 }
-pc.onicegatheringstatechange = () => log('ICE gathering state:', pc.iceGatheringState)
-pc.oniceconnectionstatechange = () => log('ICE connection state:', pc.iceConnectionState)
-pc.onsignalingstatechange = () => log('signaling state:', pc.signalingState)
-pc.onconnectionstatechange = () => {
-  log('connection state:', pc.connectionState)
-  if (pc.connectionState === 'connected' && !wsClosed) {
-    wsClosed = true
-    ws.close()
-    log('WebRTC connected, WS closed')
+
+pc.ondatachannel = (e) => {
+  e.channel.onmessage = (ev) => {
+    api.sendControl(JSON.parse(ev.data))
   }
 }
-pc.ondatachannel = (e) => {
-  log('data channel received:', e.channel.label)
-  e.channel.onmessage = (ev) => sendControl(JSON.parse(ev.data))
+
+async function waitForIceComplete() {
+  if (pc.iceGatheringState === 'complete') return
+
+  await new Promise(resolve => {
+    pc.onicegatheringstatechange = () => {
+      if (pc.iceGatheringState === 'complete') resolve()
+    }
+  })
 }
 
 async function main() {
-  log('calling desktopCapturer.getSources')
-  let sources
-  try {
-    sources = await getSources()
-    log('getSources returned', sources.length, 'source(s):', sources.map(s => s.name).join(', '))
-  } catch (e) {
-    log('getSources FAILED:', e.message, e.stack)
-    return
-  }
-
-  if (!sources?.length) {
-    log('FATAL: no sources found, aborting')
-    return
-  }
-
-  log('using source:', sources[0].name, 'id:', sources[0].id)
-  log('calling getUserMedia')
-
-  let stream
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: {
-        mandatory: {
-          chromeMediaSource: 'desktop',
-          chromeMediaSourceId: sources[0].id
-        }
+  const sources = await api.getSources()
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: false,
+    video: {
+      mandatory: {
+        chromeMediaSource: 'desktop',
+        chromeMediaSourceId: sources[0].id
       }
-    })
-    log('getUserMedia success, tracks:', stream.getTracks().map(t => t.kind + ':' + t.readyState).join(', '))
-  } catch (e) {
-    log('getUserMedia FAILED:', e.name, e.message, e.stack)
-    return
-  }
-
-  stream.getTracks().forEach(t => {
-    log('adding track:', t.kind, t.label)
-    pc.addTrack(t, stream)
+    }
   })
 
-  const ws_url = 'ws://localhost:8080';
-  log(`opening WebSocket to ${ws_url}`)
-  ws = new WebSocket(ws_url)
+  stream.getTracks().forEach(t => pc.addTrack(t, stream))
+
+  ws = new WebSocket('ws://localhost:8080')
 
   ws.onopen = async () => {
-    log('WS open, sending host registration')
     ws.send(JSON.stringify({ type: 'host' }))
-    log('creating offer')
-    try {
-      const offer = await pc.createOffer()
-      log('offer created, setting local description')
-      await pc.setLocalDescription(offer)
-      log('local description set, sending offer')
-      ws.send(JSON.stringify({ type: 'offer', ...offer }))
-      log('offer sent')
-    } catch (e) {
-      log('offer creation FAILED:', e.message, e.stack)
-    }
+
+    const offer = await pc.createOffer()
+    await pc.setLocalDescription(offer)
+
+    await waitForIceComplete()
+
+    ws.send(JSON.stringify(pc.localDescription))
   }
 
   ws.onmessage = async (ev) => {
     const msg = JSON.parse(ev.data)
-    log('WS message received:', msg.type)
-    try {
-      if (msg.type === 'answer') {
-        await pc.setRemoteDescription(msg)
-        log('remote description set')
-      }
-      if (msg.type === 'candidate') {
-        await pc.addIceCandidate(msg.candidate)
-        log('ICE candidate added')
-      }
-    } catch (e) {
-      log('WS message handling FAILED:', e.message, e.stack)
+
+    if (msg.type === 'answer') {
+      await pc.setRemoteDescription(msg)
+    }
+
+    if (msg.type === 'candidate') {
+      await pc.addIceCandidate(new RTCIceCandidate(msg.candidate))
     }
   }
-
-  ws.onclose = (e) => log('WS closed, code:', e.code, 'reason:', e.reason)
-  ws.onerror = (e) => log('WS error:', e.message ?? 'unknown')
 }
 
 main()
