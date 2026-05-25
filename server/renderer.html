@@ -91,7 +91,7 @@ async function main() {
 
   log('opening WebSocket to ws://localhost:8080')
   ws = new WebSocket(
-    `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}:8080`
+    `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`
   )
 
   ws.onopen = async () => {
