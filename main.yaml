@@ -1,0 +1,52 @@
+name: Remote Desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        description: OS
+        required: true
+        default: windows-latest
+        type: choice
+        options:
+          - windows-latest
+          - ubuntu-latest
+          - macos-latest
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  remote:
+    runs-on: ${{ inputs.os }}
+	timeout-minutes: 360
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install
+        run: npm install
+
+      - name: Start App
+        run: |
+          node index.js &
+
+      - name: Create Tunnel
+        id: tunnel
+        uses: anyvm-org/cf-tunnel@v0
+        with:
+          protocol: http
+          port: 8080
+
+      - name: Tunnel URL
+        run: |
+          echo "https://${{ steps.tunnel.outputs.server }}"
+
+      - name: Keep Alive
+        run: |
+          while true; do sleep 3600; done
