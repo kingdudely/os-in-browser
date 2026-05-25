@@ -24,7 +24,9 @@ pc.ondatachannel = (e) => {
   channel = e.channel
 }
 
-const ws = new WebSocket('ws://localhost:8080')
+const ws = new WebSocket(
+  `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}` // window.isSecureContext
+)
 
 ws.onopen = () => {
   ws.send(JSON.stringify({ type: 'viewer' }))
