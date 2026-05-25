@@ -17,7 +17,7 @@ const server = createServer((req, res) => {
   if (req.url === '/log') {
   let body = ''
   req.on('data', d => body += d)
-  req.on('end', () => { console.log('RENDERER ERROR:', body); res.end() })
+  req.on('end', () => { console.log('[renderer]', body); res.end() })
   return
 }
   
