@@ -89,10 +89,9 @@ async function main() {
     pc.addTrack(t, stream)
   })
 
-  log('opening WebSocket to ws://localhost:8080')
-  ws = new WebSocket(
-    `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`
-  )
+  const ws_url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`
+  log(`opening WebSocket to ${ws_url}`)
+  ws = new WebSocket(ws_url)
 
   ws.onopen = async () => {
     log('WS open, sending host registration')
