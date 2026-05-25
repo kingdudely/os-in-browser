@@ -30,7 +30,7 @@ pc.onicecandidate = (e) => {
   }
 }
 
-ws = new WebSocket(`ws://${location.host}`)
+ws = new WebSocket(`${window.isSecureContext ? "wss" : "ws"}://${location.host}`)
 
 ws.onopen = () => {
   ws.send(JSON.stringify({ type: 'viewer' }))
