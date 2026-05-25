@@ -8,7 +8,9 @@
   },
   "dependencies": {
     "electron": "^31.0.0",
-    "ws": "^8.18.0",
-    "@nut-tree-fork/nut-js": "^4.2.6"
+    "@nut-tree-fork/nut-js": "^4.2.6",
+    "express": "^4.19.0",
+    "peer": "^9.0.0",
+    "peerjs": "^1.5.4"
   }
 }
