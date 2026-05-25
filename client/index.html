@@ -1,60 +1,57 @@
-<!-- client/index.html -->
 <!DOCTYPE html>
 <html>
 <body style="margin:0;background:black;overflow:hidden;">
-<video id="video" autoplay playsinline style="width:100vw;height:100vh;object-fit:contain;"></video>
+<video id="video" autoplay playsinline style="width:100vw;height:100vh;"></video>
+
 <script>
 const video = document.getElementById('video')
 
 const pc = new RTCPeerConnection({
   iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun.cloudflare.com:3478' }
+    { urls: 'stun:stun.l.google.com:19302' }
   ]
 })
-let channel
-let wsClosed = false
 
-pc.ontrack = (e) => { video.srcObject = e.streams[0] }
-pc.ondatachannel = (e) => { channel = e.channel }
+let channel
+let ws
+
+pc.ontrack = (e) => {
+  console.log('TRACK RECEIVED')
+  video.srcObject = e.streams[0]
+}
+
+pc.ondatachannel = (e) => {
+  channel = e.channel
+}
 
 pc.onicecandidate = (e) => {
-  if (e.candidate && ws.readyState === WebSocket.OPEN) {
-
+  if (e.candidate && ws?.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'candidate', candidate: e.candidate }))
   }
 }
 
-const ws = new WebSocket(
-  `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`
-)
-ws.onopen = () => ws.send(JSON.stringify({ type: 'viewer' }))
+ws = new WebSocket(`ws://${location.host}`)
+
+ws.onopen = () => {
+  ws.send(JSON.stringify({ type: 'viewer' }))
+}
+
 ws.onmessage = async (ev) => {
   const msg = JSON.parse(ev.data)
+
   if (msg.type === 'offer') {
     await pc.setRemoteDescription(msg)
+
     const answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
-    ws.send(JSON.stringify({ type: 'answer', ...answer }))
+
+    ws.send(JSON.stringify(pc.localDescription))
   }
-  if (msg.type === 'candidate') await pc.addIceCandidate(msg.candidate)
-}
-pc.onconnectionstatechange = () => {
 
-  if (pc.connectionState === 'connected' && !wsClosed) {
-    wsClosed = true
-    ws.close()
-
+  if (msg.type === 'candidate') {
+    await pc.addIceCandidate(new RTCIceCandidate(msg.candidate))
   }
 }
-
-video.addEventListener('click', (e) => {
-  channel?.send(JSON.stringify({ type: 'mouse', x: e.clientX, y: e.clientY, click: true }))
-})
-window.addEventListener('keydown', (e) => {
-  channel?.send(JSON.stringify({ type: 'key', key: e.key }))
-})
-
 </script>
 </body>
 </html>
