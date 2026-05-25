@@ -69,6 +69,7 @@ async function startWebRTC(win) {
     const msg = JSON.parse(ev.data)
     if (msg.type === 'answer') {
       await pc.setRemoteDescription(new RTCSessionDescription(msg))
+      ws.close()
       console.log('connected')
     }
   }
