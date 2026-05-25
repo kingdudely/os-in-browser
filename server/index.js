@@ -1,5 +1,5 @@
 // server/index.js
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, desktopCapturer } from 'electron'
 import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
 import { readFileSync } from 'node:fs'
@@ -59,6 +59,10 @@ wss.on('connection', (ws) => {
 })
 
 server.listen(8080, () => console.log('HTTP + WS server running on :8080'))
+
+ipcMain.handle('GET_SOURCES', async () => {
+  return await desktopCapturer.getSources({ types: ['screen'] })
+})
 
 ipcMain.on('control', async (_, msg) => {
   if (msg.type === 'mouse') {
