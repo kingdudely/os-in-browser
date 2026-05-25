@@ -1,13 +1,13 @@
 name: Remote Desktop
 
-on:
+on: 
   workflow_dispatch:
     inputs:
       os:
-        description: OS
-        required: true
-        default: windows-latest
+        description: 'OS'
         type: choice
+        required: true
+        default: 'windows-latest'
         options:
           - windows-latest
           - ubuntu-latest
@@ -19,8 +19,8 @@ defaults:
 
 jobs:
   remote:
-    runs-on: ${{ inputs.os }}
-	timeout-minutes: 360
+    runs-on: ${{ github.event.inputs.os }}
+    timeout-minutes: 360
 
     steps:
       - uses: actions/checkout@v4
