@@ -71,7 +71,11 @@ ipcMain.on('control', async (_, msg) => {
 app.whenReady().then(async () => {
   const win = new BrowserWindow({
     show: false,
-    webPreferences: { nodeIntegration: true, contextIsolation: false }
+    webPreferences: {
+      preload: path.join(process.cwd(), 'server/preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
   })
 
   win.webContents.session.setPermissionRequestHandler((wc, permission, cb) => cb(true))
