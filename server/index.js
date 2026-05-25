@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { createServer } from 'node:http'
 import { WebSocketServer } from 'ws'
-import { mouse, keyboard, Button, straightTo } from '@nut-tree/nut-js'
+import { mouse, keyboard, Button, straightTo } from '@nut-tree-fork/nut-js'
 
 // --------------------
 // WebSocket signaling
