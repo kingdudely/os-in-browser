@@ -1,57 +1,24 @@
 <!DOCTYPE html>
 <html>
-<body style="margin:0;background:black;overflow:hidden;">
+<body>
 <video id="video" autoplay playsinline style="width:100vw;height:100vh;"></video>
-
+<script src="/peerjs.min.js"></script>
 <script>
-const video = document.getElementById('video')
+  const password = prompt('Enter password')
 
-const pc = new RTCPeerConnection({
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' }
-  ]
-})
+  const peer = new Peer({
+    host: location.hostname,
+    port: location.port || (location.protocol === 'https:' ? 443 : 80),
+    path: '/myapp',
+    secure: location.protocol === 'https:'
+  })
 
-let channel
-let ws
-
-pc.ontrack = (e) => {
-  console.log('TRACK RECEIVED')
-  video.srcObject = e.streams[0]
-}
-
-pc.ondatachannel = (e) => {
-  channel = e.channel
-}
-
-pc.onicecandidate = (e) => {
-  if (e.candidate && ws?.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'candidate', candidate: e.candidate }))
-  }
-}
-
-ws = new WebSocket(`${window.isSecureContext ? "wss" : "ws"}://${location.host}`)
-
-ws.onopen = () => {
-  ws.send(JSON.stringify({ type: 'viewer' }))
-}
-
-ws.onmessage = async (ev) => {
-  const msg = JSON.parse(ev.data)
-
-  if (msg.type === 'offer') {
-    await pc.setRemoteDescription(msg)
-
-    const answer = await pc.createAnswer()
-    await pc.setLocalDescription(answer)
-
-    ws.send(JSON.stringify(pc.localDescription))
-  }
-
-  if (msg.type === 'candidate') {
-    await pc.addIceCandidate(new RTCIceCandidate(msg.candidate))
-  }
-}
+  peer.on('open', () => {
+    const call = peer.call(password, null)
+    call.on('stream', stream => {
+      document.getElementById('video').srcObject = stream
+    })
+  })
 </script>
 </body>
 </html>
