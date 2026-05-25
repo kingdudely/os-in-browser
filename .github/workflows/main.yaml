@@ -34,7 +34,7 @@ jobs:
 
       - name: Start App
         run: |
-          node index.js &
+          npm run start &
 
       - name: Create Tunnel
         id: tunnel
