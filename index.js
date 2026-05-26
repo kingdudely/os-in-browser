@@ -11,34 +11,42 @@ const getRelativePath = (filePath) => normalize(fileURLToPath(import.meta.resolv
 const isDirectory = async (filePath) => (await stat(filePath)).isDirectory();
 
 function getDrives() {
-    if (process.platform !== 'win32') return null;
-    return execSync('wmic logicaldisk get name')
-        .toString()
-        .split('\n')
-        .map(s => s.trim())
-        .filter(s => /^[A-Z]:$/.test(s));
+	if (process.platform !== 'win32') return null;
+	return execSync('wmic logicaldisk get name')
+		.toString()
+		.split('\n')
+		.map(s => s.trim())
+		.filter(s => /^[A-Z]:$/.test(s));
 };
 
 const app = express();
 
-app.use(async (request, response, next) => {
-    const requestPath = normalize(decodeURIComponent(request.path.replace(/^\//, ''))) || "/";
+app.get("/", (req, res, next) => {
 	const drives = getDrives();
 
-    try {
-        if (requestPath === "/" && drives) {
-            return response.send(drives.map(d => `<a href="/${encodeURIComponent(d + '\\')}"> ${d}\\</a>`).join('<br>'));
-        };
+	if (Array.isArray(drives)) {
+		res.send(
+			drives
+				.map((d) => `<a href="/${encodeURIComponent(d + "\\")}">${d}\\</a>`)
+				.join("<br>")
+		);
+	} else {
+		return next()
+	}
+});
 
-		const root = (await isDirectory(requestPath)) ? requestPath : dirname(requestPath);
-		request.url = '/';
+app.use(async (request, response, next) => {
+	try {
+		const requestPath = normalize(decodeURIComponent(request.path.slice(1))) || "/";
+		const root = await isDir(requestPath) ? requestPath : dirname(requestPath);
+		
 		express.static(root)(request, response, () => serveIndex(root, { icons: true })(request, response, next));
-    } catch (error) {
-        console.warn(error)
-        return next();
-    }
+	} catch (error) {
+		console.warn(error)
+		next();
+	}
 });
 
 app.listen(PORT, () => {
-    console.log(`https://${TUNNEL_URL}/${encodeURIComponent(getRelativePath("./public/index.html"))}`);
+	console.log(`https://${TUNNEL_URL}/${encodeURIComponent(getRelativePath("./public/index.html"))}`);
 });
