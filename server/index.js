@@ -3,23 +3,31 @@ import express from "express";
 import { promises as fs } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import drivelist from "drivelist";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 const { PORT, PASSWORD, TUNNEL_URL } = env;
 
 const app = express();
 const getRelativePath = (filePath) => fileURLToPath(import.meta.resolve(filePath));
 
+const execFileAsync = promisify(execFile);
+
 async function getDrives() {
   if (platform !== "win32") return ["/"];
 
-  const drives = await drivelist.list();
-
-  return drives
-    .flatMap(d => d.mountpoints?.map(m => m.path) ?? [])
-    .filter(Boolean);
+  // Uses PowerShell to get logical drives like C:\, D:\, etc.
+	const { stdout } = await execFileAsync("powershell.exe", [
+	  "-NoProfile",
+	  "-Command",
+	  "Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Root"
+	]);
+	
+	return stdout
+	  .split(/\r?\n/)
+	  .map(s => s.trim())
+	  .filter(Boolean);
 }
-
 function htmlPage(title, body) {
   return `
   <!doctype html>
