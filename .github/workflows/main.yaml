@@ -45,6 +45,6 @@ jobs:
         env:
           PASSWORD: ${{ secrets.PASSWORD }}
           NODE_OPTIONS: --unhandled-rejections=strict
-          TUNNEL_URL: https://${{ steps.tunnel.outputs.server }}
+          TUNNEL_URL: ${{ steps.tunnel.outputs.server }}
         run: |
           npm run start
