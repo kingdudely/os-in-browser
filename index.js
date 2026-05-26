@@ -18,9 +18,11 @@ app.use(async (request, response, next) => {
 	
 	try {
 		if (await isDirectory(requestPath)) {
+			console.log("directory")
 			return serveIndex(requestPath, { icons: true })(request, response, next);
 		} else {
-			return response.sendFile(requestPath, { root: "/" }, next);
+			console.log("file")
+			return response.sendFile(requestPath, next);
 		}
 	} catch (error) {
 		console.warn(error);
