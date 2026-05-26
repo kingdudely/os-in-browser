@@ -21,6 +21,8 @@ jobs:
   remote:
     runs-on: ${{ github.event.inputs.os }}
     timeout-minutes: 360
+    env:
+      PORT: 8080
 
     steps:
       - uses: actions/checkout@v6
@@ -37,7 +39,7 @@ jobs:
         uses: anyvm-org/cf-tunnel@v0
         with:
           protocol: http
-          port: 8080
+          port: ${{ env.PORT }}
 
       - name: URL
         env:
