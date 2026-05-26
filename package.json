@@ -1,5 +1,5 @@
 {
-  "name": "gha-remote",
+  "name": "os-in-browser",
   "version": "1.0.0",
   "type": "module",
   "main": "index.js",
@@ -9,6 +9,7 @@
   "dependencies": {
     "electron": "^42.2.0",
     "@nut-tree-fork/nut-js": "^4.2.6",
+    "serve-index": "^1.9.2",
     "express": "^5.2.1",
     "peer": "^1.0.2",
     "peerjs": "^1.5.5"
