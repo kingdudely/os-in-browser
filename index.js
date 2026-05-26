@@ -11,9 +11,21 @@ const isDirectory = async (filePath) => (await stat(filePath)).isDirectory();
 
 const app = express();
 
-app.use((request, response, next) => {
+app.use(async (request, response, next) => {
     const requestPath = normalize(decodeURIComponent(request.path.replace(/^\//, '')));
-    express.static(requestPath)(request, response, next);
+    console.log(requestPath)
+    console.log(decodeURIComponent(request.path))
+    
+    try {
+        if (await isDirectory(requestPath)) {
+			return serveIndex(requestPath, { icons: true, root: requestPath })(request, response, next);
+		} else {
+            return response.sendFile(requestPath, next);
+        }
+    } catch (error) {
+        console.warn(error);
+        return next();
+    }
 });
 
 app.listen(PORT, () => {
