@@ -8,6 +8,8 @@ const __dirname = import.meta.dirname;
 const app = express();
 const osRoot = path.parse(__dirname).root;
 
+console.log(osRoot)
+
 // Error: EINVAL: invalid argument, stat 'D:\DumpStack.log.tmp'
 const staticMiddleman = express.static(osRoot);
 const serveIndexMiddleman = serveIndex(osRoot, { icons: true });
