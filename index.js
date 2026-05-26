@@ -13,7 +13,7 @@ const server = createServer(expressApp)
 const peerServer = ExpressPeerServer(server, { path: '/myapp' })
 expressApp.use('/myapp', peerServer)
 
-expressApp.use(express.static(join(__dirname, 'client')))
+expressApp.use(express.static(join(__dirname, 'public')))
 
 function createHostWindow() {
   const win = new BrowserWindow({
