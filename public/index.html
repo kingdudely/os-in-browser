@@ -8,7 +8,7 @@
   const video = document.getElementById('video');
   const password = prompt('Enter password')
 
-  const peer = new Peer(password, {
+  const peer = new Peer(undefined, {
     host: location.hostname,
     port: location.port || (isSecureContext ? 443 : 80),
     path: '/peerjs/myapp',
@@ -16,13 +16,9 @@
   })
 
   peer.on('open', () => {
-    console.log('Connected as:', peer.id)
-  })
+     const call = peer.call(password, null)
 
-  peer.on('call', call => {
-    call.answer() 
-
-    call.on('stream', stream => {
+     call.on('stream', stream => {
       video.srcObject = stream
     })
   })
