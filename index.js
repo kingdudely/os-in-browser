@@ -6,7 +6,7 @@ import { normalize, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stat } from 'node:fs/promises';
 
-const { TUNNEL_URL, PORT } = process.env;
+const { PASSWORD, TUNNEL_URL, PORT } = process.env;
 const getRelativePath = (filePath) => normalize(fileURLToPath(import.meta.resolve(filePath)));
 const isDirectory = async (filePath) => (await stat(filePath)).isDirectory();
 
