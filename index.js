@@ -13,6 +13,7 @@ const app = express();
 
 app.use(async (request, response, next) => {
 	const requestPath = normalize(decodeURIComponent(request.path));
+	console.log(requestPath)
 	
 	try {
 		if (await isDirectory(requestPath)) {
