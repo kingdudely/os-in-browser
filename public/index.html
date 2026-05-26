@@ -11,7 +11,7 @@
   const peer = new Peer(password, {
     host: location.hostname,
     port: location.port || (isSecureContext ? 443 : 80),
-    path: '/connection',
+    path: '/peerjs/myapp',
     secure: isSecureContext
   })
 
