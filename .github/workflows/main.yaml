@@ -39,10 +39,6 @@ jobs:
           protocol: http
           port: 8080
 
-      - name: idk
-        run: |
-          echo ${{ github.server_url }}
-
       - name: URL
         env:
           PASSWORD: ${{ secrets.PASSWORD }}
