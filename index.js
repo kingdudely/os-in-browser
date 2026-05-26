@@ -1,52 +1,120 @@
-import { env } from "node:process";
-import { execSync } from 'node:child_process';
-import serveIndex from "serve-index";
+import { platform, env } from "node:process";
 import express from "express";
-import { normalize, dirname } from "node:path";
+import { promises as fs } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { stat } from 'node:fs/promises';
+import path from "node:path";
+import drivelist from "drivelist";
 
-const { PASSWORD, TUNNEL_URL, PORT } = process.env;
-const getRelativePath = (filePath) => normalize(fileURLToPath(import.meta.resolve(filePath)));
-const isDirectory = async (filePath) => (await stat(filePath)).isDirectory();
-
-function getDrives() {
-	if (process.platform !== 'win32') return null;
-	return execSync('wmic logicaldisk get name')
-		.toString()
-		.split('\n')
-		.map(s => s.trim())
-		.filter(s => /^[A-Z]:$/.test(s));
-};
+const { PORT, PASSWORD, TUNNEL_URL } = env;
 
 const app = express();
+const getRelativePath = (filePath) => fileURLToPath(import.meta.resolve(filePath));
 
-app.get("/", (req, res, next) => {
-	const drives = getDrives();
+async function getDrives() {
+  if (platform !== "win32") return ["/"];
 
-	if (Array.isArray(drives)) {
-		res.send(
-			drives
-				.map((d) => `<a href="/${encodeURIComponent(d + "\\")}">${d}\\</a>`)
-				.join("<br>")
-		);
-	} else {
-		return next()
-	}
+  const drives = await drivelist.list();
+
+  return drives
+    .flatMap(d => d.mountpoints?.map(m => m.path) ?? [])
+    .filter(Boolean);
+}
+
+function htmlPage(title, body) {
+  return `
+  <!doctype html>
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>${title}</title>
+      <style>
+        body { font-family: sans-serif; padding: 20px; }
+        a { display: block; padding: 4px 0; text-decoration: none; }
+      </style>
+    </head>
+    <body>
+      <h2>${title}</h2>
+      ${body}
+    </body>
+  </html>
+  `;
+}
+
+app.get("/", async (req, res) => {
+  const drives = await getDrives();
+
+  const links = drives
+    .map(d => {
+      const safe = encodeURIComponent(d);
+      return `<a href="${safe}">📀 ${d}</a>`;
+    })
+    .join("");
+
+  res.send(htmlPage("Drives", links));
 });
 
-app.use(async (request, response, next) => {
-	try {
-		const requestPath = normalize(decodeURIComponent(request.path.slice(1))) || "/";
-		const root = await isDirectory(requestPath) ? requestPath : dirname(requestPath);
-		
-		express.static(root)(request, response, () => serveIndex(root, { icons: true })(request, response, next));
-	} catch (error) {
-		console.warn(error)
-		next();
-	}
+app.get("/*", async (req, res, next) => {
+  try {
+    const rawPath = decodeURIComponent(req.path);
+	  console.log(rawPath)
+
+    // Windows fix: remove leading "/" for "C:\"
+    let targetPath = rawPath;
+
+    if (process.platform === "win32" && targetPath.startsWith("/")) {
+      targetPath = targetPath.slice(1);
+    }
+
+    const absPath = path.resolve(targetPath);
+
+    const stat = await fs.stat(absPath);
+
+    // ---------- DIRECTORY ----------
+    if (stat.isDirectory()) {
+      const items = await fs.readdir(absPath, { withFileTypes: true });
+
+      const parent = path.dirname(absPath);
+
+      const list = [];
+
+      // parent link
+      list.push(`<a href="${pathToUrl(parent)}">.. (parent)</a>`);
+
+      for (const item of items) {
+        const full = path.join(absPath, item.name);
+
+        list.push(
+          item.isDirectory()
+            ? `<a href="${pathToUrl(full)}">📁 ${item.name}</a>`
+            : `<a href="${pathToUrl(full)}">📄 ${item.name}</a>`
+        );
+      }
+
+      return res.send(htmlPage(absPath, list.join("")));
+    }
+    res.sendFile(absPath, next);
+  } catch (err) {
+	  console.warn(err);
+    next();
+  }
 });
 
+// ---------- convert filesystem path → URL path ----------
+function pathToUrl(p) {
+  let urlPath = path.resolve(p);
+
+  if (process.platform === "win32") {
+    urlPath = "/" + urlPath.replace(/\\/g, "/");
+  }
+
+  return encodeURI(urlPath);
+}
+
+// ---------- START ----------
 app.listen(PORT, () => {
-	console.log(`https://${TUNNEL_URL}/${encodeURIComponent(getRelativePath("./public/index.html"))}`);
+  const relative = getRelativePath("./public/index.html");
+
+  const url = `https://${TUNNEL_URL}/${encodeURIComponent(relative)}`;
+
+  console.log(url);
 });
