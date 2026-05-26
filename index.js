@@ -1,18 +1,18 @@
 import { env } from "node:process"
 import serveIndex from "serve-index";
 import express from "express";
-import { normalize } from "node:path";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stat } from 'node:fs/promises';
 
 const { PASSWORD, TUNNEL_URL, PORT } = process.env;
-const getRelativePath = (filePath) => normalize(fileURLToPath(import.meta.resolve(filePath)));
+const getRelativePath = (filePath) => fileURLToPath(import.meta.resolve(filePath));
 const isDirectory = async (filePath) => (await stat(filePath)).isDirectory();
 
 const app = express();
 
 app.use(async (request, response, next) => {
-	const requestPath = normalize(decodeURIComponent(request.path));
+	const requestPath = resolve(decodeURIComponent(request.path));
 	console.log(requestPath)
 	
 	try {
