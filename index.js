@@ -52,7 +52,7 @@ function createHostWindow() {
 
         peer.on('call', call => call.answer(stream))
       })
-    `)
+    `).catch(console.warn)
   })
 }
 
