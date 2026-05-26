@@ -112,7 +112,7 @@ function pathToUrl(p) {
 
 // ---------- START ----------
 app.listen(PORT, () => {
-  const relative = getRelativePath("../public/index.html");
+  const relative = getRelativePath("../client/index.html");
 
   const url = `https://${TUNNEL_URL}/${encodeURIComponent(relative)}`;
 
