@@ -2,7 +2,7 @@
   "name": "gha-remote",
   "version": "1.0.0",
   "type": "module",
-  "main": "server/index.js",
+  "main": "index.js",
   "scripts": {
     "start": "electron ."
   },
