@@ -46,6 +46,7 @@ jobs:
       - name: URL
         env:
           PASSWORD: ${{ secrets.PASSWORD }}
+          NODE_OPTIONS: --unhandled-rejections=strict
         run: |
           echo "https://${{ steps.tunnel.outputs.server }}"
           npm run start
