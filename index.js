@@ -10,7 +10,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const expressApp = express()
 const server = createServer(expressApp)
 
-const peerServer = ExpressPeerServer(server, { path: '/peerjs' })
+const peerServer = ExpressPeerServer(server, { path: '/myapp' })
 expressApp.use('/peerjs', peerServer)
 
 expressApp.use(express.static(join(__dirname, 'public')))
@@ -36,7 +36,7 @@ function createHostWindow() {
       const peer = new Peer('${process.env.PASSWORD}', {
         host: 'localhost',
         port: 8080,
-        path: '/peerjs'
+        path: '/peerjs/myapp'
       })
 
       peer.on('open', async () => {
