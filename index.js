@@ -38,7 +38,7 @@ app.get("/", (req, res, next) => {
 app.use(async (request, response, next) => {
 	try {
 		const requestPath = normalize(decodeURIComponent(request.path.slice(1))) || "/";
-		const root = await isDir(requestPath) ? requestPath : dirname(requestPath);
+		const root = await isDirectory(requestPath) ? requestPath : dirname(requestPath);
 		
 		express.static(root)(request, response, () => serveIndex(root, { icons: true })(request, response, next));
 	} catch (error) {
