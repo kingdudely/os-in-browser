@@ -3,10 +3,11 @@
 <body>
 <video id="video" autoplay playsinline style="width:100vw;height:100vh;"></video>
 <script src="/peerjs.min.js"></script>
-<script>
+<script defer>
+  const video = document.getElementById('video');
   const password = prompt('Enter password')
 
-  const peer = new Peer({
+  const peer = new Peer(undefined, {
     host: location.hostname,
     port: location.port || (location.protocol === 'https:' ? 443 : 80),
     path: '/peerjs',
@@ -14,9 +15,14 @@
   })
 
   peer.on('open', () => {
-    const call = peer.call(password, null)
+    console.log('Connected as:', peer.id)
+  })
+
+  peer.on('call', call => {
+    call.answer() 
+
     call.on('stream', stream => {
-      document.getElementById('video').srcObject = stream
+      video.srcObject = stream
     })
   })
 </script>
