@@ -4,14 +4,15 @@
 <video id="video" autoplay playsinline style="width:100vw;height:100vh;"></video>
 <script src="/peerjs.min.js"></script>
 <script defer>
+  const { isSecureContext } = window;
   const video = document.getElementById('video');
   const password = prompt('Enter password')
 
-  const peer = new Peer(undefined, {
+  const peer = new Peer(password, {
     host: location.hostname,
-    port: location.port || (location.protocol === 'https:' ? 443 : 80),
+    port: location.port || (isSecureContext ? 443 : 80),
     path: '/peerjs',
-    secure: location.protocol === 'https:'
+    secure: isSecureContext
   })
 
   peer.on('open', () => {
