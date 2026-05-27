@@ -32,7 +32,7 @@ jobs:
           node-version: 24
 
       - name: Install
-        run: npm install -g electron
+        run: npm install electron
 
       - name: Create Tunnel
         id: tunnel
