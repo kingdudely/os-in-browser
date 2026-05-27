@@ -10,27 +10,11 @@ peer.on("open", id => {
   console.log("VIEWER_READY", id);
 });
 
-document
-  .getElementById("connect")
-  .onclick = () => {
+const call = peer.call("host", null);
 
-  const hostId =
-    document.getElementById("peerId").value;
-
-  console.log("CALLING", hostId);
-
-  const call =
-    peer.call(hostId, null);
-
-  call.on("stream", stream => {
-    console.log("STREAM_RECEIVED");
-
-    video.srcObject = stream;
-
-    video.play().catch(console.error);
-  });
-
-  call.on("error", console.error);
-};
-
+call.on("stream", stream => {
+	console.log("STREAM_RECEIVED");
+	video.srcObject = stream;
+	video.play().catch(console.error);
+});
 peer.on("error", console.error);
