@@ -48,4 +48,4 @@ jobs:
           NODE_OPTIONS: --unhandled-rejections=strict
           TUNNEL_URL: https://${{ steps.tunnel.outputs.server }}
         run: |
-          node server
+          node ./server/index.mjs
