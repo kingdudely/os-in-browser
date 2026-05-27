@@ -43,6 +43,7 @@ jobs:
 
       - name: URL
         env:
+          USERNAME: ${{ secrets.USERNAME }}
           PASSWORD: ${{ secrets.PASSWORD }}
           NODE_OPTIONS: --unhandled-rejections=strict
           TUNNEL_URL: ${{ steps.tunnel.outputs.server }}
