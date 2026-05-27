@@ -5,6 +5,7 @@ import basicAuth from "express-basic-auth";
 import { app, BrowserWindow, desktopCapturer, session } from "electron";
 import { ExpressPeerServer } from "peer";
 
+app.whenReady().then(() => console.log("A-1"));
 console.log("A")
 await app.whenReady();
 
