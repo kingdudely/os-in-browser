@@ -123,10 +123,12 @@ async function createHostWindow() {
 
   await win.loadURL(`http://${USERNAME}:${PASSWORD}@localhost:${PORT}/host`);
 }
-
+console.log("A")
 // ----------------------
 // Boot
 // ----------------------
 await app.whenReady();
+console.log("B")
 await createHostWindow();
+console.log("C")
 console.log(`VNC running: https://${TUNNEL_URL}`);
