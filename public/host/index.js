@@ -1,4 +1,3 @@
-const status = document.getElementById("status");
 console.log(location.hostname);
 
 const peer = new Peer("host", {
@@ -9,9 +8,6 @@ const peer = new Peer("host", {
 
 peer.on("open", id => {
   console.log("HOST_READY", id);
-
-  status.innerText =
-    "Ready. ID: " + id;
 });
 
 peer.on("call", async call => {
