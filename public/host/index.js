@@ -1,7 +1,7 @@
 const status = document.getElementById("status");
 console.log(location.hostname);
 
-const peer = new Peer(, {
+const peer = new Peer("host", {
   host: location.hostname,
   port: location.port,
   path: "/peerjs"
