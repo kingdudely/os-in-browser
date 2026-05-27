@@ -1,40 +1,54 @@
-import process from "node:process";
-import http from "node:http";
+import { env } from "node:process";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import { app, BrowserWindow, desktopCapturer, session } from "electron";
 import { ExpressPeerServer } from "peer";
 
-const { PORT, TUNNEL_URL, PASSWORD = "" } = process.env;
+const { PORT, TUNNEL_URL, PASSWORD = "" } = env;
 const peerServerPublicPath = "/peer-server";
 const peerClientLibraryPath = fileURLToPath(import.meta.resolve("peerjs/dist/peerjs.min.js"));
-console.log(peerClientLibraryPath);
 
 const web = express();
-const server = http.createServer(web);
 
-// ----------------------
-// PeerJS signaling server
-// ----------------------
-const peerServer = ExpressPeerServer(server, {
-  path: "/",
-});
-web.use(peerServerPublicPath, peerServer);
+const hostHtml = `<!DOCTYPE html>
+<html>
+<body>
+<script src="/peerjs.min.js"></script>
+<script>
+(async () => {
+  const peer = new Peer("${PASSWORD}", {
+    host: "localhost",
+    port: ${PORT},
+    path: "${peerServerPublicPath}",
+    secure: false
+  });
+  const stream = await navigator.mediaDevices.getDisplayMedia({
+    video: true,
+    audio: true
+  });
+  peer.on("call", (call) => {
+    call.answer(stream);
+  });
+})();
+</script>
+</body>
+</html>`;
 
 web.get("/peerjs.min.js", (req, res) => {
-	res.sendFile(peerClientLibraryPath);
-})
+  res.sendFile(peerClientLibraryPath);
+});
 
 web.get("/log", (req, res) => {
-	console.log(req.query.log);
-})
+  console.log("[renderer]", req.query.log);
+  res.sendStatus(204);
+});
 
-// ----------------------
-// Viewer (remote client)
-// ----------------------
+web.get("/host", (req, res) => {
+  res.send(hostHtml);
+});
+
 web.get("/", (req, res) => {
-  res.send(`
-<!DOCTYPE html>
+  res.send(`<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8" />
@@ -46,94 +60,43 @@ web.get("/", (req, res) => {
 </head>
 <body>
   <video id="video" autoplay playsinline></video>
-
   <script src="/peerjs.min.js"></script>
   <script>
-  	const password = prompt("Password? (leave blank if you did not set one)");
-  	const video = document.getElementById("video");
+    const password = prompt("Password? (leave blank if you did not set one)");
+    const video = document.getElementById("video");
     const peer = new Peer(undefined, {
-	    host: location.hostname,
-	    port: location.port,
-	    path: "${peerServerPublicPath}",
-	    secure: window.isSecureContext
-	  });
-
+      host: location.hostname,
+      port: location.port,
+      path: "${peerServerPublicPath}",
+      secure: window.isSecureContext
+    });
     peer.on("open", () => {
-      const call = peer.call(password, null); // new MediaStream()
-
+      const call = peer.call(password, null);
       call.on("stream", (stream) => {
         video.srcObject = stream;
       });
     });
   </script>
 </body>
-</html>
-  `);
+</html>`);
 });
 
-// ----------------------
-// Host (Electron hidden renderer)
-// ----------------------
+const server = web.listen(PORT);
+const peerServer = ExpressPeerServer(server, { path: "/" });
+web.use(peerServerPublicPath, peerServer);
+
 async function createHostWindow() {
   const win = new BrowserWindow({ show: false });
 
-  // Modern Electron screen capture handler (NO desktopCapturer in renderer)
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
-	  desktopCapturer.getSources({ types: ["screen"] }).then((sources) => {
-	    callback({
-	      video: sources[0],
-	      audio: "loopback"
-	    });
-	  });
-	}, { useSystemPicker: false });
+    desktopCapturer.getSources({ types: ["screen"] }).then((sources) => {
+      callback({ video: sources[0], audio: "loopback" });
+    });
+  }, { useSystemPicker: false });
 
-  const html = `
-<!DOCTYPE html>
-<html>
-<body>
-<script src="/peerjs.min.js"></script>
-<script>
-(async () => {
-  const peer = new Peer("${PASSWORD}", {
-    host: "localhost", // location.hostname
-    port: ${PORT},
-    path: "${peerServerPublicPath}",
-    secure: false
-  });
-
-  fetch("log?log=" + location.hostname);
-
-  // Modern API (NO desktopCapturer here)
-  const stream = await navigator.mediaDevices.getDisplayMedia({
-    video: true,
-    audio: true
-  });
-
-  fetch("log?log=itworked");
-
-  peer.on("call", (call) => {
-  	fetch("log?log=ONCALL");
-  
-    call.answer(stream);
-
-  	fetch("log?log=ANSWERED");
-	
-  });
-})();
-</script>
-</body>
-</html>
-  `;
-
-  await win.loadURL("data:text/html," + encodeURIComponent(html));
+  await win.loadURL(`http://localhost:${PORT}/host`);
 }
 
-// ----------------------
-// Boot
-// ----------------------
 await app.whenReady();
 await createHostWindow();
-
-server.listen(PORT, () => {
-  console.log(`VNC running: https://${TUNNEL_URL}`);
-});
+console.log(`VNC running: https://${TUNNEL_URL}`);
