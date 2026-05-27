@@ -28,23 +28,22 @@ const server = http.createServer((req, res) => {
 		res.end(`
 <!DOCTYPE html>
 <html>
-<body>
+<head>
 <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
-<script>
-(async () => {
-  const peer = new Peer("${TUNNEL_URL}");
+<script defer>
+const peer = new Peer("${TUNNEL_URL}");
 
-  const stream = await navigator.mediaDevices.getDisplayMedia({
-	video: true,
-	audio: true
-  });
+peer.on("call", async (call) => {
+	const stream = await navigator.mediaDevices.getDisplayMedia({
+		video: true,
+		audio: true
+	});
 
-  peer.on("call", (call) => {
 	call.answer(stream);
-  });
-
-})();
+});
 </script>
+</head>
+<body>
 </body>
 </html>
 `);
@@ -58,10 +57,9 @@ const server = http.createServer((req, res) => {
 		res.end(`
 <!DOCTYPE html>
 <html>
-<body>
-<video id="video" autoplay playsinline></video>
+<head>
 <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
-<script>
+<script defer>
 const video = document.getElementById("video");
 
 const peer = new Peer();
@@ -74,6 +72,9 @@ peer.on("open", () => {
   });
 });
 </script>
+</head>
+<body>
+<video id="video" autoplay playsinline></video>
 </body>
 </html>
 `);
