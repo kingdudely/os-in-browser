@@ -4,7 +4,7 @@
   "type": "module",
   "main": "server/index.js",
   "scripts": {
-    "start": "npx electron . --no-sandbox --disable-gpu"
+    "start": "electron ."
   },
   "dependencies": {
     "electron": "^42.2.0",
