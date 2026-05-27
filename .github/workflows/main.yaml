@@ -32,7 +32,7 @@ jobs:
           node-version: 24
 
       - name: Install
-        run: npm install electron
+        run: npm install electron --save-dev
 
       - name: Create Tunnel
         id: tunnel
@@ -48,4 +48,4 @@ jobs:
           NODE_OPTIONS: --unhandled-rejections=strict
           TUNNEL_URL: https://${{ steps.tunnel.outputs.server }}
         run: |
-          electron server
+          node server
