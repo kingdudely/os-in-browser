@@ -102,33 +102,30 @@ web.get("/", (req, res) => {
 </html>`);
 });
 
-// ----------------------
-// PeerJS signaling server
-// ----------------------
-const server = web.listen(PORT);
-const peerServer = ExpressPeerServer(server, { path: "/" });
-web.use(peerServerPublicPath, peerServer);
-
-// ----------------------
-// Host (Electron hidden renderer)
-// ----------------------
-async function createHostWindow() {
-  const win = new BrowserWindow({ show: false });
-
-  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
-    desktopCapturer.getSources({ types: ["screen"] }).then((sources) => {
-      callback({ video: sources[0], audio: "loopback" });
-    });
-  }, { useSystemPicker: false });
-
-  await win.loadURL(`http://${USERNAME}:${PASSWORD}@localhost:${PORT}/host`);
-}
 console.log("A")
-// ----------------------
-// Boot
-// ----------------------
 await app.whenReady();
 console.log("B")
-await createHostWindow();
+const server = web.listen(PORT);
 console.log("C")
+const peerServer = ExpressPeerServer(server, { path: "/" });
+console.log("D")
+web.use(peerServerPublicPath, peerServer);
+console.log("E")
+const win = new BrowserWindow({ show: false });
+console.log("F")
+
+session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+  console.log("G")
+  desktopCapturer.getSources({ types: ["screen"] }).then((sources) => {
+  console.log("H")
+    callback({ video: sources[0], audio: "loopback" });
+  console.log("I")
+    
+  });
+  console.log("J")
+}, { useSystemPicker: false });
+console.log("K")
+
+await win.loadURL(`http://${USERNAME}:${PASSWORD}@localhost:${PORT}/host`);
+console.log("L")
 console.log(`VNC running: https://${TUNNEL_URL}`);
