@@ -5,6 +5,9 @@ import basicAuth from "express-basic-auth";
 import { app, BrowserWindow, desktopCapturer, session } from "electron";
 import { ExpressPeerServer } from "peer";
 
+console.log("A")
+await app.whenReady();
+
 const { PORT, TUNNEL_URL, PASSWORD = "", USERNAME = "" } = env;
 const peerServerPublicPath = "/peer-server";
 const peerClientLibraryPath = fileURLToPath(import.meta.resolve("peerjs/dist/peerjs.min.js"));
@@ -102,8 +105,7 @@ web.get("/", (req, res) => {
 </html>`);
 });
 
-console.log("A")
-await app.whenReady();
+
 console.log("B")
 const server = web.listen(PORT);
 console.log("C")
