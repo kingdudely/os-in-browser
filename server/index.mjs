@@ -1,19 +1,13 @@
-import {
+const {
 	app,
 	BrowserWindow,
 	desktopCapturer,
 	session
-} from "electron";
-import http from "node:http";
-import {
-	env
-} from "node:process";
+} = require("electron");
+const { createServer } = require("node:http");
+const { env: { PASSWORD = "", USERNAME = "", PORT, TUNNEL_URL } } = require("node:process");
 
-const {
-	PASSWORD = "", USERNAME = "", PORT, TUNNEL_URL
-} = env;
-
-const server = http.createServer((req, res) => {
+const server = createServer((req, res) => {
 	if (req.url === "/log") {
 		console.log("[renderer]", req.url);
 		res.writeHead(204);
@@ -85,31 +79,36 @@ peer.on("open", () => {
 	res.end();
 });
 
-await app.whenReady();
-console.log("b")
-const win = new BrowserWindow({
-	show: false
-});
+async function main() {
+	await app.whenReady();
 
-session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
-	const sources = await desktopCapturer.getSources({
-		types: ["screen"]
+	console.log("b")
+	const win = new BrowserWindow({
+		show: false
 	});
-	const source = sources?.[0];
-	if (source) {
-		callback({
-			video: source,
-			audio: "loopback"
+	
+	session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
+		const sources = await desktopCapturer.getSources({
+			types: ["screen"]
 		});
-	} else {
-		callback({});
-	}
-}, {
-	useSystemPicker: false
-});
+		const source = sources?.[0];
+		if (source) {
+			callback({
+				video: source,
+				audio: "loopback"
+			});
+		} else {
+			callback({});
+		}
+	}, {
+		useSystemPicker: false
+	});
+	
+	await win.loadURL(`http://localhost:${PORT}/host`);
 
-await win.loadURL(`http://localhost:${PORT}/host`);
+	server.listen(PORT, () => {
+		console.log(TUNNEL_URL);
+	});
+}
 
-server.listen(PORT, () => {
-	console.log(TUNNEL_URL);
-});
+main();
