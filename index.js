@@ -1,65 +1,30 @@
-const express = require("express");
-const { ExpressPeerServer } = require("peer");
-const puppeteer = require("puppeteer-core");
-const chromeLauncher = require("chrome-launcher");
-const path = require("path");
-
-const {
-  env: {
-    PORT,
-    TUNNEL_URL,
-    PASSWORD = "",
-    USERNAME = ""
-  }
-} = require("node:process");
+import express from "express";
+import { ExpressPeerServer } from "peer";
+import { launch } from "chrome-launcher";
+const { fileURLToPath } from "node:url";
+import { env } from "node:process";
+const { PORT, PUBLIC_URL, PASSWORD = "", USERNAME = "" } = env;
+const relativeURLToAbsolute = (url) => fileURLToPath(import.meta.resolve(url));
 
 const app = express();
 const server = app.listen(PORT);
+app.use(express.static(relativeURLToAbsolute("./public")));
+app.use("/peerjs", ExpressPeerServer(server, { path: "/" }));
 
-app.use(express.static(path.join(__dirname, "public")));
+console.log("[chrome-launcher] Starting Chrome...");
 
-const peerServer = ExpressPeerServer(server, {
-	path: "/"
+const chrome = await launch({
+	startingUrl: `http://localhost:${PORT}/host`,
+	chromeFlags: [
+		"--headless=new",
+		"--no-sandbox",
+		"--disable-setuid-sandbox",
+		"--allow-http-screen-capture",
+		"--auto-select-desktop-capture-source=Entire screen",
+		"--use-fake-ui-for-media-stream",
+		"--disable-features=IsolateOrigins,site-per-process"
+	]
 });
 
-app.use("/peerjs", peerServer);
-
-async function launchHost() {
-  const executablePath = chromeLauncher.Launcher.getFirstInstallation();
-  console.log("[chrome]", executablePath);
-
-  const browser = await puppeteer.launch({
-    executablePath,
-
-    headless: true,
-
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-
-      // "--enable-usermedia-screen-capturing",
-
-      "--allow-http-screen-capture",
-
-      "--auto-select-desktop-capture-source=Entire screen",
-
-      "--use-fake-ui-for-media-stream",
-
-      "--disable-features=IsolateOrigins,site-per-process"
-    ]
-  });
-
-  const page = await browser.newPage();
-
-  page.on("console", msg => {
-    console.log("[browser]", msg.text());
-  });
-
-  await page.goto(`http://localhost:${PORT}/host`);
-
-  console.log("[puppeteer] host ready");
-}
-
-launchHost()
-  .then(() => console.log(TUNNEL_URL))
-  .catch(console.error);
+console.log(`[chrome-launcher] Host ready on port ${chrome.port}`);
+console.log(PUBLIC_URL);
