@@ -1,30 +1,89 @@
+import {
+	app,
+	BrowserWindow,
+	session,
+	desktopCapturer
+} from "electron";
+import { fileURLToPath } from "node:url";
 import express from "express";
 import { ExpressPeerServer } from "peer";
-import { launch } from "chrome-launcher";
-const { fileURLToPath } from "node:url";
 import { env } from "node:process";
-const { PORT, PUBLIC_URL, PASSWORD = "", USERNAME = "" } = env;
-const relativeURLToAbsolute = (url) => fileURLToPath(import.meta.resolve(url));
+import basicAuth from "express-basic-auth";
+const relativeToAbsoluteURL = (url) => fileURLToPath(import.meta.resolve(url));
+
+const { PORT, PUBLIC_URL, USERNAME = "", PASSWORD = "" } = env;
 
 const app = express();
-const server = app.listen(PORT);
-app.use(express.static(relativeURLToAbsolute("./public")));
-app.use("/peerjs", ExpressPeerServer(server, { path: "/" }));
-
-console.log("[chrome-launcher] Starting Chrome...");
-
-const chrome = await launch({
-	startingUrl: `http://localhost:${PORT}/host`,
-	chromeFlags: [
-		"--headless=new",
-		"--no-sandbox",
-		"--disable-setuid-sandbox",
-		"--allow-http-screen-capture",
-		"--auto-select-desktop-capture-source=Entire screen",
-		"--use-fake-ui-for-media-stream",
-		"--disable-features=IsolateOrigins,site-per-process"
-	]
+const server = app.listen(PORT, () => {
+	console.log(`Server listening on port ${PORT}`);
 });
+app.use(express.static(relativeToAbsoluteURL('./public')));
 
-console.log(`[chrome-launcher] Host ready on port ${chrome.port}`);
+app.use(basicAuth({
+    users: {
+		[USERNAME]: PASSWORD
+	}
+}));
+
+app.use("/peerjs", ExpressPeerServer(server));
+
+const HTML = `
+<!DOCTYPE html>
+<html>
+<head>
+<script src="/peerjs.min.js"></script>
+<script defer>
+	console.log(location.hostname);
+	const peer = new Peer("main", {
+		host: "localhost",
+		port: ${PORT},
+		path: "/peerjs",
+		secure: window.isSecureContext
+	});
+
+	peer.on("open", (id) => console.log(id));
+
+	peer.on("call", async (call) => {
+		const stream = await navigator.mediaDevices.getDisplayMedia({
+			video: true,
+			audio: true
+		});
+
+		call.answer(stream);
+	});
+
+	peer.on("error", console.error);
+</script>
+</head>
+<body>
+</body>
+</html>
+`;
+
+async function createWindow() {
+	console.log("A")
+	session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
+		const sources = await desktopCapturer.getSources({
+			types: ["screen"]
+		}, { useSystemPicker: false });
+
+		callback({
+			video: sources[0],
+			audio: "loopback"
+		});
+	});
+	console.log("B")
+
+	const win = new BrowserWindow({
+		show: false
+	});
+
+	await win.loadURL(
+		"data:text/html;charset=utf-8," +
+		encodeURIComponent(HTML)
+	);
+}
+
+await app.whenReady();
+await createWindow();
 console.log(PUBLIC_URL);
