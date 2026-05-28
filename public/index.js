@@ -7,15 +7,14 @@ const peer = new Peer({
 	secure: window.isSecureContext
 });
 
-peer.on("open", id => {
-  console.log("VIEWER_READY", id);
-});
+peer.on("open", (id) => console.log("VIEWER_READY", id));
 
-const call = peer.call("host", null);
+const call = peer.call("main", new MediaStream());
 
-call.on("stream", stream => {
+call.on("stream", (stream) => {
 	console.log("STREAM_RECEIVED");
 	video.srcObject = stream;
 	video.play().catch(console.error);
 });
+
 peer.on("error", console.error);
