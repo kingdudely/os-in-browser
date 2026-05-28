@@ -3,7 +3,8 @@ const video = document.getElementById("video");
 const peer = new Peer({
 	host: location.hostname,
 	port: location.port,
-	path: "/peerjs"
+	path: "/peerjs",
+	secure: window.isSecureContext
 });
 
 peer.on("open", id => {
