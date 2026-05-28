@@ -3,7 +3,8 @@ console.log(location.hostname);
 const peer = new Peer("host", {
 	host: location.hostname,
 	port: location.port,
-	path: "/peerjs"
+	path: "/peerjs",
+	secure: window.isSecureContext
 });
 
 peer.on("open", id => {
