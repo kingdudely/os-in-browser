@@ -1,0 +1,19 @@
+{
+  "name": "os-in-browser",
+  "version": "1.0.0",
+  "description": "Run an OS in the browser using GitHub actions!",
+  "main": "index.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "keywords": [],
+  "author": "kingdudely",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "electron": "^42.3.0",
+    "express": "^5.2.1",
+    "express-basic-auth": "^1.2.1",
+    "peer": "^1.0.2"
+  }
+}
