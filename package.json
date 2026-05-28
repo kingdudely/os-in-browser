@@ -3,11 +3,11 @@
 	"version": "1.0.0",
 	"description": "Run an OS in the browser using GitHub actions!",
 	"main": "index.js",
-	"chromium-args": "--no-sandbox --mixed-context",
+	"chromium-args": "--headless --no-sandbox --mixed-context",
 	"keywords": [],
 	"author": "kingdudely",
 	"license": "ISC",
-	"type": "module",
+	"type": "commonjs",
 	"scripts": {
 		"start": "npx nw ."
 	},
