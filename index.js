@@ -1,89 +1,94 @@
-import {
-	app,
-	BrowserWindow,
-	session,
-	desktopCapturer
-} from "electron";
 import { fileURLToPath } from "node:url";
+import { env } from "node:process";
 import express from "express";
 import { ExpressPeerServer } from "peer";
-import { env } from "node:process";
 import basicAuth from "express-basic-auth";
-const relativeToAbsoluteURL = (url) => fileURLToPath(import.meta.resolve(url));
 
-const { PORT, PUBLIC_URL, USERNAME = "", PASSWORD = "" } = env;
+const relativeToAbsoluteURL = (url) => fileURLToPath(import.meta.resolve(url));
+const { PORT = 3000, PUBLIC_URL, USERNAME = "", PASSWORD = "" } = env;
+
+if (!PUBLIC_URL) {
+	throw new Error("Expected PUBLIC_URL in env");
+}
 
 const app = express();
 const server = app.listen(PORT, () => {
-	console.log(`Server listening on port ${PORT}`);
+    console.log(`Server listening on port ${PORT}`);
+    console.log(PUBLIC_URL);
 });
+
 app.use(express.static(relativeToAbsoluteURL('./public')));
 
-app.use(basicAuth({
-    users: {
-		[USERNAME]: PASSWORD
-	}
-}));
+if (USERNAME && PASSWORD) {
+    app.use(basicAuth({ users: { [USERNAME]: PASSWORD } }));
+}
 
 app.use("/peerjs", ExpressPeerServer(server));
 
-const HTML = `
-<!DOCTYPE html>
-<html>
-<head>
-<script src="/peerjs.min.js"></script>
-<script defer>
-	console.log(location.hostname);
-	const peer = new Peer("main", {
-		host: "localhost",
-		port: ${PORT},
-		path: "/peerjs",
-		secure: window.isSecureContext
-	});
+nw.Screen.Init();
 
-	peer.on("open", (id) => console.log(id));
+let primaryScreenMediaId = null;
+const dcm = nw.Screen.DesktopCaptureMonitor;
 
-	peer.on("call", async (call) => {
-		const stream = await navigator.mediaDevices.getDisplayMedia({
-			video: true,
-			audio: true
-		});
+dcm.on("added", (id, name, order, type) => {
+    if (type === "screen") {
+        console.log(`[Screen Monitor] Detected screen: ${name} (Order: ${order})`);
 
-		call.answer(stream);
-	});
+        primaryScreenMediaId = dcm.registerStream(id);
+    }
+});
 
-	peer.on("error", console.error);
-</script>
-</head>
-<body>
-</body>
-</html>
-`;
+dcm.on("removed", (id) => {
+    console.log(`[Screen Monitor] Screen source removed.`);
+});
 
-async function createWindow() {
-	console.log("A")
-	session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
-		const sources = await desktopCapturer.getSources({
-			types: ["screen"]
-		}, { useSystemPicker: false });
+dcm.start(true, false);
 
-		callback({
-			video: sources[0],
-			audio: "loopback"
-		});
-	});
-	console.log("B")
+const peer = new Peer("main", {
+    host: "localhost",
+    port: PORT,
+    path: "/peerjs",
+    secure: window.isSecureContext 
+});
 
-	const win = new BrowserWindow({
-		show: false
-	});
+peer.on("open", (id) => {
+    console.log(`PeerJS Client ready with ID: ${id}`);
+});
 
-	await win.loadURL(
-		"data:text/html;charset=utf-8," +
-		encodeURIComponent(HTML)
-	);
+peer.on("error", (err) => {
+    console.error("PeerJS Client Error:", err);
+});
+
+peer.on("call", async (call) => {
+    console.log("Receiving call... Fetching screen stream natively.");
+    
+    try {
+        const stream = await getHeadlessDisplayStream();
+        call.answer(stream);
+        console.log("Call successfully answered with desktop stream.");
+    } catch (error) {
+        console.error("Failed to answer call due to stream capture error:", error);
+    }
+});
+
+function getHeadlessDisplayStream() {
+    return new Promise((resolve, reject) => {
+        if (!primaryScreenMediaId) {
+            return reject(new Error("No valid primary screen discovered by DesktopCaptureMonitor yet."));
+        }
+
+        const constraints = {
+            audio: false, 
+            video: {
+                mandatory: {
+                    chromeMediaSource: 'desktop',
+                    chromeMediaSourceId: primaryScreenMediaId
+                }
+            }
+        };
+
+        navigator.mediaDevices.getUserMedia(constraints)
+            .then((stream) => resolve(stream))
+            .catch((err) => reject(err));
+    });
 }
-
-await app.whenReady();
-await createWindow();
-console.log(PUBLIC_URL);
