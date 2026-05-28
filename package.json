@@ -7,10 +7,16 @@
 	"keywords": [],
 	"author": "kingdudely",
 	"license": "ISC",
-	"type": "module",
+	"type": "commonjs",
+	"scripts": {
+		"start": "npx nw ."
+	},
 	"dependencies": {
 		"express": "^5.2.1",
 		"express-basic-auth": "^1.2.1",
 		"peer": "^1.0.2"
+	},
+	"devDependencies": {
+		"nw": "^0.111.2"
 	}
 }
