@@ -1,3 +1,4 @@
+console.log("A");
 import { fileURLToPath } from "node:url";
 import { env } from "node:process";
 import express from "express";
