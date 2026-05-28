@@ -3,7 +3,7 @@
 	"version": "1.0.0",
 	"description": "Run an OS in the browser using GitHub actions!",
 	"main": "index.js",
-	"chromium-args": "--mixed-context",
+	"chromium-args": "--no-sandbox --mixed-context",
 	"keywords": [],
 	"author": "kingdudely",
 	"license": "ISC",
