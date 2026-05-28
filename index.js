@@ -1,15 +1,18 @@
 console.log("A");
-import { fileURLToPath } from "node:url";
-import { env } from "node:process";
-import express from "express";
-import { ExpressPeerServer } from "peer";
-import basicAuth from "express-basic-auth";
 
-const relativeToAbsoluteURL = (url) => fileURLToPath(import.meta.resolve(url));
+const { resolve } = require("node:path");
+const { env } = require("node:process");
+const express = require("express");
+const { ExpressPeerServer } = require("peer");
+const basicAuth = require("express-basic-auth");
+
+// Replaced import.meta.resolve with robust CommonJS path resolution
+const relativeToAbsoluteURL = (relativeUrl) => resolve(__dirname, relativeUrl);
+
 const { PORT = 3000, PUBLIC_URL, USERNAME = "", PASSWORD = "" } = env;
 
 if (!PUBLIC_URL) {
-	throw new Error("Expected PUBLIC_URL in env");
+    throw new Error("Expected PUBLIC_URL in env");
 }
 
 const app = express();
@@ -22,6 +25,8 @@ app.use(express.static(relativeToAbsoluteURL('./public')));
 
 if (USERNAME && PASSWORD) {
     app.use(basicAuth({ users: { [USERNAME]: PASSWORD } }));
+} else {
+	console.warn("Make sure to include both username and password!");
 }
 
 app.use("/peerjs", ExpressPeerServer(server));
@@ -34,7 +39,6 @@ const dcm = nw.Screen.DesktopCaptureMonitor;
 dcm.on("added", (id, name, order, type) => {
     if (type === "screen") {
         console.log(`[Screen Monitor] Detected screen: ${name} (Order: ${order})`);
-
         primaryScreenMediaId = dcm.registerStream(id);
     }
 });
