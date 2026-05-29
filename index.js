@@ -113,7 +113,7 @@ await page.evaluate((PORT) => {
 			call.answer(stream);
 			console.log("D");	
 		} catch (err) {
-			console.error("WebRTC stream generation exception raised:", err);
+			console.log(`WebRTC stream generation exception raised: ${err.message || err.toString()}`);
 		}
 	});
 
