@@ -2,21 +2,19 @@
 	"name": "os-in-browser",
 	"version": "1.0.0",
 	"description": "Run an OS in the browser using GitHub actions!",
-	"main": "index.html",
-	"chromium-args": "--headless --no-sandbox --mixed-context",
+	"main": "index.js",
 	"keywords": [],
 	"author": "kingdudely",
 	"license": "ISC",
 	"type": "commonjs",
 	"scripts": {
-		"start": "npx nw ."
+		"start": "node ."
 	},
 	"dependencies": {
 		"express": "^5.2.1",
 		"express-basic-auth": "^1.2.1",
-		"peer": "^1.0.2"
-	},
-	"devDependencies": {
-		"nw": "^0.111.2"
+		"peer": "^1.0.2",
+		"robotjs": "^0.7.1",
+		"puppeteer-core": "^25.1.0",
 	}
 }
