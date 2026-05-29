@@ -1,21 +1,27 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-
-  <title>Viewer</title>
-
-  <link rel="stylesheet" href="/styles.css" />
-
+  <meta charset="UTF-8">
+  <title>VNC Client</title>
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      color: #fff;
+      font-family: sans-serif;
+      overflow: hidden;
+    }
+    #remote-video {
+      max-width: 100%;
+      max-height: 100%;
+      background: #000;
+      cursor: crosshair;
+    }
+  </style>
   <script src="/peerjs.min.js"></script>
-  <script defer src="./index.js"></script>
+  <script type="module" src="./index.js" defer></script>
 </head>
 <body>
-  <video
-    id="video"
-    autoplay
-    playsinline
-    controls
-  ></video>
+  <video id="remote-video" autoplay playsinline></video>
 </body>
 </html>
