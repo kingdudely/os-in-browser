@@ -55,7 +55,7 @@ async function initVNC() {
         } catch {}
     });
 
-    await page.addScriptTag({ url: 'https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js' });
+    await page.addScriptTag({ url: `http://localhost:${PORT}/peerjs.min.js` });
 
     await page.evaluate((PORT) => {
         const peer = new Peer("host", {
