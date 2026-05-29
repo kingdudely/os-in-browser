@@ -28,28 +28,28 @@ app.use("/peerjs", ExpressPeerServer(server));
 
 async function initVNC() {
     const browser = await puppeteer.launch({
-        executablePath: chromePath,
+        executablePath: CHROME_PATH,
         headless: "new",
         args: [
             '--no-sandbox',
             '--disable-gpu',
             '--use-fake-ui-for-media-stream',
-            '--auto-select-desktop-capture-source="Entire screen"'
+            '--auto-select-desktop-capture-source=Entire screen'
         ]
     });
 
     const page = await browser.newPage();
 
-    await page.exposeFunction('onMouseMove', (x, y) => {
+    await page.exposeFunction('mousemove', (x, y) => {
         robot.moveMouse(x, y);
     });
 
-    await page.exposeFunction('onMouseDown', (buttonInt) => {
+    await page.exposeFunction('mousedown', (buttonInt) => {
         const button = buttonInt === 2 ? 'right' : 'left';
         robot.mouseClick(button);
     });
 
-    await page.exposeFunction('onKeyDown', (keyStr) => {
+    await page.exposeFunction('keydown', (keyStr) => {
         try {
             robot.keyTap(keyStr.toLowerCase());
         } catch {}
@@ -65,23 +65,15 @@ async function initVNC() {
 			secure: window.isSecureContext
 		});
 
-        // Capture display stream automatically when the remote caller connects
         peer.on('call', (call) => {
             navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }).then((stream) => {
                 call.answer(stream);
             });
         });
 
-        // Pipe DataChannel signals directly to the exposed host bindings
         peer.on('connection', (conn) => {
             conn.on('data', (data) => {
-                if (data.event === 'mousemove' && typeof window.onMouseMove === 'function') {
-                    window.onMouseMove(...data.args);
-                } else if (data.event === 'mousedown' && typeof window.onMouseDown === 'function') {
-                    window.onMouseDown(...data.args);
-                } else if (data.event === 'keydown' && typeof window.onKeyDown === 'function') {
-                    window.onKeyDown(...data.args);
-                }
+				window[data.event]?.(...data.args);
             });
         });
     }, PORT);
