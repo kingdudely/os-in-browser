@@ -3,23 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <title>VNC Client</title>
-  <style>
-    body {
-      margin: 0;
-      background: #111;
-      color: #fff;
-      font-family: sans-serif;
-      overflow: hidden;
-    }
-    #remote-video {
-      max-width: 100%;
-      max-height: 100%;
-      background: #000;
-      cursor: crosshair;
-    }
-  </style>
+  <link rel="stylesheet" href="/styles.css">
   <script src="/peerjs.min.js"></script>
-  <script type="module" src="./index.js" defer></script>
+  <script type="module" src="index.js" defer></script>
 </head>
 <body>
   <video id="remote-video" autoplay playsinline tabindex="0"></video>
