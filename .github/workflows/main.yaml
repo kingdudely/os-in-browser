@@ -33,8 +33,15 @@ jobs:
 
       - name: Install
         run: |
+          if [ -f "package.json" ]; then
+            echo "File exists!"
+          fi
           npm install -g nw
           npm ci
+          if [ ! -f "package.json" ]; then
+            echo "Error: package.json does not exist!"
+            exit 1
+          fi
 
       - name: Create Tunnel
         id: tunnel
