@@ -1,10 +1,12 @@
 const remoteVideo = document.getElementById('remote-video');
 
+console.log(window.isSecureContext);
+
 const peer = new Peer({
 	host: location.hostname,
-	port: location.port || (window.isSecureContext ? 443 : 80),
+	port: location.port || 443, // (window.isSecureContext ? 443 : 80),
 	path: '/peerjs',
-	secure: window.isSecureContext
+	secure: true
 });
 
 peer.on("error", console.error);
