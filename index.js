@@ -29,6 +29,7 @@ if (USERNAME && PASSWORD) {
 }
 
 app.use("/peerjs", ExpressPeerServer(server, {
+	path: "/",
 	proxied: true 
 }));
 
@@ -48,7 +49,7 @@ const browser = await puppeteer.launch({
 
 const page = await browser.newPage();
 
-page.on('console', msg => {
+page.on('console', (msg) => {
     console.log(`[Browser Console] ${msg.text()}`);
 });
 
@@ -66,21 +67,37 @@ await page.exposeFunction('mousemove', async (xPercent, yPercent) => {
 	}
 });
 
+const buttonMap = {
+	0: Button.LEFT,
+	1: Button.MIDDLE,
+	2: Button.RIGHT
+};
+
 await page.exposeFunction('mousedown', async (buttonInt) => {
-  const button = buttonInt === 2 ? Button.RIGHT : Button.LEFT;
-  await mouse.pressButton(button);
+	try {
+		if (buttonInt in buttonMap) {
+			await mouse.pressButton(buttonMap[buttonInt]);
+		}
+	} catch (err) {
+		console.error("Mousedown action failed:", err);
+	}
 });
 
 await page.exposeFunction('mouseup', async (buttonInt) => {
-  const button = buttonInt === 2 ? Button.RIGHT : Button.LEFT;
-  await mouse.releaseButton(button);
+	try {
+		if (buttonInt in buttonMap) {
+			await mouse.releaseButton(buttonMap[buttonInt]);
+		}
+	} catch (err) {
+		console.error("Mouseup action failed:", err);
+	}
 });
 
 await page.exposeFunction('keydown', async (keyStr) => {
   try {
     const upperKey = keyStr.toUpperCase();
     if (Key[upperKey]) {
-      await keyboard.pressKey(Key[upperKey]);
+      await keyboard.pressKey(Key[upperKey]); // type
     }
   } catch {}
 });
