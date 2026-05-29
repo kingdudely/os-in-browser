@@ -44,8 +44,8 @@
 	"ControlRight": "RightControl",
 	"AltLeft": "LeftAlt",
 	"AltRight": "RightAlt",
-	"MetaLeft": "LeftLeftWin",
-	"MetaRight": "RightWin",
+	"MetaLeft": "LeftSuper",
+	"MetaRight": "RightSuper",
 	"ContextMenu": "Menu",
 
 	"Minus": "Minus",
