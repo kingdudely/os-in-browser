@@ -1,24 +1,19 @@
-console.log("A");
-
+const express = require('express');
+const { ExpressPeerServer } = require('peer');
+const puppeteer = require('puppeteer-core');
+const robot = require('robotjs');
 const { resolve } = require("node:path");
-const { env } = require("node:process");
-const express = require("express");
-const { ExpressPeerServer } = require("peer");
 const basicAuth = require("express-basic-auth");
-
-// Replaced import.meta.resolve with robust CommonJS path resolution
+const { env: { PORT, USERNAME = "", PASSWORD = "", PUBLIC_URL, CHROME_PATH } } = require("node:process");
 const relativeToAbsoluteURL = (relativeUrl) => resolve(__dirname, relativeUrl);
 
-const { PORT = 3000, PUBLIC_URL, USERNAME = "", PASSWORD = "" } = env;
-
-if (!PUBLIC_URL) {
-    throw new Error("Expected PUBLIC_URL in env");
-}
+if (!PORT || !PUBLIC_URL || !CHROME_PATH) {
+	throw new Error("Make sure to include PORT, PUBLIC_URL, and CHROME_PATH in process.env!");
+};
 
 const app = express();
 const server = app.listen(PORT, () => {
-    console.log(`Server listening on port ${PORT}`);
-    console.log(PUBLIC_URL);
+    console.log(`Server running on port ${PORT}`);
 });
 
 app.use(express.static(relativeToAbsoluteURL('./public')));
@@ -31,69 +26,67 @@ if (USERNAME && PASSWORD) {
 
 app.use("/peerjs", ExpressPeerServer(server));
 
-nw.Screen.Init();
-
-let primaryScreenMediaId = null;
-const dcm = nw.Screen.DesktopCaptureMonitor;
-
-dcm.on("added", (id, name, order, type) => {
-    if (type === "screen") {
-        console.log(`[Screen Monitor] Detected screen: ${name} (Order: ${order})`);
-        primaryScreenMediaId = dcm.registerStream(id);
-    }
-});
-
-dcm.on("removed", (id) => {
-    console.log(`[Screen Monitor] Screen source removed.`);
-});
-
-dcm.start(true, false);
-
-const peer = new Peer("main", {
-    host: "localhost",
-    port: PORT,
-    path: "/peerjs",
-    secure: window.isSecureContext 
-});
-
-peer.on("open", (id) => {
-    console.log(`PeerJS Client ready with ID: ${id}`);
-});
-
-peer.on("error", (err) => {
-    console.error("PeerJS Client Error:", err);
-});
-
-peer.on("call", async (call) => {
-    console.log("Receiving call... Fetching screen stream natively.");
-    
-    try {
-        const stream = await getHeadlessDisplayStream();
-        call.answer(stream);
-        console.log("Call successfully answered with desktop stream.");
-    } catch (error) {
-        console.error("Failed to answer call due to stream capture error:", error);
-    }
-});
-
-function getHeadlessDisplayStream() {
-    return new Promise((resolve, reject) => {
-        if (!primaryScreenMediaId) {
-            return reject(new Error("No valid primary screen discovered by DesktopCaptureMonitor yet."));
-        }
-
-        const constraints = {
-            audio: false, 
-            video: {
-                mandatory: {
-                    chromeMediaSource: 'desktop',
-                    chromeMediaSourceId: primaryScreenMediaId
-                }
-            }
-        };
-
-        navigator.mediaDevices.getUserMedia(constraints)
-            .then((stream) => resolve(stream))
-            .catch((err) => reject(err));
+async function initVNC() {
+    const browser = await puppeteer.launch({
+        executablePath: chromePath,
+        headless: "new",
+        args: [
+            '--no-sandbox',
+            '--disable-gpu',
+            '--use-fake-ui-for-media-stream',
+            '--auto-select-desktop-capture-source="Entire screen"'
+        ]
     });
+
+    const page = await browser.newPage();
+
+    await page.exposeFunction('onMouseMove', (x, y) => {
+        robot.moveMouse(x, y);
+    });
+
+    await page.exposeFunction('onMouseDown', (buttonInt) => {
+        const button = buttonInt === 2 ? 'right' : 'left';
+        robot.mouseClick(button);
+    });
+
+    await page.exposeFunction('onKeyDown', (keyStr) => {
+        try {
+            robot.keyTap(keyStr.toLowerCase());
+        } catch {}
+    });
+
+    await page.addScriptTag({ url: 'https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js' });
+
+    await page.evaluate((PORT) => {
+        const peer = new Peer("host", {
+			host: "localhost",
+			port: PORT,
+			path: "/peerjs",
+			secure: window.isSecureContext
+		});
+
+        // Capture display stream automatically when the remote caller connects
+        peer.on('call', (call) => {
+            navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }).then((stream) => {
+                call.answer(stream);
+            });
+        });
+
+        // Pipe DataChannel signals directly to the exposed host bindings
+        peer.on('connection', (conn) => {
+            conn.on('data', (data) => {
+                if (data.event === 'mousemove' && typeof window.onMouseMove === 'function') {
+                    window.onMouseMove(...data.args);
+                } else if (data.event === 'mousedown' && typeof window.onMouseDown === 'function') {
+                    window.onMouseDown(...data.args);
+                } else if (data.event === 'keydown' && typeof window.onKeyDown === 'function') {
+                    window.onKeyDown(...data.args);
+                }
+            });
+        });
+    }, PORT);
+
+    console.log(PUBLIC_URL);
 }
+
+initVNC();
