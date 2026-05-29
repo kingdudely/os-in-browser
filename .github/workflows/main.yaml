@@ -31,6 +31,9 @@ jobs:
         with:
           node-version: 24
 
+      - uses: browser-actions/setup-chrome@v2
+        id: setup-chrome
+
       - name: Install
         run: |
           npm install
@@ -48,5 +51,6 @@ jobs:
           PASSWORD: ${{ secrets.PASSWORD }}
           NODE_OPTIONS: --unhandled-rejections=strict
           PUBLIC_URL: https://${{ steps.tunnel.outputs.server }}
+          CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
         run: |
           npm start
