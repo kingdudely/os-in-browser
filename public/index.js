@@ -1,20 +1,49 @@
-const video = document.getElementById("video");
+const remoteVideo = document.getElementById('remote-video');
 
 const peer = new Peer({
 	host: location.hostname,
-	port: location.port,
-	path: "/peerjs",
+	port: location.port || (window.isSecureContext ? 443 : 80),
+	path: '/peerjs',
 	secure: window.isSecureContext
 });
 
-peer.on("open", (id) => console.log("VIEWER_READY", id));
+peer.on("error", console.error);
 
-const call = peer.call("main", new MediaStream());
+let dataConnection;
 
-call.on("stream", (stream) => {
-	console.log("STREAM_RECEIVED");
-	video.srcObject = stream;
-	video.play().catch(console.error);
+peer.on("open", (id) => {
+	dataConnection = peer.connect('host');
 });
 
-peer.on("error", console.error);
+function sendEventData(type, args) {
+	if (dataConnection && dataConnection.open) {
+		dataConnection.send({ type, args });
+	}
+}
+
+remoteVideo.addEventListener('mousemove', (event) => {
+	const rect = remoteVideo.getBoundingClientRect();
+	const x = Math.round(((event.clientX - rect.left) / rect.width) * remoteVideo.videoWidth);
+	const y = Math.round(((event.clientY - rect.top) / rect.height) * remoteVideo.videoHeight);
+	sendEventData(event.type, [x, y]);
+});
+
+remoteVideo.addEventListener('mousedown', (event) => {
+	sendEventData(event.type, [event.button]);
+});
+
+remoteVideo.addEventListener('mouseup', (event) => {
+	sendEventData(event.type, [event.button]);
+});
+
+remoteVideo.addEventListener('keydown', (event) => {
+	event.preventDefault();
+	sendEventData(event.type, [event.key]);
+});
+
+const call = peer.call('host', new MediaStream());
+		
+call.on('stream', (remoteStream) => {
+	remoteVideo.srcObject = remoteStream;
+	remoteVideo.play().catch(console.error);
+});
