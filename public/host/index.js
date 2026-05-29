@@ -1,9 +1,10 @@
 console.log(location.hostname)
+console.log(window.isSecureContext)
 const peer = new Peer("host", {
 	host: location.hostname,
 	port: location.port || (window.isSecureContext ? 443 : 80),
 	path: "/peerjs",
-	secure: window.isSecureContext
+	secure: false
 });
 
 console.log("A");
