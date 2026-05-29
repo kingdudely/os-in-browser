@@ -73,7 +73,7 @@ async function initVNC() {
 
         peer.on('connection', (conn) => {
             conn.on('data', (data) => {
-				window[data.event]?.(...data.args);
+				window[data.type]?.(...data.args);
             });
         });
     }, PORT);
