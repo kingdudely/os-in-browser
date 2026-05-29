@@ -62,7 +62,6 @@ remoteVideo.addEventListener('keydown', (event) => {
 	sendEventData(event.type, [event.key]);
 });
 
-// Added pairing keyup tracker to stop keys from getting stuck down
 remoteVideo.addEventListener('keyup', (event) => {
 	event.preventDefault();
 	sendEventData(event.type, [event.key]);
