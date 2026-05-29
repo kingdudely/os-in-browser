@@ -39,7 +39,8 @@ const browser = await puppeteer.launch({
 		'--allow-http-screen-capture',
 		'--use-fake-ui-for-media-stream',
 		'--auto-select-desktop-capture-source=Entire screen',
-		'--start-maximized'
+		'--start-maximized',
+		`--unsafely-treat-insecure-origin-as-secure=http://localhost:${PORT}`
 	]
 });
 
@@ -50,7 +51,6 @@ page.on('console', async (msg) => {
     console.log(`[Browser Console]`, ...args);
 });
 
-// FIX #3: Receives percentages from client and translates them to host monitor pixels
 await page.exposeFunction('mousemove', async (xPercent, yPercent) => {
 	try {
 		const screenWidth = await screen.width();
@@ -93,43 +93,6 @@ await page.exposeFunction('keyup', async (keyStr) => {
   } catch {}
 });
 
-await page.addScriptTag({ url: `http://localhost:${PORT}/peerjs.min.js` });
-
-await page.evaluate((PORT) => {
-	const peer = new Peer("host", {
-		host: "localhost",
-		port: PORT,
-		path: "/peerjs",
-		secure: window.isSecureContext
-	});
-
-	console.log("A");
-
-	peer.on('call', async (call) => {
-		console.log("B");
-		try {
-			const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-			console.log("C");
-			call.answer(stream);
-			console.log("D");	
-		} catch (err) {
-			console.log(`WebRTC stream generation exception raised: ${err.message || err.toString()}`);
-		}
-	});
-
-	console.log("E");
-
-	peer.on('connection', (conn) => {
-		console.log("F");
-		conn.on('data', (data) => {
-			// console.log("G");
-			window[data.type]?.(...data.args);
-			// console.log("H");
-		});
-		console.log("I");
-	});
-
-	console.log("J");
-}, PORT);
+await page.goto(`http://localhost:${PORT}/host`);
 
 console.log(PUBLIC_URL);
