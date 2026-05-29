@@ -29,19 +29,11 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 'latest'
+          node-version: 24
 
       - name: Install
         run: |
-          if [ -f "package.json" ]; then
-            echo "File exists!"
-          fi
-          npm install -g nw
-          npm ci
-          if [ ! -f "package.json" ]; then
-            echo "Error: package.json does not exist!"
-            exit 1
-          fi
+          npm install
 
       - name: Create Tunnel
         id: tunnel
@@ -57,4 +49,4 @@ jobs:
           NODE_OPTIONS: --unhandled-rejections=strict
           PUBLIC_URL: https://${{ steps.tunnel.outputs.server }}
         run: |
-          nw .
+          npm start
