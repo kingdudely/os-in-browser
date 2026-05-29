@@ -42,9 +42,9 @@ jobs:
 
       # Step 3: Install the NW.js package declared in our inline package.json
       - name: Install NW.js
-        run: npm install nw -y
+        run: npm install --global nw
 
       # Step 4: Setup virtual display and execute
       - name: Run NW.js App Headless
         run: |
-          npx nw .
+          nw package.json
