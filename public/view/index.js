@@ -164,3 +164,7 @@ window.addEventListener('keyup', (event) => {
 	event.preventDefault();
 	sendEventData(event.type, [{ code: event.code || "", key: event.key || "" }]);
 });
+
+window.addEventListener('resize', () => {
+	sendEventData('resize', [window.innerWidth, window.innerHeight]);
+});
