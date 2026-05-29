@@ -32,7 +32,9 @@ jobs:
           node-version: 24
 
       - name: Install
-        run: npm ci
+        run: |
+          npm install -g nw
+          npm ci
 
       - name: Create Tunnel
         id: tunnel
