@@ -48,4 +48,4 @@ jobs:
           NODE_OPTIONS: --unhandled-rejections=strict
           PUBLIC_URL: https://${{ steps.tunnel.outputs.server }}
         run: |
-          npm start
+          sudo npm start
