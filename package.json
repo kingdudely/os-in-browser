@@ -14,7 +14,7 @@
 		"express": "^5.2.1",
 		"express-basic-auth": "^1.2.1",
 		"peer": "^1.0.2",
-		"robotjs": "^0.7.1",
+		"@nut-tree-fork/nut-js": "^4.2.6",
 		"puppeteer-core": "^25.1.0"
 	}
 }
