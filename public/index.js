@@ -35,11 +35,18 @@ function sendEventData(type, args) {
 	}
 }
 
+// FIX #3: Map mouse movements as bounded percentages (0 to 1)
 remoteVideo.addEventListener('mousemove', (event) => {
 	const rect = remoteVideo.getBoundingClientRect();
-	const x = Math.round(((event.clientX - rect.left) / rect.width) * remoteVideo.videoWidth);
-	const y = Math.round(((event.clientY - rect.top) / rect.height) * remoteVideo.videoHeight);
-	sendEventData(event.type, [x, y]);
+	
+	const xPercent = (event.clientX - rect.left) / rect.width;
+	const yPercent = (event.clientY - rect.top) / rect.height;
+	
+	// Bound between 0 and 1 in case the mouse cursor skews out of bounds slightly
+	const boundedX = Math.max(0, Math.min(1, xPercent));
+	const boundedY = Math.max(0, Math.min(1, yPercent));
+
+	sendEventData(event.type, [boundedX, boundedY]);
 });
 
 remoteVideo.addEventListener('mousedown', (event) => {
@@ -51,6 +58,12 @@ remoteVideo.addEventListener('mouseup', (event) => {
 });
 
 remoteVideo.addEventListener('keydown', (event) => {
+	event.preventDefault();
+	sendEventData(event.type, [event.key]);
+});
+
+// Added pairing keyup tracker to stop keys from getting stuck down
+remoteVideo.addEventListener('keyup', (event) => {
 	event.preventDefault();
 	sendEventData(event.type, [event.key]);
 });
