@@ -9,7 +9,7 @@
 	"license": "ISC",
 	"type": "commonjs",
 	"scripts": {
-		"start": "npx nw ."
+		"start": "sudo npx nw ."
 	},
 	"dependencies": {
 		"express": "^5.2.1",
