@@ -18,14 +18,13 @@ if (!PORT || !PUBLIC_URL || !CHROME_PATH) {
 
 const app = express();
 const server = app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+	console.log(`Server running on port ${PORT}`);
 });
 
-// Using structural import reference alias to protect static route registration
 app.use(express.static(relativeToAbsoluteURL('./public')));
 
 if (USERNAME && PASSWORD) {
-    app.use(basicAuth({ users: { [USERNAME]: PASSWORD } }));
+	app.use(basicAuth({ users: { [USERNAME]: PASSWORD } }));
 } else {
 	console.warn("Make sure to include both username and password!");
 }
@@ -37,7 +36,7 @@ app.use("/peerjs", ExpressPeerServer(server, {
 
 const browser = await puppeteer.launch({
 	executablePath: CHROME_PATH,
-	headless: 'shell', // Keeps window compositor active in Windows Session layer without visual popups
+	headless: 'shell',
 	args: [
 		'--no-sandbox',
 		'--disable-gpu',
@@ -52,10 +51,12 @@ const browser = await puppeteer.launch({
 const page = await browser.newPage();
 
 page.on('console', (msg) => {
-    console.log(`[Browser Console] ${msg.text()}`);
+	console.log(`[Browser Console] ${msg.text()}`);
 });
 
-await page.exposeFunction('mousemove', async (xPercent, yPercent) => {
+// --- UPDATED: Exposing Functions Matching Client Pointer Events ---
+
+await page.exposeFunction('pointermove', async (xPercent, yPercent) => {
 	try {
 		const screenWidth = await screen.width();
 		const screenHeight = await screen.height();
@@ -65,32 +66,33 @@ await page.exposeFunction('mousemove', async (xPercent, yPercent) => {
 
 		await mouse.setPosition(new Point(targetX, targetY));
 	} catch (err) {
-		console.error("Mouse movement execution error:", err);
+		console.error("Pointer movement execution error:", err);
 	}
 });
 
-await page.exposeFunction('mousedown', async (buttonInt) => {
+await page.exposeFunction('pointerdown', async (buttonInt) => {
 	try {
 		const nutButton = Button[nutButtonMap[buttonInt]];
 		if (nutButton != null) {
 			await mouse.pressButton(nutButton);
 		}
 	} catch (err) {
-		console.error("Mousedown action failed:", err);
+		console.error("Pointerdown action failed:", err);
 	}
 });
 
-await page.exposeFunction('mouseup', async (buttonInt) => {
+await page.exposeFunction('pointerup', async (buttonInt) => {
 	try {
 		const nutButton = Button[nutButtonMap[buttonInt]];
 		if (nutButton != null) {
 			await mouse.releaseButton(nutButton);
 		}
 	} catch (err) {
-		console.error("Mouseup action failed:", err);
+		console.error("Pointerup action failed:", err);
 	}
 });
 
+// Hardware keyboard and mobile inputs remain unchanged
 await page.exposeFunction('keydown', async (payload) => {
 	try {
 		const { code, key } = payload;
@@ -111,7 +113,6 @@ await page.exposeFunction('keyup', async (payload) => {
 		const { code } = payload;
 		const nutKey = Key[nutKeyMap[code]];
 
-		// Release only needs to run if the key maps to an absolute physical hardware button coordinate
 		if (code && nutKey != null) {
 			await keyboard.releaseKey(nutKey);
 		}
@@ -130,4 +131,4 @@ await page.exposeFunction('input', async (textStr) => {
 
 await page.goto(`http://localhost:${PORT}/host`);
 
-console.log(`${PUBLIC_URL}/view`);
+console.log(`Viewer endpoint fully live at: ${PUBLIC_URL}/view`);
