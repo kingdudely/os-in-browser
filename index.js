@@ -41,6 +41,11 @@ const browser = await puppeteer.launch({
 
 const page = await browser.newPage();
 
+page.on('console', async (msg) => {
+    const args = await Promise.all(msg.args().map(arg => arg.jsonValue().catch(() => '[Unserializable]')));
+    console.log(`[Browser Console]`, ...args);
+});
+
 await page.exposeFunction('mousemove', (x, y) => {
 	robot.moveMouse(x, y);
 });
@@ -66,17 +71,30 @@ await page.evaluate((PORT) => {
 		secure: window.isSecureContext
 	});
 
-	peer.on('call', (call) => {
-		navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }).then((stream) => {
-			call.answer(stream);
-		});
+	console.log("A")
+
+	peer.on('call', async (call) => {
+		console.log("B")
+		const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+		console.log("C")
+		call.answer(stream);
+		console.log("D");	
 	});
 
+	console.log("E")
+
 	peer.on('connection', (conn) => {
+		console.log("F")
+
 		conn.on('data', (data) => {
+			console.log("G")
 			window[data.type]?.(...data.args);
+			console.log("H")
 		});
+		console.log("I")
 	});
+
+	console.log("J")
 }, PORT);
 
 console.log(PUBLIC_URL);
