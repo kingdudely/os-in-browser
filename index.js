@@ -30,12 +30,14 @@ app.use("/peerjs", ExpressPeerServer(server));
 
 const browser = await puppeteer.launch({
 	executablePath: CHROME_PATH,
-	headless: "new",
+	headless: false,
 	args: [
 		'--no-sandbox',
 		'--disable-gpu',
+		'--allow-http-screen-capture',
 		'--use-fake-ui-for-media-stream',
-		'--auto-select-desktop-capture-source=Entire screen'
+		'--auto-select-desktop-capture-source=Entire screen',
+		'--start-maximized'
 	]
 });
 
