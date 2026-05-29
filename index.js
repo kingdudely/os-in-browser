@@ -40,7 +40,6 @@ const browser = await puppeteer.launch({
 		'--use-fake-ui-for-media-stream',
 		'--auto-select-desktop-capture-source=Entire screen',
 		'--start-maximized',
-		`--unsafely-treat-insecure-origin-as-secure=http://localhost:${PORT}`
 	]
 });
 
@@ -92,6 +91,6 @@ await page.exposeFunction('keyup', async (keyStr) => {
   } catch {}
 });
 
-await page.goto(`http://localhost:${PORT}/host`);
+await page.goto(`${PUBLIC_URL}/host`);
 
 console.log(`${PUBLIC_URL}/view`);
