@@ -5,7 +5,7 @@ on:
 
 jobs:
   run-app:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
 
     steps:
       # Step 1: Initialize an empty directory structures (Skipping checkout since we build it here)
