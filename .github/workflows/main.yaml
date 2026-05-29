@@ -25,10 +25,10 @@ jobs:
       PORT: 8080
 
     steps:
-      - name: Upload repository files to PC
+      - name: Copy repository into PC
         uses: actions/checkout@v6
 
-      - name: Install Node.JS
+      - name: Install Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -37,11 +37,11 @@ jobs:
         uses: browser-actions/setup-chrome@v2
         id: setup-chrome
 
-      - name: Install
+      - name: Install server dependencies
         run: |
           npm install
 
-      - name: Create Tunnel
+      - name: Create tunnel
         uses: anyvm-org/cf-tunnel@v0
         id: tunnel
         with:
