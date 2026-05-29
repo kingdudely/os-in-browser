@@ -1,0 +1,61 @@
+name: Inline NW.js Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  run-app:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Initialize an empty directory structures (Skipping checkout since we build it here)
+      - name: Create Project Files
+        run: |
+          # 1. Create the package.json file inline
+          cat << 'EOF' > package.json
+          {
+            "name": "inline-nwjs-app",
+            "version": "1.0.0",
+            "main": "index.js",
+            "devDependencies": {
+              "nw": "^0.83.0"
+            }
+          }
+          EOF
+
+          # 2. Create the index.js file inline
+          cat << 'EOF' > index.js
+          const fs = require('fs');
+          
+          console.log("-----------------------------------------");
+          console.log("Hello from inside the inline NW.js script!");
+          console.log(`Node version: ${process.version}`);
+          console.log(`Chromium version: ${process.versions.chromium}`);
+          console.log("-----------------------------------------");
+
+          // Optional: Simulate a quick window interaction or task, then exit cleanly
+          setTimeout(() => {
+            console.log("NW.js execution finished successfully. Exiting.");
+            process.exit(0);
+          }, 2000);
+          EOF
+
+      # Step 2: Set up Node.js environment
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Step 3: Install the NW.js package declared in our inline package.json
+      - name: Install NW.js
+        run: npm install
+
+      # Step 4: Setup virtual display and execute
+      - name: Run NW.js App Headless
+        run: |
+          sudo apt-get update && sudo apt-get install -y xvfb
+          xvfb-run --auto-servernum npx nw .
