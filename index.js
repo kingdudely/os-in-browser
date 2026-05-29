@@ -95,4 +95,4 @@ await page.exposeFunction('keyup', async (keyStr) => {
 
 await page.goto(`http://localhost:${PORT}/host`);
 
-console.log(PUBLIC_URL);
+console.log(`${PUBLIC_URL}/view`);
