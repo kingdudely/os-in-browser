@@ -5,6 +5,8 @@ import { mouse, keyboard, screen, Button, Key, Point } from '@nut-tree-fork/nut-
 import { fileURLToPath } from 'node:url';
 import basicAuth from 'express-basic-auth';
 import { env } from 'node:process';
+import nutKeyMap from './nutKeyMap.json' with { type: 'json' };
+import nutButtonMap from "./nutButtonMap.json" with { type: 'json' };
 
 const relativeToAbsoluteURL = (relativeUrl) => fileURLToPath(import.meta.resolve(relativeUrl));
 
@@ -67,16 +69,11 @@ await page.exposeFunction('mousemove', async (xPercent, yPercent) => {
 	}
 });
 
-const buttonMap = {
-	0: Button.LEFT,
-	1: Button.MIDDLE,
-	2: Button.RIGHT
-};
-
 await page.exposeFunction('mousedown', async (buttonInt) => {
 	try {
-		if (buttonInt in buttonMap) {
-			await mouse.pressButton(buttonMap[buttonInt]);
+		const nutButton = Button[nutButtonMap[buttonInt]];
+		if (nutButton != null) {
+			await mouse.pressButton(nutButton);
 		}
 	} catch (err) {
 		console.error("Mousedown action failed:", err);
@@ -85,30 +82,50 @@ await page.exposeFunction('mousedown', async (buttonInt) => {
 
 await page.exposeFunction('mouseup', async (buttonInt) => {
 	try {
-		if (buttonInt in buttonMap) {
-			await mouse.releaseButton(buttonMap[buttonInt]);
+		const nutButton = Button[nutButtonMap[buttonInt]];
+		if (nutButton != null) {
+			await mouse.releaseButton(nutButton);
 		}
 	} catch (err) {
 		console.error("Mouseup action failed:", err);
 	}
 });
 
-await page.exposeFunction('keydown', async (keyStr) => {
-  try {
-    const upperKey = keyStr.toUpperCase();
-    if (Key[upperKey]) {
-      await keyboard.pressKey(Key[upperKey]); // type
-    }
-  } catch {}
+await page.exposeFunction('keydown', async (payload) => {
+	try {
+		const { code, key } = payload;
+		const nutKey = Key[nutKeyMap[code]];
+
+		if (code && nutKey != null) {
+			await keyboard.pressKey(nutKey);
+		} else if (key && Array.from(key).length === 1) {
+			await keyboard.type(key);
+		}
+	} catch (err) {
+		console.error("Hardware Mapping Keydown Exception:", err);
+	}
 });
 
-await page.exposeFunction('keyup', async (keyStr) => {
-  try {
-    const upperKey = keyStr.toUpperCase();
-    if (Key[upperKey]) {
-      await keyboard.releaseKey(Key[upperKey]);
-    }
-  } catch {}
+await page.exposeFunction('keyup', async (payload) => {
+	try {
+		const { code } = payload;
+		const nutKey = Key[nutKeyMap[code]];
+
+		// Release only needs to run if the key maps to an absolute physical hardware button coordinate
+		if (code && nutKey != null) {
+			await keyboard.releaseKey(nutKey);
+		}
+	} catch (err) {
+		console.error("Hardware Mapping Keyup Exception:", err);
+	}
+});
+
+await page.exposeFunction('input', async (textStr) => {
+	try {
+		await keyboard.type(textStr);
+	} catch (err) {
+		console.error("Mobile IME text entry failed:", err);
+	}
 });
 
 await page.goto(`http://localhost:${PORT}/host`);
