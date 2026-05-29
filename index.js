@@ -46,9 +46,8 @@ const browser = await puppeteer.launch({
 
 const page = await browser.newPage();
 
-page.on('console', async (msg) => {
-    const args = await Promise.all(msg.args().map(arg => arg.jsonValue().catch(() => '[Unserializable]')));
-    console.log(`[Browser Console]`, ...args);
+page.on('console', msg => {
+    console.log(`[Browser Console] ${msg.text()}`);
 });
 
 await page.exposeFunction('mousemove', async (xPercent, yPercent) => {
