@@ -1,6 +1,7 @@
+console.log(location.hostname)
 const peer = new Peer("host", {
-	host: "localhost",
-	port: PORT,
+	host: location.hostname,
+	port: location.port || (window.isSecureContext ? 443 : 80),
 	path: "/peerjs",
 	secure: window.isSecureContext
 });
