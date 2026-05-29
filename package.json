@@ -15,6 +15,6 @@
 		"express-basic-auth": "^1.2.1",
 		"peer": "^1.0.2",
 		"robotjs": "^0.7.1",
-		"puppeteer-core": "^25.1.0",
+		"puppeteer-core": "^25.1.0"
 	}
 }
