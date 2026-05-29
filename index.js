@@ -1,4 +1,4 @@
-import express, { static as expressStatic } from 'express';
+import express from 'express';
 import { ExpressPeerServer } from 'peer';
 import puppeteer from 'puppeteer-core';
 import { mouse, keyboard, screen, Button, Key, Point } from '@nut-tree-fork/nut-js';
@@ -20,7 +20,7 @@ const server = app.listen(PORT, () => {
 });
 
 // Using structural import reference alias to protect static route registration
-app.use(expressStatic(relativeToAbsoluteURL('./public')));
+app.use(express.static(relativeToAbsoluteURL('./public')));
 
 if (USERNAME && PASSWORD) {
     app.use(basicAuth({ users: { [USERNAME]: PASSWORD } }));
