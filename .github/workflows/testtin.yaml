@@ -1,10 +1,6 @@
 name: Inline NW.js Test
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -18,30 +14,24 @@ jobs:
           # 1. Create the package.json file inline
           cat << 'EOF' > package.json
           {
-            "name": "inline-nwjs-app",
-            "version": "1.0.0",
-            "main": "index.js",
-            "devDependencies": {
-              "nw": "^0.83.0"
-            }
+            "name": "nw-demo",
+            "version": "0.0.1",
+            "main": "index.html"
           }
           EOF
 
           # 2. Create the index.js file inline
-          cat << 'EOF' > index.js
-          const fs = require('fs');
-          
-          console.log("-----------------------------------------");
-          console.log("Hello from inside the inline NW.js script!");
-          console.log(`Node version: ${process.version}`);
-          console.log(`Chromium version: ${process.versions.chromium}`);
-          console.log("-----------------------------------------");
-
-          // Optional: Simulate a quick window interaction or task, then exit cleanly
-          setTimeout(() => {
-            console.log("NW.js execution finished successfully. Exiting.");
-            process.exit(0);
-          }, 2000);
+          cat << 'EOF' > index.html
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <title>Hello World!</title>
+              </head>
+              <body>
+                <h1>Hello World!</h1>
+                We are using node.js <script>document.write(process.version)</script>.
+              </body>
+            </html>
           EOF
 
       # Step 2: Set up Node.js environment
@@ -52,10 +42,9 @@ jobs:
 
       # Step 3: Install the NW.js package declared in our inline package.json
       - name: Install NW.js
-        run: npm install
+        run: npm install nw -y
 
       # Step 4: Setup virtual display and execute
       - name: Run NW.js App Headless
         run: |
-          sudo apt-get update && sudo apt-get install -y xvfb
-          xvfb-run --auto-servernum npx nw .
+          npx nw .
