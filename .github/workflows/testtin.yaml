@@ -8,10 +8,8 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      # Step 1: Initialize an empty directory structures (Skipping checkout since we build it here)
       - name: Create Project Files
         run: |
-          # 1. Create the package.json file inline
           cat << 'EOF' > package.json
           {
             "name": "nw-demo",
@@ -20,7 +18,6 @@ jobs:
           }
           EOF
 
-          # 2. Create the index.js file inline
           cat << 'EOF' > index.html
             <!DOCTYPE html>
             <html>
@@ -37,17 +34,14 @@ jobs:
             </html>
           EOF
 
-      # Step 2: Set up Node.js environment
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # Step 3: Install the NW.js package declared in our inline package.json
       - name: Install NW.js
-        run: npm install nw -y
+        run: npm install --global nw
 
-      # Step 4: Setup virtual display and execute
       - name: Run NW.js App Headless
         run: |
-          npx nw .
+          nw package.json
