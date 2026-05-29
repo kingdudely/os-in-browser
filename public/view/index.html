@@ -1,13 +1,21 @@
 <!DOCTYPE html>
-<html lang="en">
-	<head>
-		<meta charset="UTF-8">
-		<title>VNC Client</title>
-		<link rel="stylesheet" href="/styles.css">
-		<script src="/peerjs.min.js"></script>
-		<script src="index.js" defer></script>
-	</head>
-	<body>
-		<video id="remote-video" autoplay playsinline tabindex="0"></video>
-	</body>
+<html>
+<head>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+	<meta charset="UTF-8">
+	<title>VNC Client</title>
+	<link rel="stylesheet" href="/styles.css">
+	<script src="/peerjs.min.js"></script>
+	<script src="index.js" defer></script>
+</head>
+<body>
+	<video id="remote-video" autoplay playsinline></video>
+	
+	<input type="text" 
+	       id="keyboard-button" 
+	       data-closed="⌨️ Open Keyboard" 
+	       data-opened="❌ Close Keyboard" 
+	       value="⌨️ Open Keyboard" 
+	       readonly>
+</body>
 </html>
