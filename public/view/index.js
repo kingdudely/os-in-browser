@@ -14,6 +14,7 @@ let dataConnection;
 
 peer.on("open", (id) => {
 	dataConnection = peer.connect('host');
+	dataConnection.on('open', sendViewportSize);
 });
 
 peer.on('call', (call) => {
@@ -26,8 +27,17 @@ peer.on('call', (call) => {
 
 function sendEventData(type, args) {
 	if (dataConnection && dataConnection.open) {
-		dataConnection.send({ type, args });
+		dataConnection.send({
+			type,
+			args
+		});
 	}
+}
+
+function sendViewportSize() {
+	const width = window.innerWidth;
+	const height = window.innerHeight;
+	sendEventData('resize', [width, height]);
 }
 
 // --- Hybrid Input Button & Drag Logic (Pointer Unified) ---
@@ -40,37 +50,37 @@ let dragThresholdPassed = false;
 keyboardButton.addEventListener('pointerdown', (e) => {
 	isDragging = true;
 	dragThresholdPassed = false;
-	
+
 	startX = e.clientX;
 	startY = e.clientY;
-	
+
 	const rect = keyboardButton.getBoundingClientRect();
 	initialLeft = rect.left;
 	initialTop = rect.top;
-	
+
 	// Locks the pointer to this element so dragging doesn't break if the finger slips off
 	keyboardButton.setPointerCapture(e.pointerId);
 });
 
 keyboardButton.addEventListener('pointermove', (e) => {
 	if (!isDragging) return;
-	
+
 	const deltaX = e.clientX - startX;
 	const deltaY = e.clientY - startY;
-	
+
 	// Treat as a drag if moved more than 5 pixels
 	if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
 		dragThresholdPassed = true;
 	}
-	
+
 	if (dragThresholdPassed) {
 		let newLeft = initialLeft + deltaX;
 		let newTop = initialTop + deltaY;
-		
+
 		// Boundary lock checks directly relative to the main body view space
 		newLeft = Math.max(10, Math.min(document.body.clientWidth - keyboardButton.offsetWidth - 10, newLeft));
 		newTop = Math.max(10, Math.min(document.body.clientHeight - keyboardButton.offsetHeight - 10, newTop));
-		
+
 		keyboardButton.style.right = 'auto';
 		keyboardButton.style.bottom = 'auto';
 		keyboardButton.style.left = `${newLeft}px`;
@@ -82,7 +92,7 @@ keyboardButton.addEventListener('pointerup', (e) => {
 	if (!isDragging) return;
 	isDragging = false;
 	keyboardButton.releasePointerCapture(e.pointerId);
-	
+
 	// If they were dragging, cancel the virtual keyboard focus sequence
 	if (dragThresholdPassed) {
 		e.preventDefault();
@@ -110,7 +120,7 @@ keyboardButton.addEventListener('input', (event) => {
 		sendEventData('input', [event.data]);
 	}
 	// Instantly reset input frame text representation back to active closed state label
-	keyboardButton.value = keyboardButton.dataset.opened; 
+	keyboardButton.value = keyboardButton.dataset.opened;
 });
 
 // --- Unified Pointer Coordinate & Click System ---
@@ -118,18 +128,18 @@ keyboardButton.addEventListener('input', (event) => {
 window.addEventListener('pointermove', (event) => {
 	// Freeze canvas cursor tracking if the user is dragging the menu button
 	if (isDragging) return;
-	
+
 	const rect = remoteVideo.getBoundingClientRect();
 	const boundedX = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
 	const boundedY = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
-	
+
 	// Sends 'mousemove' token to keep host-side VM logic completely intact
 	sendEventData('mousemove', [boundedX, boundedY]);
 });
 
 window.addEventListener('pointerdown', (event) => {
 	if (event.target === keyboardButton) return;
-	
+
 	// CRITICAL SAFETY: Only stream layout click clicks if it's a real mouse interaction.
 	// This implicitly isolates mobile swipe/pan/zoom actions from triggering clicks.
 	if (event.pointerType === 'mouse') {
@@ -139,7 +149,7 @@ window.addEventListener('pointerdown', (event) => {
 
 window.addEventListener('pointerup', (event) => {
 	if (event.target === keyboardButton) return;
-	
+
 	if (event.pointerType === 'mouse') {
 		sendEventData('mouseup', [event.button]);
 	}
@@ -156,15 +166,19 @@ window.addEventListener('mouseleave', (event) => {
 window.addEventListener('keydown', (event) => {
 	if (event.key === 'Process') return;
 	event.preventDefault();
-	sendEventData(event.type, [{ code: event.code || "", key: event.key || "" }]);
+	sendEventData(event.type, [{
+		code: event.code || "",
+		key: event.key || ""
+	}]);
 });
 
 window.addEventListener('keyup', (event) => {
 	if (event.key === 'Process') return;
 	event.preventDefault();
-	sendEventData(event.type, [{ code: event.code || "", key: event.key || "" }]);
+	sendEventData(event.type, [{
+		code: event.code || "",
+		key: event.key || ""
+	}]);
 });
 
-window.addEventListener('resize', () => {
-	sendEventData('resize', [window.innerWidth, window.innerHeight]);
-});
+window.addEventListener('resize', sendViewportSize);
