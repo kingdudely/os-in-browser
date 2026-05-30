@@ -15,23 +15,27 @@ html, body {
 }
 
 #keyboard-button {
+	/* Dimensions & Scaling */
+	width: 44px;
+	height: 44px;
+	aspect-ratio: 1 / 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	
+	/* Emoji Size */
+	font-size: 22px; 
+	
+	/* Styling & Positioning */
 	position: absolute;
 	bottom: 20px;
 	right: 20px;
-	background: rgba(0, 0, 0, 0.7);
-	color: #fff;
-	border: 1px solid #444;
-	padding: 12px 16px;
+	background: rgba(0, 0, 0, 0.75);
+	border: 1px solid rgba(255, 255, 255, 0.15);
 	border-radius: 8px;
-	font-size: 14px;
 	z-index: 1000;
 	cursor: move;
-	text-align: center;
-	width: 130px;
-	outline: none;
-	
-	caret-color: transparent;
-	color: transparent;
-	text-shadow: 0 0 0 #fff;
 	touch-action: none;
+	user-select: none;
 }
+
