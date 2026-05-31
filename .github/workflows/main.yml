@@ -26,20 +26,21 @@ jobs:
       - name: Copy repository into PC
         uses: actions/checkout@main
 
-      - name: Setup Ubuntu desktop GUI
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ubuntu-desktop-minimal
-          sudo reboot
-          echo "DISPLAY: ${DISPLAY}"
-
       - name: Install Python
         uses: actions/setup-python@main
         with:
           python-version: '3.12'
           cache: 'pip'
           cache-dependency-path: '**/requirements.txt'
+
+      - name: Setup Ubuntu desktop GUI
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ubuntu-desktop-minimal
+          # sudo reboot
+          export DISPLAY=:0.0
+          echo "DISPLAY: ${DISPLAY}"
 
       - name: Install server dependencies
         run: |
