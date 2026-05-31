@@ -17,6 +17,10 @@ defaults:
   run:
     shell: bash
 
+env:
+  DISPLAY: ':0'
+  PORT: 8080
+
 jobs:
   remote:
     runs-on: ${{ github.event.inputs.os }}
@@ -64,6 +68,14 @@ jobs:
         run: |
           pip install -r requirements.txt
 
+      - name: Establish tunnel
+        id: tunnel
+        uses: anyvm-org/cf-tunnel@v0
+        with:
+          protocol: http
+          port: ${{ env.PORT }}
+
       - name: Start server
         run: |
-          python3 -u main.py
+          echo "https://${{ steps.tunnel.outputs.server }}"
+          python3 main.py # -u for logs
