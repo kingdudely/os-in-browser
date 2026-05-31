@@ -1,50 +1,42 @@
-import sys
-import os
+from sys import platform
+from os import environ
 from aiohttp import web
-from aiortc import RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaPlayer
 
-screenshare_options = {
-	"framerate": "30"
-}
+port = 8080
+screenshare_options = {"framerate": "30"}
 
-match sys.platform:
-	case "linux":
-		def get_screen_player():
-	        display = os.environ.get("DISPLAY", ":0.0")
-	        return MediaPlayer(display, format="x11grab", options=screenshare_options)
+match platform:
+    case "linux":
+        screenshare = MediaPlayer(environ["DISPLAY"], format="x11grab", options=screenshare_options) # ":0.0"
+    case "darwin":
+        screenshare = MediaPlayer("Capture screen 0", format="avfoundation", options=screenshare_options)
+    case "win32":
+        screenshare = MediaPlayer("desktop", format="gdigrab", options=screenshare_options)
+    case _:
+        raise RuntimeError(f"Unsupported platform: {platform}")
 
-	case "darwin":
-		def get_screen_player():
-	        return MediaPlayer("Capture screen 0", format="avfoundation", options=screenshare_options)
+app = web.Application()
+routes = web.RouteTableDef()
 
-	case "win32":
-		def get_screen_player():
-	        return MediaPlayer("desktop", format="gdigrab", options=screenshare_options)
-
-	case _:
-	    raise RuntimeError(f"Unsupported platform: {sys.platform}")
- 
- 
+@routes.get("/")
 async def index(request):
     return web.FileResponse("index.html")
- 
- 
+
+@routes.post("/whip")
 async def whip(request):
+	from aiortc import RTCPeerConnection, RTCSessionDescription
     sdp = await request.text()
-    pc = RTCPeerConnection()
-    player = get_screen_player()
-    pc.addTrack(player.video)
-    await pc.setRemoteDescription(RTCSessionDescription(sdp=sdp, type="offer"))
-    answer = await pc.createAnswer()
-    await pc.setLocalDescription(answer)
+    peer = RTCPeerConnection()
+    peer.addTrack(screenshare.video)
+    await peer.setRemoteDescription(RTCSessionDescription(sdp=sdp, type="offer"))
+    answer = await peer.createAnswer()
+    await peer.setLocalDescription(answer)
     return web.Response(text=pc.localDescription.sdp, content_type="application/sdp", status=201)
- 
- 
-app = web.Application()
-app.router.add_get("/", index)
-app.router.add_post("/whip", whip)
- 
+
+app.add_routes(routes)
+
 if __name__ == "__main__":
-    print("Serving at http://localhost:8080")
-    web.run_app(app, port=8080)
+    from pycloudflared import try_cloudflared
+	try_cloudflared(port=port, verbose=True)
+	web.run_app(app, port=port)
