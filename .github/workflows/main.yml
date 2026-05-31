@@ -17,6 +17,9 @@ defaults:
   run:
     shell: bash
 
+env:
+  PORT: 8080
+
 jobs:
   remote:
     runs-on: ${{ github.event.inputs.os }}
@@ -33,8 +36,19 @@ jobs:
 
       - name: Install server dependencies
         run: |
-          pip install av aiortc aiohttp with-cloudflared
+          pip install av aiortc aiohttp
 
       - name: Start server
         run: |
-          python3 main.py
+          python3 main.py &
+
+      - name: Start Cloudflare tunnel
+        uses: anyvm-org/cf-tunnel@v0
+        id: tunnel
+        with:
+          protocol: http
+          port: ${{ env.PORT }}
+
+      - name: Cloudflare tunnel URL
+        run: |
+          echo https://${{ steps.tunnel.outputs.server }}
