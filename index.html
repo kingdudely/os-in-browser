@@ -40,6 +40,11 @@ peer.onconnectionstatechange = () => console.log("[CONN]", peer.connectionState)
 peer.onsignalingstatechange = () => console.log("[SIG]", peer.signalingState);
 peer.onicegatheringstatechange = () => console.log("[GATHER]", peer.iceGatheringState);
 peer.onicecandidate = (e) => console.log("[CANDIDATE]", e.candidate?.candidate ?? "null (gathering done)");
+peer.ontrack = (e) => {
+	console.log("[TRACK]", e.track.kind, "streams:", e.streams.length);
+	video.srcObject = e.streams[0];
+	console.log("[12] video srcObject set");
+};
 
 peer.addTransceiver("video", { direction: "recvonly" });
 console.log("[3] transceiver added");
@@ -85,12 +90,6 @@ try {
 	console.error("[ERROR] setRemoteDescription failed:", err);
 	throw err;
 }
-
-peer.ontrack = (e) => {
-	console.log("[TRACK]", e.track.kind, "streams:", e.streams.length);
-	video.srcObject = e.streams[0];
-	console.log("[12] video srcObject set");
-};
 	</script>
 </body>
 </html>
