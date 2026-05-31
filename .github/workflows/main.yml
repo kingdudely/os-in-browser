@@ -37,10 +37,28 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ubuntu-desktop-minimal xvfb
-          sudo reboot
+          # Install xfce, yaru, and the official system wallpaper assets package
+          sudo apt-get install -y --no-install-recommends xorg xfce4 xfce4-goodies yaru-theme-gtk yaru-theme-icon ubuntu-wallpapers xvfb
+          
+          # Start Xvfb virtual framebuffer
           Xvfb :0 -screen 0 1920x1080x24 &
-          DISPLAY=:0 gnome-session &
+          export DISPLAY=:0
+          
+          # Wait briefly for Xvfb to initialize
+          sleep 2
+          
+          # Pre-configure Xfce to use the Yaru theme within this display context
+          xfconf-query -c xsettings -p /Net/ThemeName -s "Yaru"
+          xfconf-query -c xfwm4 -p /general/theme -s "Yaru"
+          xfconf-query -c xsettings -p /Net/IconThemeName -s "Yaru"
+          
+          # Force the standard system-wide Ubuntu wallpaper onto Xfce's primary workspace target
+          # Note: Xfce targets backdrop images using screen/monitor variables initialized at startup
+          xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor0/workspace0/last-image -n -t string -s "/usr/share/backgrounds/warty-final-ubuntu.png"
+          xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor0/workspace0/image-style -n -t int -s 5
+          
+          # Launch the Xfce4 desktop session in the background
+          startxfce4 &
 
       - name: Install server dependencies
         run: |
