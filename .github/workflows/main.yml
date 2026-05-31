@@ -52,4 +52,16 @@ jobs:
 
       - name: Start server
         run: |
-          python3 main.py
+          nohup python3 main.py &
+
+      - name: Establish tunnel
+        id: tunnel
+        uses: anyvm-org/cf-tunnel@v0
+        with:
+          protocol: http
+          port: ${{ env.PORT }}
+
+      - name: "Tunnel URL"
+        run: |
+          echo "https://${{ steps.tunnel.outputs.server }}"
+          sleep 21600
