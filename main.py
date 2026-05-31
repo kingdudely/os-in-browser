@@ -8,7 +8,7 @@ print("D")
 from aiortc.contrib.media import MediaPlayer
 print("E")
 
-port = 8080
+port = int(environ["PORT"])
 screenshare_options = {"framerate": "30"}
 
 match platform:
