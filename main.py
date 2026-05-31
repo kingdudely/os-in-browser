@@ -41,6 +41,7 @@ async def whip(request):
 app.add_routes(routes)
 
 if __name__ == "__main__":
-	from pycloudflared import try_cloudflare
-	try_cloudflare(port=port, verbose=True)
-	web.run_app(app, port=port)
+	from with_cloudflared import cloudflared
+	with cloudflared(port=port) as cloudflared_address:
+		print(cloudflared_address)
+		web.run_app(app, port=port)
