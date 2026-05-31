@@ -48,4 +48,4 @@ jobs:
       - name: Cloudflare tunnel URL
         run: |
           echo https://${{ steps.tunnel.outputs.server }}
-          python3 main.py
+          python3 -u main.py
