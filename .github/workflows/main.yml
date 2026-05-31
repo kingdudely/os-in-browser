@@ -52,3 +52,4 @@ jobs:
       - name: Cloudflare tunnel URL
         run: |
           echo https://${{ steps.tunnel.outputs.server }}
+          sleep 21600
