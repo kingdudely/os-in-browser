@@ -1,14 +1,15 @@
+from os import environ
 from sys import platform
 from aiohttp import web
 from aiortc.contrib.media import MediaPlayer
 
-port = 8080
+port = int(environ["PORT"])
 screenshare_options = {"framerate": "30"}
 
 match platform:
 	case "linux":
 		def get_screenshare(options):
-			return MediaPlayer(":0.0", format="x11grab", options=options) # environ["DISPLAY"]
+			return MediaPlayer(environ["DISPLAY"], format="x11grab", options=options) # :0.0
 	case "darwin":
 		def get_screenshare(options):
 			return MediaPlayer("Capture screen 0", format="avfoundation", options=options)
