@@ -33,15 +33,6 @@ jobs:
           cache: 'pip'
           cache-dependency-path: '**/requirements.txt'
 
-      - name: Setup Ubuntu desktop GUI
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ubuntu-desktop-minimal
-          # sudo reboot
-          export DISPLAY=:0.0
-          echo "DISPLAY: ${DISPLAY}"
-
       - name: Install server dependencies
         run: |
           pip install -r requirements.txt
