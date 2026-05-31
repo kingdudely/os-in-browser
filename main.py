@@ -1,33 +1,27 @@
-print("A")
 from sys import platform
-print("B")
 from os import environ
-print("C")
 from aiohttp import web
-print("D")
 from aiortc.contrib.media import MediaPlayer
-print("E")
 
 port = int(environ["PORT"])
 screenshare_options = {"framerate": "30"}
 
 match platform:
 	case "linux":
-		screenshare = MediaPlayer(environ["DISPLAY"], format="x11grab", options=screenshare_options) # ":0.0"
+		def get_screenshare(options):
+			return MediaPlayer(environ["DISPLAY"], format="x11grab", options=options) # ":0.0"
 	case "darwin":
-		screenshare = MediaPlayer("Capture screen 0", format="avfoundation", options=screenshare_options)
+		def get_screenshare(options):
+			return MediaPlayer("Capture screen 0", format="avfoundation", options=options)
 	case "win32":
-		screenshare = MediaPlayer("desktop", format="gdigrab", options=screenshare_options)
+		def get_screenshare(options):
+			return MediaPlayer("desktop", format="gdigrab", options=options)
 	case _:
 		raise RuntimeError(f"Unsupported platform: {platform}")
 
-print("F")
-
+screenshare = get_screenshare(screenshare_options)
 app = web.Application()
-
-print("G")
 routes = web.RouteTableDef()
-print("H")
 
 @routes.get("/")
 async def index(request):
@@ -44,13 +38,7 @@ async def whip(request):
 	await peer.setLocalDescription(answer)
 	return web.Response(text=peer.localDescription.sdp, content_type="application/sdp", status=201)
 
-print("I")
-
 app.add_routes(routes)
 
-print("J")
-
-print("K")
 if __name__ == "__main__":
-	print("L")
 	web.run_app(app, port=port)
