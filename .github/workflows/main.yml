@@ -18,8 +18,8 @@ defaults:
     shell: bash
 
 env:
-  DISPLAY: ':0'
-  PORT: 8080
+  DISPLAY: ":0"
+  PORT: "8080"
 
 jobs:
   remote:
