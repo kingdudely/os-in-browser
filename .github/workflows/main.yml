@@ -26,7 +26,8 @@ jobs:
       - name: Copy repository into PC
         uses: actions/checkout@main
 
-      - uses: actions/setup-python@main
+      - name: Install Python
+        uses: actions/setup-python@main
         with:
           python-version: '3.14'
 
