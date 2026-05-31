@@ -32,7 +32,7 @@ jobs:
 
       - name: Install server dependencies
         run: |
-          pip install av aiortc aiohttp with-cloudflared
+          pip install av aiortc aiohttp pycloudflared
 
       - name: Start server
         run: |
