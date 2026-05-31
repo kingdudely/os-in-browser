@@ -11,7 +11,7 @@ html, body {
 	height: 100%;
 	cursor: none;
 	display: block;
-	object-fit: cover;
+	object-fit: contain;
 }
 
 #keyboard-button {
