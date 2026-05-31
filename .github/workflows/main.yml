@@ -30,7 +30,9 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ubuntu-desktop-minimal
+          sudo apt-get install -y --no-install-recommends ubuntu-desktop-minimal
+          sudo reboot
+          echo "DISPLAY: ${DISPLAY}"
 
       - name: Install Python
         uses: actions/setup-python@main
