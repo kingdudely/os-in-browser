@@ -7,7 +7,6 @@ import basicAuth from 'express-basic-auth';
 import { env } from 'node:process';
 import nutKeyMap from './nutKeyMap.json' with { type: 'json' };
 import nutButtonMap from "./nutButtonMap.json" with { type: 'json' };
-import screenres from 'screenres';
 
 const relativeToAbsoluteURL = (relativeUrl) => fileURLToPath(import.meta.resolve(relativeUrl));
 
@@ -135,10 +134,7 @@ await page.exposeFunction('resize', async (width, height) => {
 		const targetWidth = Math.round(width);
 		const targetHeight = Math.round(height);
 		
-		console.log(`[OS Resolution Sync] Shifting Host OS Monitor to: ${targetWidth}x${targetHeight}`);
-		
-		// Physically forces the Host OS resolution to adapt to the client viewport
-		screenres.set(targetWidth, targetHeight);
+		console.log(`[OS Resolution Sync - NOT SUPPORTED YET] Shifting Host OS Monitor to: ${targetWidth}x${targetHeight}`);
 		
 	} catch (err) {
 		console.error("Host screenres update execution failed:", err);
