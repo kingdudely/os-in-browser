@@ -38,10 +38,6 @@ jobs:
         run: |
           pip install av aiortc aiohttp
 
-      - name: Start server
-        run: |
-          python3 main.py &
-
       - name: Start Cloudflare tunnel
         uses: anyvm-org/cf-tunnel@v0
         id: tunnel
@@ -52,4 +48,4 @@ jobs:
       - name: Cloudflare tunnel URL
         run: |
           echo https://${{ steps.tunnel.outputs.server }}
-          sleep 21600
+          python3 main.py
