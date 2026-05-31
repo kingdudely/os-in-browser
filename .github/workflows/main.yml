@@ -37,7 +37,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ubuntu-desktop-minimal
+          sudo apt-get install -y --no-install-recommends ubuntu-desktop-minimal xvfb
           # sudo reboot
           Xvfb :0 -screen 0 1920x1080x24 &
 
