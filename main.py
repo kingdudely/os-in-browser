@@ -1,7 +1,12 @@
+print("A")
 from sys import platform
+print("B")
 from os import environ
+print("C")
 from aiohttp import web
+print("D")
 from aiortc.contrib.media import MediaPlayer
+print("E")
 
 port = 8080
 screenshare_options = {"framerate": "30"}
@@ -16,8 +21,13 @@ match platform:
 	case _:
 		raise RuntimeError(f"Unsupported platform: {platform}")
 
+print("F")
+
 app = web.Application()
+
+print("G")
 routes = web.RouteTableDef()
+print("H")
 
 @routes.get("/")
 async def index(request):
@@ -34,17 +44,21 @@ async def whip(request):
 	await peer.setLocalDescription(answer)
 	return web.Response(text=peer.localDescription.sdp, content_type="application/sdp", status=201)
 
+print("I")
+
 app.add_routes(routes)
 
-print("A")
+print("J")
+
+print("K")
 if __name__ == "__main__":
-	print("B")
+	print("L")
 	from with_cloudflared import cloudflared
-	print("C")
+	print("M")
 	with cloudflared(port=port) as cloudflared_address:
-		print("D")
+		print("N")
 		print(cloudflared_address)
-		print("E")
+		print("O")
 		web.run_app(app, port=port)
-		print("F")
-	print("G")
+		print("P")
+	print("Q")
