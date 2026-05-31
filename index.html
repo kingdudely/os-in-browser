@@ -3,10 +3,55 @@
 <head>
 	<meta charset="UTF-8">
 	<title>Screen Share</title>
-	<link rel="stylesheet" href="styles.css">
-	<script src="index.js" type="module" defer></script>
+	<style>
+* {
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
+}
+html, body, #video {
+	width: 100dvw;
+	height: 100dvh;
+}
+body {
+	overflow: hidden;
+}
+#video {
+	object-fit: contain;
+}
+	</style>
 </head>
 <body>
 	<video id="video" autoplay playsinline muted></video>
+	<script type="module">
+const video = document.getElementById("video");
+const peer = new RTCPeerConnection({
+    iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun.cloudflare.com:3478" }
+    ]
+});
+peer.addTransceiver("video", {
+	direction: "recvonly"
+});
+const offer = await peer.createOffer();
+await peer.setLocalDescription(offer);
+if (peer.iceGatheringState !== "complete") {
+	await new Promise((resolve) => {
+		peer.onicegatheringstatechange = () => {
+			if (peer.iceGatheringState === "complete") resolve();
+		};
+	});
+}
+const answerSdp = await (await fetch("/whip", {
+	method: "POST",
+	headers: { "Content-Type": "application/sdp" },
+	body: peer.localDescription.sdp,
+})).text();
+await peer.setRemoteDescription({ type: "answer", sdp: answerSdp });
+peer.ontrack = (e) => {
+	video.srcObject = e.streams[0];
+};
+	</script>
 </body>
 </html>
