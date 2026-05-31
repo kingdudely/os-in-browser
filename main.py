@@ -38,5 +38,5 @@ app.add_routes(routes)
 
 if __name__ == "__main__":
 	from pycloudflared import try_cloudflare
-	try_cloudflared(port=port, verbose=True)
+	try_cloudflare(port=port, verbose=True)
 	web.run_app(app, port=port)
