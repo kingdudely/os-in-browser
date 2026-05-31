@@ -53,12 +53,4 @@ print("J")
 print("K")
 if __name__ == "__main__":
 	print("L")
-	from with_cloudflared import cloudflared
-	print("M")
-	with cloudflared(port=port) as cloudflared_address:
-		print("N")
-		print(cloudflared_address)
-		print("O")
-		web.run_app(app, port=port)
-		print("P")
-	print("Q")
+	web.run_app(app, port=port)
