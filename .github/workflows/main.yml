@@ -37,9 +37,12 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ubuntu-desktop-minimal xvfb
-          # sudo reboot
+          sudo apt-get install -y --no-install-recommends xfce4 yaru-theme-gtk xvfb
           Xvfb :0 -screen 0 1920x1080x24 &
+          export DISPLAY=:0
+          xfce4-session &
+          xfconf-query -c xsettings -p /Net/ThemeName -s "Yaru"
+          xfconf-query -c xsettings -p /Net/IconThemeName -s "Yaru"
 
       - name: Install server dependencies
         run: |
