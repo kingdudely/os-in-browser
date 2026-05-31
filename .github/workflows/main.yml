@@ -17,9 +17,6 @@ defaults:
   run:
     shell: bash
 
-env:
-  PORT: 8080
-
 jobs:
   remote:
     runs-on: ${{ github.event.inputs.os }}
@@ -29,6 +26,12 @@ jobs:
       - name: Copy repository into PC
         uses: actions/checkout@main
 
+      - name: Setup Ubuntu desktop GUI
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ubuntu-desktop-minimal
+
       - name: Install Python
         uses: actions/setup-python@main
         with:
@@ -36,16 +39,8 @@ jobs:
 
       - name: Install server dependencies
         run: |
-          pip install av aiortc aiohttp
+          pip install av aiortc aiohttp pycloudflared
 
-      - name: Start Cloudflare tunnel
-        uses: anyvm-org/cf-tunnel@v0
-        id: tunnel
-        with:
-          protocol: http
-          port: ${{ env.PORT }}
-
-      - name: Cloudflare tunnel URL
+      - name: Start server
         run: |
-          echo https://${{ steps.tunnel.outputs.server }}
           python3 -u main.py
