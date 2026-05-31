@@ -3,7 +3,7 @@ from os import environ
 from aiohttp import web
 from aiortc.contrib.media import MediaPlayer
 
-port = environ["PORT"]
+port = int(environ["PORT"])
 screenshare_options = {"framerate": "30"}
 
 match platform:
