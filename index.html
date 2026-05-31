@@ -25,32 +25,71 @@ body {
 	<video id="video" autoplay playsinline muted></video>
 	<script type="module">
 const video = document.getElementById("video");
+console.log("[1] video element:", video);
+
 const peer = new RTCPeerConnection({
     iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun.cloudflare.com:3478" }
     ]
 });
-peer.addTransceiver("video", {
-	direction: "recvonly"
-});
+console.log("[2] RTCPeerConnection created");
+
+peer.oniceconnectionstatechange = () => console.log("[ICE]", peer.iceConnectionState);
+peer.onconnectionstatechange = () => console.log("[CONN]", peer.connectionState);
+peer.onsignalingstatechange = () => console.log("[SIG]", peer.signalingState);
+peer.onicegatheringstatechange = () => console.log("[GATHER]", peer.iceGatheringState);
+peer.onicecandidate = (e) => console.log("[CANDIDATE]", e.candidate?.candidate ?? "null (gathering done)");
+
+peer.addTransceiver("video", { direction: "recvonly" });
+console.log("[3] transceiver added");
+
 const offer = await peer.createOffer();
+console.log("[4] offer created");
 await peer.setLocalDescription(offer);
+console.log("[5] local description set");
+
 if (peer.iceGatheringState !== "complete") {
+	console.log("[6] waiting for ICE gathering...");
 	await new Promise((resolve) => {
 		peer.onicegatheringstatechange = () => {
+			console.log("[GATHER]", peer.iceGatheringState);
 			if (peer.iceGatheringState === "complete") resolve();
 		};
 	});
 }
-const answerSdp = await (await fetch("/whip", {
-	method: "POST",
-	headers: { "Content-Type": "application/sdp" },
-	body: peer.localDescription.sdp,
-})).text();
-await peer.setRemoteDescription({ type: "answer", sdp: answerSdp });
+console.log("[7] ICE gathering complete");
+
+console.log("[8] sending offer to /whip...");
+let whipResponse;
+try {
+	whipResponse = await fetch("/whip", {
+		method: "POST",
+		headers: { "Content-Type": "application/sdp" },
+		body: peer.localDescription.sdp,
+	});
+	console.log("[9] /whip response status:", whipResponse.status);
+} catch (err) {
+	console.error("[ERROR] fetch /whip failed:", err);
+	throw err;
+}
+
+const answerSdp = await whipResponse.text();
+console.log("[10] answer SDP received, length:", answerSdp.length);
+console.log("[10] answer SDP preview:", answerSdp.slice(0, 100));
+
+try {
+	await peer.setRemoteDescription({ type: "answer", sdp: answerSdp });
+	console.log("[11] remote description set");
+} catch (err) {
+	console.error("[ERROR] setRemoteDescription failed:", err);
+	throw err;
+}
+
 peer.ontrack = (e) => {
+	console.log("[TRACK]", e.track.kind, "streams:", e.streams.length);
 	video.srcObject = e.streams[0];
+	console.log("[12] video srcObject set");
 };
 	</script>
 </body>
