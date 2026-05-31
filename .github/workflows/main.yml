@@ -39,7 +39,7 @@ jobs:
 
       - name: Install server dependencies
         run: |
-          pip install av aiortc aiohttp pycloudflared
+          pip install -r requirements.txt
 
       - name: Start server
         run: |
