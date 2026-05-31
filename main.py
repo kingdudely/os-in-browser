@@ -32,7 +32,7 @@ async def whip(request):
 	await peer.setRemoteDescription(RTCSessionDescription(sdp=sdp, type="offer"))
 	answer = await peer.createAnswer()
 	await peer.setLocalDescription(answer)
-	return web.Response(text=pc.localDescription.sdp, content_type="application/sdp", status=201)
+	return web.Response(text=peer.localDescription.sdp, content_type="application/sdp", status=201)
 
 app.add_routes(routes)
 
