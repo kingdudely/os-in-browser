@@ -19,7 +19,6 @@ defaults:
 
 env:
   DISPLAY: ":0"
-  PORT: "8080"
 
 jobs:
   remote:
