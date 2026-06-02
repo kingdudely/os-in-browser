@@ -2,3 +2,4 @@ aiortc
 aiohttp
 with-cloudflared
 pynput
+pyee
