@@ -1,7 +1,13 @@
-from os import getenv
 from sys import platform
-from aiohttp import web
 from aiortc.contrib.media import MediaPlayer
+from os import getenv
+from pynput.mouse import Button, Controller as MouseController
+from pynput.keyboard import Key, Controller as KeyboardController
+from aiohttp import web
+from pyee import EventEmitter
+from struct import unpack
+from aiortc import RTCPeerConnection, RTCSessionDescription
+from with_cloudflared import cloudflared
 
 match platform:
 	case "linux":
@@ -17,17 +23,35 @@ match platform:
 		raise RuntimeError(f"Unsupported platform: {platform}")
 
 screenshare = get_screenshare(framerate="30")
+mouse = MouseController()
+keyboard = KeyboardController()
 app = web.Application()
 routes = web.RouteTableDef()
+datachannels = EventEmitter()
+
+@datachannels.on("mousemove")
+def mousemove(data):
+    x, y = unpack(">HH", data)
+    mouse.position = (x, y)
+
+@datachannels.on("click")
+def click(data):
+    mouse.click(Button.left)
 
 routes.static('/', './public', show_index=True)
 
 @routes.post("/whip")
 async def whip(request):
-	from aiortc import RTCPeerConnection, RTCSessionDescription
 	sdp = await request.text()
 	peer = RTCPeerConnection()
 	peer.addTrack(screenshare.video)
+
+	@peer.on("datachannel")
+	def on_datachannel(channel):
+	    @channel.on("message")
+	    def on_message(data):
+	        datachannels.emit(channel.label, data)
+
 	await peer.setRemoteDescription(RTCSessionDescription(sdp=sdp, type="offer"))
 	answer = await peer.createAnswer()
 	await peer.setLocalDescription(answer)
@@ -36,9 +60,7 @@ async def whip(request):
 app.add_routes(routes)
 
 if __name__ == "__main__":
-	from with_cloudflared import cloudflared
 	port = 8080
-
 	with cloudflared(port=port) as cloudflared_address:
 		print(cloudflared_address)
 		web.run_app(app, port=port)
