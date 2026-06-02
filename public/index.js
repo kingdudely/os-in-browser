@@ -4,6 +4,29 @@ peer.addEventListener("track", (event) => {
 	video.srcObject = event.streams[0];
 });
 
+const vectorBuffer = new Uint8Array(16);
+
+function writeUnsignedVarInt(value, outputBuffer, offset) {
+    value = Math.floor(value); 
+    if (value < 0 || value > Number.MAX_SAFE_INTEGER || Number.isNaN(value)) {
+        throw new Error(`Invalid value: ${value}`);
+    }
+    
+    while (value >= 128) {
+        outputBuffer[offset++] = (value % 128) + 128;
+        value = Math.floor(value / 128); 
+    }
+    
+    outputBuffer[offset++] = value;
+    return offset;
+}
+
+function unsignedVector2ToUint8Array(x, y) {
+    const xOffset = writeUnsignedVarInt(x, vectorBuffer, 0);
+    const yOffset = writeUnsignedVarInt(y, vectorBuffer, xOffset);
+    return vectorBuffer.subarray(0, yOffset);
+}
+
 async function connectToServerPeer() {
 	const peer = new RTCPeerConnection({
 		iceServers: [{
