@@ -9,6 +9,34 @@ from struct import unpack
 from aiortc import RTCPeerConnection, RTCSessionDescription
 from with_cloudflared import cloudflared
 
+def read_unsigned_var_int(buffer, offset):
+    value = 0
+    shift = 0
+    
+    while True:
+        if offset >= len(buffer):
+            raise ValueError("Buffer underflow while decoding VarInt")
+            
+        byte = buffer[offset]
+        offset += 1
+
+        value |= (byte & 0x7F) << shift
+
+        if (byte & 0x80) == 0:
+            break
+            
+        shift += 7
+        
+    return value, offset
+
+def bytes_to_point(buffer):
+    x, y_offset = read_unsigned_var_int(buffer, 0)
+    y, final_offset = read_unsigned_var_int(buffer, y_offset)
+	if x < 0 or y < 0:
+		raise Exception("Invalid point coordinates")
+    
+    return x, y
+
 match platform:
 	case "linux":
 		def get_screenshare(**options):
