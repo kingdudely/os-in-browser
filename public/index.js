@@ -4,7 +4,7 @@ peer.addEventListener("track", (event) => {
 	video.srcObject = event.streams[0];
 });
 
-const vectorBuffer = new Uint8Array(16);
+const pointBuffer = new Uint8Array(16);
 
 function writeUnsignedVarInt(value, outputBuffer, offset) {
     value = Math.floor(value); 
@@ -21,10 +21,10 @@ function writeUnsignedVarInt(value, outputBuffer, offset) {
     return offset;
 }
 
-function unsignedVector2ToUint8Array(x, y) {
-    const xOffset = writeUnsignedVarInt(x, vectorBuffer, 0);
-    const yOffset = writeUnsignedVarInt(y, vectorBuffer, xOffset);
-    return vectorBuffer.subarray(0, yOffset);
+function pointToBytes(x, y) {
+    const xOffset = writeUnsignedVarInt(x, pointBuffer, 0);
+    const yOffset = writeUnsignedVarInt(y, pointBuffer, xOffset);
+    return pointBuffer.subarray(0, yOffset);
 }
 
 async function connectToServerPeer() {
