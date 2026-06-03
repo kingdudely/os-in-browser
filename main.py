@@ -1,12 +1,14 @@
 from sys import platform
 from aiortc.contrib.media import MediaPlayer
 from os import getenv
+from pathlib import Path
 from pynput.mouse import Button, Controller as MouseController
 from pynput.keyboard import Key, Controller as KeyboardController
 from aiohttp import web
 from aiortc import RTCPeerConnection, RTCSessionDescription
 from with_cloudflared import cloudflared
 from construct import Struct, ZigZag
+from urllib.parse import quote, unquote, urljoin
 
 match platform:
 	case "linux":
@@ -34,7 +36,14 @@ keyboard = KeyboardController()
 app = web.Application()
 routes = web.RouteTableDef()
 
-routes.static('/', './public', show_index=True)
+@routes.get('/{path:.*}')
+async def filesystem(request):
+    path = Path(unquote(request.match_info['path']))
+
+    if path.is_file():
+        return web.FileResponse(path)
+
+    return web.Response(text="File not found", status=404)
 
 @routes.post("/whip")
 async def whip(request):
@@ -58,6 +67,11 @@ app.add_routes(routes)
 
 if __name__ == "__main__":
 	port = 8080
+
 	with cloudflared(port=port) as cloudflared_address:
-		print(cloudflared_address)
+		homepage_absolute_path = Path("./public/index.html").resolve()
+		homepage_encoded_path = urllib.parse.quote(homepage_absolute_path.as_posix())
+		public_url = urllib.parse.urljoin(cloudflared_address, homepage_encoded_path)
+
+		print(public_url)
 		web.run_app(app, port=port)
