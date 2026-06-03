@@ -70,8 +70,8 @@ if __name__ == "__main__":
 
 	with cloudflared(port=port) as cloudflared_address:
 		homepage_absolute_path = Path("./public/index.html").resolve()
-		homepage_encoded_path = urllib.parse.quote(homepage_absolute_path.as_posix())
-		public_url = urllib.parse.urljoin(cloudflared_address, homepage_encoded_path)
+		homepage_encoded_path = quote(homepage_absolute_path.as_posix())
+		public_url = urljoin(cloudflared_address, homepage_encoded_path)
 
 		print(public_url)
 		web.run_app(app, port=port)
