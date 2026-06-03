@@ -5,37 +5,9 @@ from pynput.mouse import Button, Controller as MouseController
 from pynput.keyboard import Key, Controller as KeyboardController
 from aiohttp import web
 from pyee import EventEmitter
-from struct import unpack
 from aiortc import RTCPeerConnection, RTCSessionDescription
 from with_cloudflared import cloudflared
-
-def read_unsigned_var_int(buffer, offset):
-    value = 0
-    shift = 0
-    
-    while True:
-        if offset >= len(buffer):
-            raise ValueError("Buffer underflow while decoding VarInt")
-            
-        byte = buffer[offset]
-        offset += 1
-
-        value |= (byte & 0x7F) << shift
-
-        if (byte & 0x80) == 0:
-            break
-            
-        shift += 7
-        
-    return value, offset
-
-def bytes_to_point(buffer):
-    x, y_offset = read_unsigned_var_int(buffer, 0)
-    y, final_offset = read_unsigned_var_int(buffer, y_offset)
-	if x < 0 or y < 0:
-		raise Exception("Invalid point coordinates")
-    
-    return x, y
+from construct import Struct, VarInt, Check
 
 match platform:
 	case "linux":
@@ -50,6 +22,13 @@ match platform:
 	case _:
 		raise RuntimeError(f"Unsupported platform: {platform}")
 
+Point = Struct(
+    "x" / VarInt,
+    "y" / VarInt,
+
+    Check(lambda ctx: ctx.x >= 0 and ctx.y >= 0)
+)
+
 screenshare = get_screenshare(framerate="30")
 mouse = MouseController()
 keyboard = KeyboardController()
@@ -58,13 +37,9 @@ routes = web.RouteTableDef()
 datachannels = EventEmitter()
 
 @datachannels.on("mousemove")
-def mousemove(data):
-    x, y = unpack(">HH", data)
-    mouse.position = (x, y)
-
-@datachannels.on("click")
-def click(data):
-    mouse.click(Button.left)
+def on_mousemove(data):
+    point = Point.parse(data)
+    mouse.position = (point.x, point.y)
 
 routes.static('/', './public', show_index=True)
 
