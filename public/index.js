@@ -6,7 +6,7 @@ peer.addEventListener("track", (event) => {
 
 const pointBuffer = new Uint8Array(16);
 
-function writeVarInt(value, outputBuffer, offset = 0) { 
+function writeUnsignedVarInt(value, outputBuffer, offset = 0) { 
 	if (!Number.isSafeInteger(value) || value < 0) {
 		throw new RangeError(`Invalid/unsafe unsigned integer: ${value}`);
 	}
