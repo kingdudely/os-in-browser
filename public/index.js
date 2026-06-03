@@ -4,6 +4,8 @@ peer.addEventListener("track", (event) => {
 	video.srcObject = event.streams[0];
 });
 
+const vector2Buffer = new Uint8Array(16);
+
 const pointermove = peer.createDataChannel("pointermove", {
 	ordered: false,
 	maxRetransmits: 0,
@@ -11,10 +13,10 @@ const pointermove = peer.createDataChannel("pointermove", {
 	id: 0
 });
 window.addEventListener("pointermove", (event) => {
-	
+	const offset = writeVector2(event.movementX, event.movementY);
+	pointermove.send(vector2Buffer.subarray(0, offset))
 });
 
-const vector2Buffer = new Uint8Array(16);
 const encodeZigZag = (x) => Math.abs(x) * 2 - (x < 0);
 
 function writeUnsignedVarInt(value, outputBuffer, offset) { 
