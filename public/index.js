@@ -13,8 +13,8 @@ const pointermove = peer.createDataChannel("pointermove", {
 	id: 0
 });
 window.addEventListener("pointermove", (event) => {
-	const offset = writeVector2(event.movementX, event.movementY);
-	pointermove.send(vector2Buffer.subarray(0, offset))
+	const offset = writeVector2(event.movementX, event.movementY, vector2Buffer, 0);
+	pointermove.send(vector2Buffer.subarray(0, offset));
 });
 
 const encodeZigZag = (x) => Math.abs(x) * 2 - (x < 0);
@@ -39,9 +39,9 @@ function writeSignedVarInt(value, outputBuffer, offset) {
 	return writeUnsignedVarInt(encodeZigZag(value), outputBuffer, offset);
 }
 
-function writeVector2(x, y) {
-    const xOffset = writeSignedVarInt(x, pointBuffer, 0);
-    const yOffset = writeSignedVarInt(y, pointBuffer, xOffset);
+function writeVector2(x, y, outputBuffer, offset) {
+    const xOffset = writeSignedVarInt(x, outputBuffer, offset);
+    const yOffset = writeSignedVarInt(y, outputBuffer, xOffset);
     return yOffset;
 }
 
