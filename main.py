@@ -11,12 +11,15 @@ from construct import Struct, ZigZag
 match platform:
 	case "linux":
 		def get_screenshare(**options):
+			options.setdefault("draw_mouse", "1")
 			return MediaPlayer(getenv("DISPLAY", ":0"), format="x11grab", options=options) # :0.0
 	case "darwin":
 		def get_screenshare(**options):
+			options.setdefault("capture_mouse", "1")
 			return MediaPlayer("Capture screen 0", format="avfoundation", options=options)
 	case "win32":
 		def get_screenshare(**options):
+			options.setdefault("draw_mouse", "1")
 			return MediaPlayer("desktop", format="gdigrab", options=options)
 	case _:
 		raise RuntimeError(f"Unsupported platform: {platform}")
@@ -26,7 +29,6 @@ Vector2 = Struct(
 	"y" / ZigZag,
 )
 
-screenshare = get_screenshare(framerate="30")
 mouse = MouseController()
 keyboard = KeyboardController()
 app = web.Application()
@@ -36,6 +38,7 @@ routes.static('/', './public', show_index=True)
 
 @routes.post("/whip")
 async def whip(request):
+	screenshare = get_screenshare(framerate="30")
 	sdp = await request.text()
 	peer = RTCPeerConnection()
 	peer.addTrack(screenshare.video)
