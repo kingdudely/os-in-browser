@@ -4,10 +4,9 @@ from os import getenv
 from pynput.mouse import Button, Controller as MouseController
 from pynput.keyboard import Key, Controller as KeyboardController
 from aiohttp import web
-from pyee import EventEmitter
 from aiortc import RTCPeerConnection, RTCSessionDescription
 from with_cloudflared import cloudflared
-from construct import Struct, VarInt, Check
+from construct import Struct, ZigZag
 
 match platform:
 	case "linux":
@@ -22,11 +21,9 @@ match platform:
 	case _:
 		raise RuntimeError(f"Unsupported platform: {platform}")
 
-Point = Struct(
-	"x" / VarInt,
-	"y" / VarInt,
-
-	Check(lambda ctx: ctx.x >= 0 and ctx.y >= 0)
+Vector2 = Struct(
+	"x" / ZigZag,
+	"y" / ZigZag,
 )
 
 screenshare = get_screenshare(framerate="30")
@@ -34,12 +31,6 @@ mouse = MouseController()
 keyboard = KeyboardController()
 app = web.Application()
 routes = web.RouteTableDef()
-datachannels = EventEmitter()
-
-@datachannels.on("mousemove")
-def on_mousemove(data):
-	point = Point.parse(data)
-	mouse.position = (point.x, point.y)
 
 routes.static('/', './public', show_index=True)
 
@@ -49,11 +40,11 @@ async def whip(request):
 	peer = RTCPeerConnection()
 	peer.addTrack(screenshare.video)
 
-	@peer.on("datachannel")
-	def on_datachannel(channel):
-		@channel.on("message")
-		def on_message(data):
-			datachannels.emit(channel.label, data)
+	pointermove = peer.createDataChannel("pointermove", ordered=False, maxRetransmits=0, negotiated=True, id=0)
+	@pointermove.on("message")
+	def on_pointermove(data):
+		mouseMovement = Vector2.parse(data)
+		mouse.move(mouseMovement.x, mouseMovement.y)
 
 	await peer.setRemoteDescription(RTCSessionDescription(sdp=sdp, type="offer"))
 	answer = await peer.createAnswer()
