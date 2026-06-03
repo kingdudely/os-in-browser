@@ -6,19 +6,16 @@ peer.addEventListener("track", (event) => {
 
 const pointBuffer = new Uint8Array(16);
 
-function writeUnsignedVarInt(value, outputBuffer, offset) {
-    value = Math.floor(value); 
-    if (value < 0 || value > Number.MAX_SAFE_INTEGER || Number.isNaN(value)) {
-        throw new Error(`Invalid value: ${value}`);
-    }
-    
-    while (value >= 128) {
-        outputBuffer[offset++] = (value % 128) + 128;
-        value = Math.floor(value / 128); 
-    }
-    
-    outputBuffer[offset++] = value;
-    return offset;
+function writeVarInt(value, outputBuffer, offset = 0) { 
+	if (!Number.isSafeInteger(value) || value < 0) {
+		throw new RangeError(`Invalid/unsafe unsigned integer: ${value}`);
+	}
+
+	do {
+		outputBuffer[offset++] = (value & 0x7F) | (value > 0x7F ? 0x80 : 0);
+	} while ((value = Math.floor(value / 128)) > 0);  
+
+	return offset;
 }
 
 function pointToBytes(x, y) {
