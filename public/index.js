@@ -13,6 +13,7 @@ const pointermove = peer.createDataChannel("pointermove", {
 	id: 0
 });
 window.addEventListener("pointermove", (event) => {
+	if (pointermove.readyState !== "open") return;
 	const offset = writeVector2(event.movementX, event.movementY, vector2Buffer, 0);
 	pointermove.send(vector2Buffer.subarray(0, offset));
 });
