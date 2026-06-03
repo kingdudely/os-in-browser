@@ -15,4 +15,5 @@ body {
 
 #video {
 	object-fit: contain;
+	cursor: none;
 }
