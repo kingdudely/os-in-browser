@@ -23,10 +23,10 @@ match platform:
 		raise RuntimeError(f"Unsupported platform: {platform}")
 
 Point = Struct(
-    "x" / VarInt,
-    "y" / VarInt,
+	"x" / VarInt,
+	"y" / VarInt,
 
-    Check(lambda ctx: ctx.x >= 0 and ctx.y >= 0)
+	Check(lambda ctx: ctx.x >= 0 and ctx.y >= 0)
 )
 
 screenshare = get_screenshare(framerate="30")
@@ -38,8 +38,8 @@ datachannels = EventEmitter()
 
 @datachannels.on("mousemove")
 def on_mousemove(data):
-    point = Point.parse(data)
-    mouse.position = (point.x, point.y)
+	point = Point.parse(data)
+	mouse.position = (point.x, point.y)
 
 routes.static('/', './public', show_index=True)
 
@@ -51,9 +51,9 @@ async def whip(request):
 
 	@peer.on("datachannel")
 	def on_datachannel(channel):
-	    @channel.on("message")
-	    def on_message(data):
-	        datachannels.emit(channel.label, data)
+		@channel.on("message")
+		def on_message(data):
+			datachannels.emit(channel.label, data)
 
 	await peer.setRemoteDescription(RTCSessionDescription(sdp=sdp, type="offer"))
 	answer = await peer.createAnswer()
