@@ -4,9 +4,20 @@ peer.addEventListener("track", (event) => {
 	video.srcObject = event.streams[0];
 });
 
-const pointBuffer = new Uint8Array(16);
+const pointermove = peer.createDataChannel("pointermove", {
+	ordered: false,
+	maxRetransmits: 0,
+	negotiated: true,
+	id: 0
+});
+window.addEventListener("pointermove", (event) => {
+	
+});
 
-function writeUnsignedVarInt(value, outputBuffer, offset = 0) { 
+const vector2Buffer = new Uint8Array(16);
+const encodeZigZag = (x) => Math.abs(x) * 2 - (x < 0);
+
+function writeUnsignedVarInt(value, outputBuffer, offset) { 
 	if (!Number.isSafeInteger(value) || value < 0) {
 		throw new RangeError(`Invalid/unsafe unsigned integer: ${value}`);
 	}
@@ -16,12 +27,20 @@ function writeUnsignedVarInt(value, outputBuffer, offset = 0) {
 	} while ((value = Math.floor(value / 128)) > 0);  
 
 	return offset;
+};
+
+function writeSignedVarInt(value, outputBuffer, offset) {
+	if (!Number.isSafeInteger(value)) {
+		throw new RangeError(`Unsafe signed integer: ${value}`);
+	}
+
+	return writeUnsignedVarInt(encodeZigZag(value), outputBuffer, offset);
 }
 
-function pointToBytes(x, y) {
-    const xOffset = writeUnsignedVarInt(x, pointBuffer, 0);
-    const yOffset = writeUnsignedVarInt(y, pointBuffer, xOffset);
-    return pointBuffer.subarray(0, yOffset);
+function writeVector2(x, y) {
+    const xOffset = writeSignedVarInt(x, pointBuffer, 0);
+    const yOffset = writeSignedVarInt(y, pointBuffer, xOffset);
+    return yOffset;
 }
 
 async function connectToServerPeer() {
