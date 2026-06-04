@@ -1,11 +1,11 @@
 from sys import platform
 from aiortc.contrib.media import MediaPlayer
 from os import getenv
-from pathlib import Path
 from pynput.mouse import Button, Controller as MouseController
 from pynput.keyboard import Key, Controller as KeyboardController
 from aiohttp import web
 from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiohttp_index import IndexMiddleware
 from with_cloudflared import cloudflared
 from construct import Struct, ZigZag
 from urllib.parse import quote, unquote, urljoin
@@ -33,10 +33,10 @@ Vector2 = Struct(
 
 mouse = MouseController()
 keyboard = KeyboardController()
-app = web.Application()
+app = web.Application(middlewares=[IndexMiddleware()])
 routes = web.RouteTableDef()
 
-routes.static('/', '/', show_index=True)
+routes.static('/', './public')
 
 @routes.post("/whip")
 async def whip(request):
@@ -62,9 +62,5 @@ if __name__ == "__main__":
 	port = 8080
 
 	with cloudflared(port=port) as cloudflared_address:
-		homepage_absolute_path = Path("./public/index.html").resolve().as_posix()
-		homepage_encoded_path = quote(homepage_absolute_path)
-		public_url = urljoin(cloudflared_address, homepage_encoded_path)
-
-		print(public_url)
+		print(f"Click on this to access your desktop: {cloudflared_address}")
 		web.run_app(app, port=port)
