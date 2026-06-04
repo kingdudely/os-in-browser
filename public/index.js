@@ -1,7 +1,7 @@
-const video = document.getElementById("video");
+const screenshare = document.getElementById("screenshare");
 const peer = await connectToServerPeer();
 peer.addEventListener("track", (event) => {
-	video.srcObject = event.streams[0];
+	screenshare.srcObject = event.streams[0];
 });
 
 const vector2Buffer = new Uint8Array(16);
