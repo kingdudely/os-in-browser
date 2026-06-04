@@ -5,13 +5,13 @@
 	user-select: none;
 } 
 
-html, body, #video { 
+html, body, #screenshare { 
 	width: 100dvw; 
 	height: 100dvh; 
 	overflow: hidden; 
 } 
 
-#video {
+#screenshare {
 	object-fit: contain; 
 	image-rendering: pixelated; 
 	contain: strict;
