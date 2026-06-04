@@ -1,19 +1,20 @@
-* {
-	margin: 0;
-	padding: 0;
-	box-sizing: border-box;
-}
+* { 
+	margin: 0; 
+	padding: 0; 
+	box-sizing: border-box; 
+	user-select: none;
+} 
 
-html, body, #video {
-	width: 100dvw;
-	height: 100dvh;
-}
-
-body {
-	overflow: hidden;
-}
+html, body, #video { 
+	width: 100dvw; 
+	height: 100dvh; 
+	overflow: hidden; 
+} 
 
 #video {
-	object-fit: contain;
-	cursor: none;
+	object-fit: contain; 
+	image-rendering: pixelated; 
+	contain: strict;
+	touch-action: none;
+	cursor: crosshair;
 }
