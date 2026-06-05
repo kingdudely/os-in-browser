@@ -12,15 +12,13 @@ const waitForIceGathering = async (peer) =>
 		}
 	});
 
-export default async function ConnectToServerPeer() {
+export default async function ConnectToServerPeer(configuration = {}) {
 	const peer = new RTCPeerConnection({
-		iceServers: [{
-				urls: "stun:stun.l.google.com:19302"
-			},
-			{
-				urls: "stun:stun.cloudflare.com:3478"
-			}
-		]
+		iceServers: [
+			{ urls: "stun:stun.l.google.com:19302" },
+			{ urls: "stun:stun.cloudflare.com:3478" }
+		],
+		...configuration
 	});
 
 	peer.addTransceiver("audio", {
