@@ -1,0 +1,6 @@
+syntax = "proto3";
+
+message MouseMovement {
+	sint32 x = 1;
+	sint32 y = 2;
+}
