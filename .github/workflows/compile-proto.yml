@@ -1,0 +1,47 @@
+name: Compile Protobuf
+
+on:
+  push:
+    paths:
+      - 'protocol.proto'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Protoc Compiler
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Install JS Plugin
+        run: npm install protoc-gen-js
+
+      - name: Compile protocol.proto
+        run: |
+          npx protoc --python_out=. --js_out=import_style=commonjs,binary:./public protocol.proto
+
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add protocol_pb2.py ./public/protocol_pb.js
+          
+          if ! git diff-index --quiet HEAD; then
+            git commit -m "chore: auto-compile protocol for python and js [skip ci]"
+            git push
+          else
+            echo "No changes to commit."
+          fi
