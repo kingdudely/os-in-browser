@@ -21,11 +21,9 @@ export default async function ConnectToServerPeer(configuration = {}) {
 		...configuration
 	});
 
-	/*
 	peer.addTransceiver("audio", {
 		direction: "recvonly"
 	});
-	*/
 
 	peer.addTransceiver("video", {
 		direction: "recvonly"

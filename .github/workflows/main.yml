@@ -19,6 +19,8 @@ defaults:
 
 env:
   DISPLAY: ":0"
+  USERNAME: ${{ secrets.USERNAME }}
+  PASSWORD: ${{ secrets.PASSWORD }}
 
 jobs:
   remote:

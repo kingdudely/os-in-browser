@@ -1,4 +1,4 @@
-# TODO: use protobuf
+# TODO: use protobuf maybe, support audio, maybe support touchscreen and stylus and microphone and camera...
 from sys import platform
 from aiortc.contrib.media import MediaPlayer
 from os import getenv
@@ -7,8 +7,12 @@ from pynput.keyboard import Key, Controller as KeyboardController
 from aiohttp import web
 from aiortc import RTCPeerConnection, RTCSessionDescription
 from aiohttp_index import IndexMiddleware
+from aiohttp_basicauth import BasicAuthMiddleware
 from with_cloudflared import cloudflared
 from construct import Struct, ZigZag
+
+username = getenv("USERNAME", "")
+password = getenv("PASSWORD", "")
 
 match platform:
 	case "linux":
@@ -33,7 +37,7 @@ Vector2 = Struct(
 
 mouse = MouseController()
 keyboard = KeyboardController()
-app = web.Application(middlewares=[IndexMiddleware()])
+app = web.Application(middlewares=[IndexMiddleware(), BasicAuthMiddleware(username=username, password=password)])
 routes = web.RouteTableDef()
 
 routes.static('/', '../client')
