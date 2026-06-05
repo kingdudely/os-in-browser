@@ -8,7 +8,6 @@ from aiortc import RTCPeerConnection, RTCSessionDescription
 from aiohttp_index import IndexMiddleware
 from with_cloudflared import cloudflared
 from construct import Struct, ZigZag
-from urllib.parse import quote, unquote, urljoin
 
 match platform:
 	case "linux":
