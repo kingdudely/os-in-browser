@@ -36,7 +36,7 @@ keyboard = KeyboardController()
 app = web.Application(middlewares=[IndexMiddleware()])
 routes = web.RouteTableDef()
 
-routes.static('/', './public')
+routes.static('/', '../client')
 
 @routes.post("/whip")
 async def whip(request):
