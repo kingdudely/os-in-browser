@@ -9,10 +9,15 @@ from aiortc import RTCPeerConnection, RTCSessionDescription
 from aiohttp_index import IndexMiddleware
 from aiohttp_basicauth import BasicAuthMiddleware
 from with_cloudflared import cloudflared
-from construct import Struct, ZigZag
+from struct import unpack
 
 username = getenv("USERNAME", "")
 password = getenv("PASSWORD", "")
+BUTTON_MAP = {
+    0: Button.left,
+    1: Button.middle,
+    2: Button.right
+}
 
 match platform:
 	case "linux":
@@ -29,11 +34,6 @@ match platform:
 			return MediaPlayer("desktop", format="gdigrab", options=options)
 	case _:
 		raise RuntimeError(f"Unsupported platform: {platform}")
-
-Vector2 = Struct(
-	"x" / ZigZag,
-	"y" / ZigZag,
-)
 
 mouse = MouseController()
 keyboard = KeyboardController()
@@ -52,8 +52,26 @@ async def whip(request):
 	pointermove = peer.createDataChannel("pointermove", ordered=False, maxRetransmits=0, negotiated=True, id=0)
 	@pointermove.on("message")
 	def on_pointermove(data):
-		mouseMovement = Vector2.parse(data)
-		mouse.move(mouseMovement.x, mouseMovement.y)
+		movementX, movementY = unpack("<hh", data)
+		mouse.move(movementX, movementY)
+
+	pointerdown = peer.createDataChannel("pointerdown", ordered=True, negotiated=True, id=1)
+	@pointerdown.on("message")
+	def on_pointerdown(data):
+		button_code = data[0]  # Extracts the integer value from the bytes object
+		button = BUTTON_MAP.get(button_code)
+		
+		if button:
+			mouse.press(button)
+
+	pointerup = peer.createDataChannel("pointerup", ordered=True, negotiated=True, id=2)
+	@pointerup.on("message")
+	def on_pointerup(data):
+		button_code = data[0]
+		button = BUTTON_MAP.get(button_code)
+
+		if button:
+			mouse.release(button)
 
 	await peer.setRemoteDescription(RTCSessionDescription(sdp=sdp, type="offer"))
 	answer = await peer.createAnswer()

@@ -1,6 +1,0 @@
-syntax = "proto3";
-
-message Vector2 {
-	sint32 x = 1;
-	sint32 y = 2;
-}
