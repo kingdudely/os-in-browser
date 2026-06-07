@@ -53,4 +53,4 @@ jobs:
 
       - name: Start server
         run: |
-          python3 -u main.py # debug for now - later do nohup python3 main.py & and maybe combine it with pip and install python and put cf-setup@v0 after this
+          python3 -u server/main.py # debug for now - later do nohup python3 main.py & and maybe combine it with pip and install python and put cf-setup@v0 after this
