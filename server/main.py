@@ -58,7 +58,7 @@ async def whip(request):
 	pointerdown = peer.createDataChannel("pointerdown", ordered=True, negotiated=True, id=1)
 	@pointerdown.on("message")
 	def on_pointerdown(data):
-		button_code = data[0]  # Extracts the integer value from the bytes object
+		button_code = data[0]
 		button = BUTTON_MAP.get(button_code)
 		
 		if button:
