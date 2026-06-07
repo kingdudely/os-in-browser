@@ -13,10 +13,42 @@ from struct import unpack
 
 username = getenv("USERNAME", "")
 password = getenv("PASSWORD", "")
+
 BUTTON_MAP = {
     0: Button.left,
     1: Button.middle,
     2: Button.right
+}
+
+CODE_MAP = {
+    "KeyA": "a", "KeyB": "b", "KeyC": "c", "KeyD": "d", "KeyE": "e", "KeyF": "f",
+    "KeyG": "g", "KeyH": "h", "KeyI": "i", "KeyJ": "j", "KeyK": "k", "KeyL": "l",
+    "KeyM": "m", "KeyN": "n", "KeyO": "o", "KeyP": "p", "KeyQ": "q", "KeyR": "r",
+    "KeyS": "s", "KeyT": "t", "KeyU": "u", "KeyV": "v", "KeyW": "w", "KeyX": "x",
+    "KeyY": "y", "KeyZ": "z",
+
+    "Digit1": "1", "Digit2": "2", "Digit3": "3", "Digit4": "4", "Digit5": "5",
+    "Digit6": "6", "Digit7": "7", "Digit8": "8", "Digit9": "9", "Digit0": "0",
+
+    "ShiftLeft": Key.shift, "ShiftRight": Key.shift_r,
+    "ControlLeft": Key.ctrl, "ControlRight": Key.ctrl_r,
+    "AltLeft": Key.alt, "AltRight": Key.alt_r,
+    "MetaLeft": Key.cmd, "MetaRight": Key.cmd,
+
+    "Enter": Key.enter,
+    "Backspace": Key.backspace,
+    "Tab": Key.tab,
+    "Space": Key.space,
+    "Escape": Key.esc,
+    "Delete": Key.delete,
+    "ArrowUp": Key.up,
+    "ArrowDown": Key.down,
+    "ArrowLeft": Key.left,
+    "ArrowRight": Key.right,
+
+    "Semicolon": ";", "Equal": "=", "Comma": ",", "Minus": "-", "Period": ".",
+    "Slash": "/", "Backquote": "`", "BracketLeft": "[", "BracketRight": "]",
+    "Backslash": "\\", "Quote": "'",
 }
 
 match platform:
@@ -49,29 +81,39 @@ async def whip(request):
 	peer = RTCPeerConnection()
 	peer.addTrack(screenshare.video)
 
-	pointermove = peer.createDataChannel("pointermove", ordered=False, maxRetransmits=0, negotiated=True, id=0)
-	@pointermove.on("message")
-	def on_pointermove(data):
+	pointer_movement_channel = peer.createDataChannel("pointer-movement", ordered=False, maxRetransmits=0, negotiated=True, id=0)
+	@pointer_movement_channel.on("message")
+	def on_pointer_movement(data):
 		movementX, movementY = unpack("<hh", data)
 		mouse.move(movementX, movementY)
 
-	pointerdown = peer.createDataChannel("pointerdown", ordered=True, negotiated=True, id=1)
-	@pointerdown.on("message")
-	def on_pointerdown(data):
-		button_code = data[0]
+	pointer_click_channel = peer.createDataChannel("pointer-click", ordered=True, negotiated=True, id=1)
+	@pointer_click_channel.on("message")
+	def on_pointer_click(data):
+		is_down = data[0] == 1
+		button_code = data[1]
 		button = BUTTON_MAP.get(button_code)
 		
 		if button:
-			mouse.press(button)
+			if is_down:
+				mouse.press(button)
+			else:
+				mouse.release(button)
 
-	pointerup = peer.createDataChannel("pointerup", ordered=True, negotiated=True, id=2)
-	@pointerup.on("message")
-	def on_pointerup(data):
-		button_code = data[0]
-		button = BUTTON_MAP.get(button_code)
+	keyboard_channel = peer.createDataChannel("keyboard", ordered=True, negotiated=True, id=2)
+	@keyboard_channel.on("message")
+	def on_keyboard(data):
+		print(type(data))
+		is_down = data[0] == 1
+		code = data[1:]
 
-		if button:
-			mouse.release(button)
+		target_key = CODE_MAP.get(code)
+		
+		if target_key:
+			if is_down:
+				keyboard.press(target_key)
+			else:
+				keyboard.release(target_key)
 
 	await peer.setRemoteDescription(RTCSessionDescription(sdp=sdp, type="offer"))
 	answer = await peer.createAnswer()

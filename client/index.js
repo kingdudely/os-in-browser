@@ -1,48 +1,68 @@
 import ConnectToServerPeer from "./ConnectToServerPeer.js";
 
 const screenshare = document.getElementById("screenshare");
+
+const sharedBuffer = new ArrayBuffer(100);
+const sharedBytes = new Uint8Array(sharedBuffer);
+const sharedView = new DataView(sharedBuffer);
+
 const peer = await ConnectToServerPeer();
 peer.addEventListener("track", (event) => {
 	screenshare.srcObject = event.streams[0];
 });
 
-const pointerMovement = new DataView(new ArrayBuffer(2));
-
-const pointermove = peer.createDataChannel("pointermove", {
+const pointerMovementChannel = peer.createDataChannel("pointer-movement", {
 	ordered: false,
 	maxRetransmits: 0,
 	negotiated: true,
 	id: 0
 });
 
-window.addEventListener("pointermove", (event) => { // pointerrawupdate - safari doesn't support unfortunately (I wish MacOS had touchscreen and stylus APIs)
-	if (pointermove.readyState !== "open") return;
-	pointerMovement.setInt16(0, event.movementX, true);
-	pointerMovement.setInt16(2, event.movementY, true);
-	pointermove.send(pointerMovement);
+screenshare.addEventListener("pointermove", (event) => { // pointerrawupdate - safari doesn't support unfortunately (I wish MacOS had touchscreen and stylus APIs)
+	if (pointerMovementChannel.readyState !== "open") return;
+	sharedView.setInt16(0, event.movementX, true);
+	sharedView.setInt16(2, event.movementY, true);
+	pointerMovementChannel.send(sharedBytes.subarray(0, 4));
 });
 
-const pointerButton = new Uint8Array(1);
-
-const pointerdown = peer.createDataChannel("pointerdown", {
+const pointerClickChannel = peer.createDataChannel("pointer-click", {
 	ordered: true,
 	negotiated: true,
 	id: 1
 });
 
-window.addEventListener("pointerdown", (event) => {
-	pointerButton[0] = event.button;
-	pointerdown.send(pointerButton);
-})
+screenshare.addEventListener("pointerdown", (event) => {
+	if (pointerClickChannel.readyState !== "open") return;
+	if (!document.pointerLockElement) {
+        screenshare.requestPointerLock({
+			unadjustedMovement: true
+        }).catch(console.warn);
+    }
 
-const pointerup = peer.createDataChannel("pointerup", {
+	sharedView.setUint8(0, 1); // isDown
+	sharedView.setUint8(1, event.button);
+	pointerClickChannel.send(sharedBytes.subarray(0, 2));
+});
+
+screenshare.addEventListener("pointerup", (event) => {
+	if (pointerClickChannel.readyState !== "open") return;
+	sharedView.setUint8(0, 0); // isDown
+	sharedView.setUint8(1, event.button);
+	pointerClickChannel.send(sharedBytes.subarray(0, 2));
+});
+
+const keyboardChannel = peer.createDataChannel("keyboard", {
 	ordered: true,
 	negotiated: true,
 	id: 2
 });
 
-window.addEventListener("pointerup", (event) => {
-	pointerButton[0] = event.button;
-	pointerup.send(pointerButton);
-})
+screenshare.addEventListener("keydown", (event) => {
+	if (keyboardChannel.readyState !== "open") return;
+	keyboardChannel.send(`\x01${event.code}`);
+});
 
+screenshare.addEventListener("keyup", (event) => {
+	if (keyboardChannel.readyState !== "open") return;
+	keyboardChannel.send(`\x00${event.code}`);
+})
