@@ -40,7 +40,7 @@ keyboard = KeyboardController()
 app = web.Application(middlewares=[IndexMiddleware(), BasicAuthMiddleware(username=username, password=password)])
 routes = web.RouteTableDef()
 
-routes.static('/', '../client')
+routes.static('/', './client')
 
 @routes.post("/whip")
 async def whip(request):
