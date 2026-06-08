@@ -7,29 +7,30 @@ jobs:
     runs-on: macos-latest
 
     steps:
-    - name: Public IP
+    - name: Bypass firewall
+      run: |
+        sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate off
+        sudo pfctl -d 2>/dev/null || true
+
+    - name: Get public IP
       id: ip
       uses: haythem/public-ip@v1.3
 
-    - name: Print Public IP
-      run: |
-        echo ${{ steps.ip.outputs.ipv4 }}
-        echo ${{ steps.ip.outputs.ipv6 }}
+    - name: Print public IP
+      run: echo "http://${{ steps.ip.outputs.ipv4 }}:8080"
 
     - name: Create HTML page
       run: |
-        cat > /tmp/index.html << 'EOF'
+        mkdir -p /tmp/site
+        cat > /tmp/site/index.html << 'EOF'
         <!DOCTYPE html>
         <html>
-          <head><title>GitHub Actions Runner</title></head>
+          <head><title>hello</title></head>
           <body>
-            <h1>Hello from GitHub Actions!</h1>
-            <p>Runner IP: ${{ steps.ip.outputs.ipv4 }}</p>
+            <h1>hello from github actions</h1>
           </body>
         </html>
         EOF
 
     - name: Serve HTML
-      run: |
-        echo "Serving at http://${{ steps.ip.outputs.ipv4 }}:8080"
-        cd /tmp && python3 -m http.server 8080
+      run: cd /tmp/site && python3 -m http.server 8080
