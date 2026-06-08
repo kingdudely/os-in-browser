@@ -63,7 +63,7 @@ CODE_MAP = {
     "Backslash": "\\", "Quote": "'",
 }
 
-async def create_peer(offer):
+async def get_answer(offer):
 	screenshare = get_screenshare(framerate="30")
 	peer = RTCPeerConnection()
 	peer.addTrack(screenshare.video)
@@ -104,4 +104,4 @@ async def create_peer(offer):
 	await peer.setRemoteDescription(RTCSessionDescription(sdp=offer, type="offer"))
 	answer = await peer.createAnswer()
 	await peer.setLocalDescription(answer)
-	return peer
+	return peer.localDescription.sdp # answer.sdp

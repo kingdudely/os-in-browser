@@ -3,7 +3,7 @@ from aiohttp import web
 from aiohttp_index import IndexMiddleware
 from aiohttp_basicauth import BasicAuthMiddleware
 from with_cloudflared import cloudflared
-from peer import create_peer
+from answerer import get_answer
 
 username = getenv("USERNAME", "")
 password = getenv("PASSWORD", "")
@@ -16,8 +16,8 @@ routes.static('/', './client')
 @routes.post("/whip")
 async def whip(request):
 	offer = await request.text()
-	peer = await create_peer(offer)
-	return web.Response(text=peer.localDescription.sdp, content_type="application/sdp", status=201)
+	answer = await get_answer(offer)
+	return web.Response(text=answer, content_type="application/sdp", status=201)
 
 app.add_routes(routes)
 
