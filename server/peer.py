@@ -65,7 +65,6 @@ CODE_MAP = {
 
 async def create_peer(offer):
 	screenshare = get_screenshare(framerate="30")
-	sdp = await request.text()
 	peer = RTCPeerConnection()
 	peer.addTrack(screenshare.video)
 
