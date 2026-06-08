@@ -1,5 +1,18 @@
 // TODO: make this in /docs and the flow will be createOffer, paste in workflow input, then click on link to open in new tab
 import ConnectToServerPeer from "./ConnectToServerPeer.js";
+async function enableImmersiveMode(target) {
+	if (document.fullscreenEnabled && !document.fullscreenElement) {
+		await target.requestFullscreen({ 
+			"navigationUI": "hide" 
+		});
+	};
+
+	if (!document.pointerLockElement) {
+		await target.requestPointerLock({
+			"unadjustedMovement": true
+        });
+	}
+}
 
 const screenshare = document.getElementById("screenshare");
 
@@ -34,11 +47,7 @@ const pointerClickChannel = peer.createDataChannel("pointer-click", {
 
 screenshare.addEventListener("pointerdown", (event) => {
 	if (pointerClickChannel.readyState !== "open") return;
-	if (!document.pointerLockElement) {
-        screenshare.requestPointerLock({
-			unadjustedMovement: true
-        }).catch(console.warn);
-    }
+	enableImmersiveMode(screenshare).catch(console.warn);
 
 	sharedView.setUint8(0, 1); // isDown
 	sharedView.setUint8(1, event.button);
@@ -60,6 +69,8 @@ const keyboardChannel = peer.createDataChannel("keyboard", {
 
 screenshare.addEventListener("keydown", (event) => {
 	if (keyboardChannel.readyState !== "open") return;
+	enableImmersiveMode(screenshare).catch(console.warn);
+
 	keyboardChannel.send(`\x01${event.code}`);
 });
 
