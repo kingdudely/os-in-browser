@@ -1,3 +1,4 @@
+// TODO: make this in /docs and the flow will be createOffer, paste in workflow input, then click on link to open in new tab
 import ConnectToServerPeer from "./ConnectToServerPeer.js";
 
 const screenshare = document.getElementById("screenshare");
