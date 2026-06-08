@@ -15,4 +15,21 @@ jobs:
       run: |
         echo ${{ steps.ip.outputs.ipv4 }}
         echo ${{ steps.ip.outputs.ipv6 }}
-        sleep infinity
+
+    - name: Create HTML page
+      run: |
+        cat > /tmp/index.html << 'EOF'
+        <!DOCTYPE html>
+        <html>
+          <head><title>GitHub Actions Runner</title></head>
+          <body>
+            <h1>Hello from GitHub Actions!</h1>
+            <p>Runner IP: ${{ steps.ip.outputs.ipv4 }}</p>
+          </body>
+        </html>
+        EOF
+
+    - name: Serve HTML
+      run: |
+        echo "Serving at http://${{ steps.ip.outputs.ipv4 }}:8080"
+        cd /tmp && python3 -m http.server 8080
