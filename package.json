@@ -10,6 +10,9 @@
 	"scripts": {
 		"start": "nw ."
 	},
+	"window": {
+		"icon": "67.png"
+	},
 	"dependencies": {
 		"nw": "^0.112.0"
 	}
