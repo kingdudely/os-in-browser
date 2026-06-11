@@ -10,7 +10,7 @@ const RTCPeerConnectionInit = {
 }
 
 // Only supports this in exact order: audio, video, data channel
-class Peer extends RTCPeerConnection {
+export default class Peer extends RTCPeerConnection {
 	#srflxCandidate;
 	#srflxCandidatePromise = new Promise((resolve) => {
 		this.addEventListener("icecandidate", function onCandidate(event) {
