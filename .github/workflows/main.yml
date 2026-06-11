@@ -41,7 +41,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@main
         with:
-          node-version: 24
+          node-version: 26
 
       - name: Install server dependencies
         run: |
