@@ -27,9 +27,8 @@ class Peer extends RTCPeerConnection {
 	};
 
 	async getShareId() {
-		await this.setLocalDescription()
-		const srflxCandidate = this.#srflxCandidate || await this.#srflxCandidatePromise;
-		const { usernameFragment, address, port } = await srflxCandidate;
+		await this.setLocalDescription();
+		const { usernameFragment, address, port } = this.#srflxCandidate || await this.#srflxCandidatePromise;
 		const password = this.localDescription.sdp.match(/a=ice-pwd:(.+)/)[1].trim();
 
 		return encodeURIComponent([

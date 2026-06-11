@@ -1,5 +1,7 @@
 import Peer from "./peer.js";
 import nutKeyMap from './nutKeyMap.json' with { type: 'json' };
+import nutButtonMap from './nutButtonMap.json' with { type: 'json' };
+
 /*
 IOHIDUserDevice or HIDVirtualDevice for macos (whatever doesn't require payment or something complicated, just sudo)
 /dev/uinput or /dev/uhid for linux
@@ -58,6 +60,7 @@ peer.addEventListener("track", (event) => {
 
 screenshare.addEventListener("pointermove", (event) => { // pointerrawupdate - safari doesn't support unfortunately (I wish MacOS had touchscreen and stylus APIs)
 	if (pointerMovementChannel.readyState !== "open") return;
+	// make flag to say if it is clientX or movementX
 	sharedView.setInt16(0, event.movementX, true);
 	sharedView.setInt16(2, event.movementY, true);
 	pointerMovementChannel.send(sharedBytes.subarray(0, 4));
@@ -67,15 +70,27 @@ screenshare.addEventListener("pointerdown", (event) => {
 	if (pointerClickChannel.readyState !== "open") return;
 	enableImmersiveMode(screenshare).catch(console.warn);
 
+	const nutButton = nutButtonMap.indexOf(event.button);
+	if (nutButton === -1) {
+		console.warn("Could not find Nut.JS Button equivalent");
+		return;
+	}
+
 	sharedView.setUint8(0, 1); // isDown
-	sharedView.setUint8(1, event.button);
+	sharedView.setUint8(1, nutButton);
 	pointerClickChannel.send(sharedBytes.subarray(0, 2));
 });
 
 screenshare.addEventListener("pointerup", (event) => {
 	if (pointerClickChannel.readyState !== "open") return;
+	const nutButton = nutButtonMap.indexOf(event.button);
+	if (nutButton === -1) {
+		console.warn("Could not find Nut.JS Button equivalent");
+		return;
+	}
+
 	sharedView.setUint8(0, 0); // isDown
-	sharedView.setUint8(1, event.button);
+	sharedView.setUint8(1, nutButton);
 	pointerClickChannel.send(sharedBytes.subarray(0, 2));
 });
 
@@ -84,12 +99,13 @@ screenshare.addEventListener("keydown", (event) => {
 	enableImmersiveMode(screenshare).catch(console.warn);
 
 	const nutKey = nutKeyMap.indexOf(event.code);
-	if (nutKey == null) {
-		throw new Error("Could not find Nut.JS Key equivalent");
+	if (nutKey === -1) {
+		console.warn("Could not find Nut.JS Key equivalent");
+		return;
 	}
 
 	sharedView.setUint8(0, 1); // isDown
-	sharedView.setUint8(1, codeIndex);
+	sharedView.setUint8(1, nutKey);
 	keyboardChannel.send(sharedBytes.subarray(0, 2));
 });
 
@@ -97,8 +113,9 @@ screenshare.addEventListener("keyup", (event) => {
 	if (keyboardChannel.readyState !== "open" || !event.code) return;
 
 	const nutKey = nutKeyMap.indexOf(event.code);
-	if (nutKey == null) {
-		throw new Error("Could not find Nut.JS Key equivalent");
+	if (nutKey === -1) {
+		console.warn("Could not find Nut.JS Key equivalent");
+		return;
 	}
 
 	sharedView.setUint8(0, 0); // isDown

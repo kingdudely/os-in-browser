@@ -6,7 +6,7 @@ on:
       viewer_share_id:
         description: "Viewer share ID"
         type: string
-        reuqired: true
+        required: true
       os:
         description: 'OS'
         type: choice
@@ -28,6 +28,15 @@ jobs:
     steps:
       - name: Copy repository into PC
         uses: actions/checkout@main
+        
+      - name: Setup Ubuntu desktop GUI
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xorg xfce4 xvfb
+
+          Xvfb ${DISPLAY} -screen 0 1920x1080x24 &
+          setsid startxfce4 &
 
       - name: Install Node.js
         uses: actions/setup-node@main

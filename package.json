@@ -5,7 +5,7 @@
 	"keywords": ["remote control", "browser", "nw"],
 	"author": "kingdudely",
 	"license": "ISC",
-	"main": "server.js",
+	"main": "streamer.js",
 	"type": "module",
 	"scripts": {
 		"start": "nw ."

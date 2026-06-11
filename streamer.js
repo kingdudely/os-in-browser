@@ -1,11 +1,11 @@
 import { mouse, keyboard, screen, Button, Key, Point } from '@nut-tree-fork/nut-js';
-import { createPeer, connectToShareId, getShareId } from "./peer.js";
+import Peer from "./peer.js";
 import { env } from "node:process";
 import { setTimeout } from "node:timers/promises";
 const { VIEWER_SHARE_ID } = env;
 
-const peer = createPeer();
-const viewerSdp = await connectToShareId(peer, VIEWER_SHARE_ID, "offer");
+const peer = new Peer();
+const viewerSdp = await peer.connectToShareId(VIEWER_SHARE_ID, "offer");
 peer.addTransceiver("audio", { direction: "sendonly" });
 peer.addTransceiver("video", { direction: "sendonly" });
 
@@ -25,7 +25,7 @@ const screenshare = await navigator.mediaDevices.getUserMedia({
 	}
 });
 const videoTrack = screenshare.getVideoTracks()[0];
-peerConnection.addTrack(videoTrack, screenshare);
+peer.addTrack(videoTrack, screenshare);
 
 const pointerMovementChannel = peer.createDataChannel("pointer-movement", {
 	ordered: false,
@@ -46,26 +46,48 @@ const keyboardChannel = peer.createDataChannel("keyboard", {
 	id: 2
 });
 
-await peer.setLocalDescription();
-
-pointerMovementChannel.addEventListener("message", (event) => {
+pointerMovementChannel.addEventListener("message", async (event) => {
 	console.log(typeof(event))
+	const view = new DataView(event);
+
+	const movementX = view.getInt16(0, true);
+	const movementY = view.getInt16(2, true);
+
+	const currentPosition = await mouse.getPosition();
+
+	const clientX = currentPosition.x + movementX;
+	const clientY = currentPosition.y + movementY;
+
+	await mouse.setPosition(new Point(clientX, clientY));
 });
 
-pointerClickChannel.addEventListener("message", (event) => {
+pointerClickChannel.addEventListener("message", async (event) => {
 	console.log(typeof(event))
+	const view = new DataView(event);
+
+	const isDown = view.getUint8(0);
+	const button = view.getUint8(1);
+
+	if (isDown) {
+		await mouse.pressButton(button);
+	} else {
+		await mouse.releaseButton(button);
+	}
 })
 
-keyboardChannel.addEventListener("message", (event) => {
+keyboardChannel.addEventListener("message", async (event) => {
 	console.log(typeof(event))
-	const screenWidth = await screen.width();
-	const screenHeight = await screen.height();
+	const view = new DataView(event);
 
-	const targetX = Math.round(xPercent * screenWidth);
-	const targetY = Math.round(yPercent * screenHeight);
+	const isDown = view.getUint8(0);
+	const key = view.getUint8(1);
 
-	await mouse.setPosition(new Point(targetX, targetY));
+	if (isDown) {
+		await keyboard.pressKey(key);
+	} else {
+		await keyboard.releaseKey(key);
+	}
 })
 
-console.log(await getShareId(peer));
+console.log(await peer.getShareId());
 await setTimeout(21_600_000); // 6 hours
