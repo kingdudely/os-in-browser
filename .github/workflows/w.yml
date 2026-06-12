@@ -1,0 +1,27 @@
+name: Check Driver Signature Policy
+on: [push, workflow_dispatch]
+
+jobs:
+  check-policy:
+    runs-on: windows-latest
+    steps:
+      - name: Check Code Signing Policy
+        shell: powershell
+        run: |
+          Write-Host "Checking Device Installation / Code Signing Policies..."
+          
+          # Query the local group policy registry for Driver Signing restrictions
+          try {
+              $policy = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DriverSigning" -ErrorAction Stop
+              Write-Host "Registry Value for Driver Signing found: $policy.Behavior"
+          } catch {
+              Write-Host "No custom Driver Signing policy found in registry. Default behavior (Block Unsigned Drivers) applies."
+          }
+
+          # Check if TestSigning is enabled (standard way to allow self-signed/unsigned drivers)
+          $testSigning = (bcdedit /enum | Select-String "testsigning")
+          if ($testSigning -match "Yes") {
+              Write-Host "Test Signing: Enabled"
+          } else {
+              Write-Host "Test Signing: Disabled (Cannot load unsigned drivers)"
+          }
