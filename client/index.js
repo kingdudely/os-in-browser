@@ -2,7 +2,7 @@
 import ConnectToServerPeer from "./ConnectToServerPeer.js";
 async function enableImmersiveMode(target) {
 	if (document.fullscreenEnabled && !document.fullscreenElement) {
-		await target.requestFullscreen({ 
+		await document.body.requestFullscreen({ 
 			"navigationUI": "hide" 
 		});
 	};

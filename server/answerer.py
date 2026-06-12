@@ -30,6 +30,8 @@ match platform:
 mouse = MouseController()
 keyboard = KeyboardController()
 
+mouse.position = (0, 0)
+
 BUTTON_MAP = {
 	0: Button.left,
 	1: Button.middle,
