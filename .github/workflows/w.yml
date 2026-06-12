@@ -8,15 +8,7 @@ jobs:
     steps:
       - name: Check if TESTSIGNING is enabled
         run: |
-          Write-Host "Checking TestSigning status..."
-          # Query BCD for testsigning
-          $status = bcdedit /enum {current} | Select-String "testsigning"
-          
-          if ($status -match "Yes") {
-            Write-Host "::notice:: TESTSIGNING is ALLOWED on this Windows runner."
-          } else {
-            Write-Host "::notice:: TESTSIGNING is NOT allowed on this Windows runner."
-          }
+          bcdedit
 
   check-macos:
     name: Check macOS SIP
@@ -24,10 +16,4 @@ jobs:
     steps:
       - name: Check if SIP is enabled
         run: |
-          echo "Checking System Integrity Protection (SIP) status..."
-          # Query csrutil for SIP
-          if csrutil status | grep -q "status: enabled"; then
-            echo "::notice:: System Integrity Protection (SIP) is ENABLED on this macOS runner."
-          else
-            echo "::notice:: System Integrity Protection (SIP) is DISABLED or UNKNOWN on this macOS runner."
-          fi
+          csrutil status
