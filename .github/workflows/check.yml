@@ -1,0 +1,66 @@
+name: Check Virtualization Environment
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch: # Allows manual triggering from the GitHub Actions UI
+
+jobs:
+  check-windows-hyperv:
+    name: Check Windows Hyper-V Status
+    runs-on: windows-latest
+    steps:
+      - name: Query System Information for Hyper-V
+        shell: powershell
+        run: |
+          Write-Host "=== Querying WMI for Hyper-V Indicators ==="
+          
+          # Check Computer System Manufacturer/Model
+          $sysInfo = Get-CimInstance Win32_ComputerSystem
+          Write-Host "Manufacturer: $($sysInfo.Manufacturer)"
+          Write-Host "Model: $($sysInfo.Model)"
+          
+          # Check for Hyper-V specific system services or virtualization status
+          $hypervPresent = $false
+          if ($sysInfo.Manufacturer -like "*Microsoft*" -or $sysInfo.Model -like "*Virtual Machine*") {
+              Write-Host "SUCCESS: This Windows instance is running as a Hyper-V / Azure Virtual Machine."
+              $hypervPresent = $true
+          } else {
+              Write-Warning "This Windows instance does not appear to be a Hyper-V Virtual Machine."
+          }
+          
+          # Set a workflow step output or fail if it's a strict requirement
+          if (-not $hypervPresent) {
+              # Uncomment the line below if you want the workflow to fail when it's not Hyper-V
+              # throw "Environment check failed: Not a Hyper-V VM."
+          }
+
+  check-macos-vm:
+    name: Check macOS VM Status
+    runs-on: macos-latest
+    steps:
+      - name: Inspect Hardware Profile for Virtualization
+        run: |
+          echo "=== Querying system_profiler for macOS Platform Info ==="
+          
+          # Extract Model Identifier and Hardware UUID lines
+          MODEL_ID=$(system_profiler SPHardwareDataType | grep "Model Identifier")
+          echo "$MODEL_ID"
+          
+          # GitHub Actions macOS runners typically return identifiers like "MacPro7,1" or "Mac14,2" 
+          # because they run inside specialized hypervisors (like Anka or Orka) or bare-metal clouds.
+          # We can check the hypervisor device tree registry for explicit virtual flags:
+          
+          echo "=== Checking I/O Kit Registry for Virtualization Tags ==="
+          if ioreg -l | grep -iqE "virtual|vmware|qemu|xen|parallels|vbox|oracle"; then
+              echo "SUCCESS: macOS is explicitly running inside a Virtual Machine."
+          else
+              echo "Notice: No explicit consumer VM tags found in ioreg. Testing for cloud hypervisor footprints..."
+              
+              # Optional fallback: check if it's a typical GitHub-hosted infrastructure profile
+              if [[ "$MODEL_ID" == *"Mac"* ]]; then
+                  echo "Environment identified as a standardized cloud-managed macOS instance."
+              fi
+          fi
