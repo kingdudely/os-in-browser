@@ -1,27 +1,37 @@
-name: Check Driver Signature Policy
+name: Check OS Security Settings
+
 on: [push, workflow_dispatch]
 
 jobs:
-  check-policy:
+  check-windows:
+    name: Check Windows Driver Signature Enforcement
     runs-on: windows-latest
     steps:
-      - name: Check Code Signing Policy
-        shell: powershell
+      - name: Check Signature Enforcement Status
+        shell: pwsh
         run: |
-          Write-Host "Checking Device Installation / Code Signing Policies..."
+          # Get the current Driver Signature Enforcement policy status
+          $status = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy")."VerifiedSignatures"
           
-          # Query the local group policy registry for Driver Signing restrictions
-          try {
-              $policy = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DriverSigning" -ErrorAction Stop
-              Write-Host "Registry Value for Driver Signing found: $policy.Behavior"
-          } catch {
-              Write-Host "No custom Driver Signing policy found in registry. Default behavior (Block Unsigned Drivers) applies."
+          Write-Host "VerifiedSignatures registry value: $status"
+          if ($status -eq 0) {
+              Write-Host "Driver signature enforcement is disabled (Unsigned drivers are allowed)."
+          } else {
+              Write-Host "Driver signature enforcement is enabled (Unsigned drivers are NOT allowed)."
           }
 
-          # Check if TestSigning is enabled (standard way to allow self-signed/unsigned drivers)
-          $testSigning = (bcdedit /enum | Select-String "testsigning")
-          if ($testSigning -match "Yes") {
-              Write-Host "Test Signing: Enabled"
-          } else {
-              Write-Host "Test Signing: Disabled (Cannot load unsigned drivers)"
-          }
+  check-macos:
+    name: Check macOS SIP
+    runs-on: macos-latest
+    steps:
+      - name: Check System Integrity Protection (SIP)
+        run: |
+          # Check SIP status using the built-in csrutil
+          sip_status=$(csrutil status)
+          echo "SIP Status: $sip_status"
+          
+          if [[ "$sip_status" == *"status: enabled"* ]]; then
+            echo "System Integrity Protection is enabled."
+          else
+            echo "System Integrity Protection is disabled."
+          fi
