@@ -16,7 +16,7 @@ async function enableImmersiveMode(target) {
 
 const screenshare = document.getElementById("screenshare");
 
-const sharedBuffer = new ArrayBuffer(100);
+const sharedBuffer = new ArrayBuffer(4);
 const sharedBytes = new Uint8Array(sharedBuffer);
 const sharedView = new DataView(sharedBuffer);
 
@@ -68,7 +68,7 @@ const keyboardChannel = peer.createDataChannel("keyboard", {
 });
 
 screenshare.addEventListener("keydown", (event) => {
-	if (keyboardChannel.readyState !== "open") return;
+	if (keyboardChannel.readyState !== "open" || event.repeat) return;
 	enableImmersiveMode(screenshare).catch(console.warn);
 
 	keyboardChannel.send(`\x01${event.code}`);

@@ -1,11 +1,15 @@
 from os import environ
+from json import load
 from pynput.mouse import Button, Controller as MouseController
-from pynput.keyboard import Key, Controller as KeyboardController
+from pynput.keyboard import KeyCode, Controller as KeyboardController
 from aiortc import RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaPlayer
 from struct import unpack
 from pyee import EventEmitter
 from sys import platform
+
+with open(f"./code_maps/{platform}.json", "r", encoding="utf-8") as code_map_file:
+	CODE_MAP = load(code_map_file)
 
 match platform:
 	case "linux":
@@ -27,40 +31,9 @@ mouse = MouseController()
 keyboard = KeyboardController()
 
 BUTTON_MAP = {
-    0: Button.left,
-    1: Button.middle,
-    2: Button.right
-}
-
-CODE_MAP = {
-    "KeyA": "a", "KeyB": "b", "KeyC": "c", "KeyD": "d", "KeyE": "e", "KeyF": "f",
-    "KeyG": "g", "KeyH": "h", "KeyI": "i", "KeyJ": "j", "KeyK": "k", "KeyL": "l",
-    "KeyM": "m", "KeyN": "n", "KeyO": "o", "KeyP": "p", "KeyQ": "q", "KeyR": "r",
-    "KeyS": "s", "KeyT": "t", "KeyU": "u", "KeyV": "v", "KeyW": "w", "KeyX": "x",
-    "KeyY": "y", "KeyZ": "z",
-
-    "Digit1": "1", "Digit2": "2", "Digit3": "3", "Digit4": "4", "Digit5": "5",
-    "Digit6": "6", "Digit7": "7", "Digit8": "8", "Digit9": "9", "Digit0": "0",
-
-    "ShiftLeft": Key.shift, "ShiftRight": Key.shift_r,
-    "ControlLeft": Key.ctrl, "ControlRight": Key.ctrl_r,
-    "AltLeft": Key.alt, "AltRight": Key.alt_r,
-    "MetaLeft": Key.cmd, "MetaRight": Key.cmd,
-
-    "Enter": Key.enter,
-    "Backspace": Key.backspace,
-    "Tab": Key.tab,
-    "Space": Key.space,
-    "Escape": Key.esc,
-    "Delete": Key.delete,
-    "ArrowUp": Key.up,
-    "ArrowDown": Key.down,
-    "ArrowLeft": Key.left,
-    "ArrowRight": Key.right,
-
-    "Semicolon": ";", "Equal": "=", "Comma": ",", "Minus": "-", "Period": ".",
-    "Slash": "/", "Backquote": "`", "BracketLeft": "[", "BracketRight": "]",
-    "Backslash": "\\", "Quote": "'",
+	0: Button.left,
+	1: Button.middle,
+	2: Button.right
 }
 
 async def get_answer(offer):
@@ -93,14 +66,19 @@ async def get_answer(offer):
 		is_down = data[0] == "\x01"
 		code = data[1:]
 
-		target_key = CODE_MAP.get(code)
-		
-		if target_key:
-			if is_down:
-				keyboard.press(target_key)
-			else:
-				keyboard.release(target_key)
+		target_vk = CODE_MAP.get(code)
 
+		if target_vk is None:
+			print("Code is not implemented")
+			return
+
+		target_key = KeyCode.from_vk(target_vk)
+		
+		if is_down:
+			keyboard.press(target_key)
+		else:
+			keyboard.release(target_key)
+			
 	await peer.setRemoteDescription(RTCSessionDescription(sdp=offer, type="offer"))
 	answer = await peer.createAnswer()
 	await peer.setLocalDescription(answer)
