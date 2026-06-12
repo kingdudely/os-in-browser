@@ -1,37 +1,33 @@
-name: Check OS Security Settings
-
-on: [push, workflow_dispatch]
+name: Check System Security Settings
+on: [push, pull_request]
 
 jobs:
   check-windows:
-    name: Check Windows Driver Signature Enforcement
+    name: Check Windows TestSigning
     runs-on: windows-latest
     steps:
-      - name: Check Signature Enforcement Status
-        shell: pwsh
+      - name: Check if TESTSIGNING is enabled
         run: |
-          # Get the current Driver Signature Enforcement policy status
-          $status = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy")."VerifiedSignatures"
+          Write-Host "Checking TestSigning status..."
+          # Query BCD for testsigning
+          $status = bcdedit /enum {current} | Select-String "testsigning"
           
-          Write-Host "VerifiedSignatures registry value: $status"
-          if ($status -eq 0) {
-              Write-Host "Driver signature enforcement is disabled (Unsigned drivers are allowed)."
+          if ($status -match "Yes") {
+            Write-Host "::notice:: TESTSIGNING is ALLOWED on this Windows runner."
           } else {
-              Write-Host "Driver signature enforcement is enabled (Unsigned drivers are NOT allowed)."
+            Write-Host "::notice:: TESTSIGNING is NOT allowed on this Windows runner."
           }
 
   check-macos:
     name: Check macOS SIP
     runs-on: macos-latest
     steps:
-      - name: Check System Integrity Protection (SIP)
+      - name: Check if SIP is enabled
         run: |
-          # Check SIP status using the built-in csrutil
-          sip_status=$(csrutil status)
-          echo "SIP Status: $sip_status"
-          
-          if [[ "$sip_status" == *"status: enabled"* ]]; then
-            echo "System Integrity Protection is enabled."
+          echo "Checking System Integrity Protection (SIP) status..."
+          # Query csrutil for SIP
+          if csrutil status | grep -q "status: enabled"; then
+            echo "::notice:: System Integrity Protection (SIP) is ENABLED on this macOS runner."
           else
-            echo "System Integrity Protection is disabled."
+            echo "::notice:: System Integrity Protection (SIP) is DISABLED or UNKNOWN on this macOS runner."
           fi
