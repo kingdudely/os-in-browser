@@ -8,40 +8,37 @@ from struct import unpack
 from pyee import EventEmitter
 from sys import platform
 
-def importJson(path):
-	with open(path, "r", encoding="utf-8") as json_file:
-		return load(json_file)
-
-
-VK_VALUES = importJson(f"./vk_values/{platform}.json")
-CODE_KEYS = importJson(f"./code_keys.json")
-
 match platform:
 	case "linux":
 		def get_screenshare(**options):
-			# options.setdefault("draw_mouse", "1")
+			options.setdefault("draw_mouse", "1")
 			return MediaPlayer(environ["DISPLAY"], format="x11grab", options=options) # :0.0
 	case "darwin":
 		def get_screenshare(**options):
-			# options.setdefault("capture_mouse", "1")
+			options.setdefault("capture_mouse", "1")
 			return MediaPlayer("Capture screen 0", format="avfoundation", options=options)
 	case "win32":
 		def get_screenshare(**options):
-			# options.setdefault("draw_mouse", "1")
+			options.setdefault("draw_mouse", "1")
 			return MediaPlayer("desktop", format="gdigrab", options=options)
 	case _:
 		raise RuntimeError(f"Unsupported platform: {platform}")
 
-mouse = MouseController()
-keyboard = KeyboardController()
+def importJson(path):
+	with open(path, "r", encoding="utf-8") as json_file:
+		return load(json_file)
 
-# mouse.position = (0, 0)
-
+VK_VALUES = importJson(f"./vk_values/{platform}.json")
+CODE_KEYS = importJson(f"./code_keys.json")
 BUTTON_MAP = {
 	0: Button.left,
 	1: Button.middle,
 	2: Button.right
 }
+mouse = MouseController()
+keyboard = KeyboardController()
+
+# mouse.position = (0, 0)
 
 async def get_answer(offer):
 	screenshare = get_screenshare(framerate="30")
