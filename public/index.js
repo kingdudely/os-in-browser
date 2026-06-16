@@ -1,6 +1,6 @@
 // TODO: make this in /docs and the flow will be createOffer, paste in workflow input, then click on link to open in new tab
 import ConnectToServerPeer from "./ConnectToServerPeer.js";
-import codes_keys from "../codes_keys.json";
+import code_keys from "../code_keys.json";
 
 async function enableImmersiveMode(target) {
 	if (document.fullscreenEnabled && !document.fullscreenElement) {
@@ -73,7 +73,7 @@ screenshare.addEventListener("keydown", (event) => {
 	if (keyboardChannel.readyState !== "open" || event.repeat) return;
 	enableImmersiveMode(screenshare).catch(console.warn);
 
-	const code_index = codes_keys.indexOf(event.code);
+	const code_index = code_keys.indexOf(event.code);
 	if (code_index === -1) {
 		console.warn("Code is not supported");
 		return;
@@ -87,7 +87,7 @@ screenshare.addEventListener("keydown", (event) => {
 
 screenshare.addEventListener("keyup", (event) => {
 	if (keyboardChannel.readyState !== "open") return;
-	const code_index = codes_keys.indexOf(event.code);
+	const code_index = code_keys.indexOf(event.code);
 	if (code_index === -1) {
 		console.warn("Code is not supported");
 		return;
