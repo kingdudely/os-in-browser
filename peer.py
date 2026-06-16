@@ -29,7 +29,7 @@ def importJson(path):
 		return load(json_file)
 
 VK_VALUES = importJson(f"./vk_values/{platform}.json")
-CODE_KEYS = importJson(f"./code_keys.json")
+CODE_KEYS = importJson(f"./public/code_keys.json")
 BUTTON_MAP = {
 	0: Button.left,
 	1: Button.middle,

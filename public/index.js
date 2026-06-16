@@ -1,6 +1,6 @@
 // TODO: make this in /docs and the flow will be createOffer, paste in workflow input, then click on link to open in new tab
 import ConnectToServerPeer from "./ConnectToServerPeer.js";
-import code_keys from "../code_keys.json";
+import code_keys from "./code_keys.json";
 
 async function enableImmersiveMode(target) {
 	if (document.fullscreenEnabled && !document.fullscreenElement) {
