@@ -1,8 +1,10 @@
 // TODO: make this in /docs and the flow will be createOffer, paste in workflow input, then click on link to open in new tab
 import ConnectToServerPeer from "./ConnectToServerPeer.js";
+import codes_keys from "../codes_keys.json";
+
 async function enableImmersiveMode(target) {
 	if (document.fullscreenEnabled && !document.fullscreenElement) {
-		await document.body.requestFullscreen({ 
+		await document.body.requestFullscreen({ // Can't use 'target' because of <video>s
 			"navigationUI": "hide" 
 		});
 	};
@@ -71,10 +73,28 @@ screenshare.addEventListener("keydown", (event) => {
 	if (keyboardChannel.readyState !== "open" || event.repeat) return;
 	enableImmersiveMode(screenshare).catch(console.warn);
 
-	keyboardChannel.send(`\x01${event.code}`);
+	const code_index = codes_keys.indexOf(event.code);
+	if (code_index === -1) {
+		console.warn("Code is not supported");
+		return;
+	}
+
+	sharedView.setUint8(0, 1); // isDown
+	sharedView.setUint8(1, code_index);
+
+	keyboardChannel.send(sharedBytes.subarray(0, 2));
 });
 
 screenshare.addEventListener("keyup", (event) => {
 	if (keyboardChannel.readyState !== "open") return;
-	keyboardChannel.send(`\x00${event.code}`);
+	const code_index = codes_keys.indexOf(event.code);
+	if (code_index === -1) {
+		console.warn("Code is not supported");
+		return;
+	}
+
+	sharedView.setUint8(0, 0);
+	sharedView.setUint8(1, code_index);
+
+	keyboardChannel.send(sharedBytes.subarray(0, 2));
 })

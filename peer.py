@@ -8,8 +8,13 @@ from struct import unpack
 from pyee import EventEmitter
 from sys import platform
 
-with open(f"./code_maps/{platform}.json", "r", encoding="utf-8") as code_map_file:
-	CODE_MAP = load(code_map_file)
+def importJson(path):
+	with open(path, "r", encoding="utf-8") as json_file:
+		return load(json_file)
+
+
+VK_VALUES = importJson(f"./vk_values/{platform}.json")
+CODE_KEYS = importJson(f"./code_keys.json")
 
 match platform:
 	case "linux":
@@ -30,7 +35,7 @@ match platform:
 mouse = MouseController()
 keyboard = KeyboardController()
 
-mouse.position = (0, 0)
+# mouse.position = (0, 0)
 
 BUTTON_MAP = {
 	0: Button.left,
@@ -56,31 +61,33 @@ async def get_answer(offer):
 		button_code = data[1]
 		button = BUTTON_MAP.get(button_code)
 		
-		if button:
-			if is_down:
-				mouse.press(button)
-			else:
-				mouse.release(button)
+		if button is None:
+			print(f"Button {button} is not implemented")
+			return
+
+		if is_down:
+			mouse.press(button)
+		else:
+			mouse.release(button)
 
 	keyboard_channel = peer.createDataChannel("keyboard", ordered=True, negotiated=True, id=2)
 	@keyboard_channel.on("message")
 	def on_keyboard(data):
-		is_down = data[0] == "\x01"
-		code = data[1:]
+		is_down = data[0] == 1
+		vk_index = data[1]
+		vk_value = VK_VALUES.get(vk_index)
 
-		target_vk = CODE_MAP.get(code)
-
-		if target_vk is None:
-			print("Code is not implemented")
+		if vk_value is None:
+			print("Virtual key index {vk_index} is not implemented")
 			return
 
-		target_key = KeyCode.from_vk(target_vk)
-		
+		key = KeyCode.from_vk(vk_value)
+
 		if is_down:
-			keyboard.press(target_key)
+			keyboard.press(key)
 		else:
-			keyboard.release(target_key)
-			
+			keyboard.release(key)
+
 	await peer.setRemoteDescription(RTCSessionDescription(sdp=offer, type="offer"))
 	answer = await peer.createAnswer()
 	await peer.setLocalDescription(answer)
