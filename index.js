@@ -29,4 +29,4 @@ const tunnel = await startTunnel({
 	port: server.address().port,
 	acceptCloudflareNotice: true
 });
-console.log(tunnel.getURL());
+console.log(await tunnel.getURL());
