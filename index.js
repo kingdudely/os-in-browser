@@ -25,5 +25,8 @@ app.post('/whip', express.text({ type: 'application/sdp' }), async (req, res) =>
 		.send(await createAnswer(offer)); 
 })
 
-const tunnel = await startTunnel({ port: server.address().port });
+const tunnel = await startTunnel({
+	port: server.address().port,
+	acceptCloudflareNotice: true
+});
 console.log(tunnel.getURL());
