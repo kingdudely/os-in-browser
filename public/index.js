@@ -4,13 +4,13 @@ import nutKeys from "./nutKeys.json" with { type: "json" };
 import nutButtons from "./nutButtons.json" with { type: "json" };
 
 async function enableImmersiveMode(target) {
-	if (document.fullscreenEnabled && !document.fullscreenElement) {
+	if (document.fullscreenEnabled && document.fullscreenElement == null) {
 		await document.body.requestFullscreen({ // Can't use target because of <video>s
 			"navigationUI": "hide" 
 		});
 	};
 
-	if (!document.pointerLockElement) {
+	if (document.pointerLockElement == null) {
 		await target.requestPointerLock({
 			"unadjustedMovement": true
         });
@@ -19,7 +19,7 @@ async function enableImmersiveMode(target) {
 
 const screenshare = document.getElementById("screenshare");
 
-const sharedBuffer = new ArrayBuffer(4);
+const sharedBuffer = new ArrayBuffer(5);
 const sharedBytes = new Uint8Array(sharedBuffer);
 const sharedView = new DataView(sharedBuffer);
 
@@ -37,9 +37,12 @@ const pointerMovementChannel = peer.createDataChannel("pointer-movement", {
 
 screenshare.addEventListener("pointermove", (event) => { // pointerrawupdate - safari doesn't support unfortunately (I wish MacOS had touchscreen and stylus APIs)
 	if (pointerMovementChannel.readyState !== "open") return;
-	sharedView.setInt16(0, event.movementX, true); // clientX
-	sharedView.setInt16(2, event.movementY, true); // clientY
-	pointerMovementChannel.send(sharedBytes.subarray(0, 4));
+
+	const isPointerLocked = document.pointerLockElement != null;
+	sharedView.setUint8(0, isPointerLocked ? 1 : 0);
+	sharedView.setInt16(1, isPointerLocked ? event.movementX : event.clientX, true); // clientX
+	sharedView.setInt16(3, isPointerLocked ? event.movementY : event.clientY, true); // clientY
+	pointerMovementChannel.send(sharedBytes.subarray(0, 5));
 });
 
 const pointerClickChannel = peer.createDataChannel("pointer-click", {
