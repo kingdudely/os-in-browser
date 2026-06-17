@@ -1,5 +1,6 @@
 import puppeteer from "puppeteer-core";
 import express from "express";
+import { mouse, keyboard, Point } from '@nut-tree-fork/nut-js';
 
 const app = express()
 app.use(express.static("peer"));

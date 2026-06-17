@@ -1,5 +1,3 @@
-import { mouse, keyboard, Point } from '@nut-tree-fork/nut-js';
-
 window.createAnswer = (offer) => {
 	const peer = new RTCPeerConnection({
 		iceServers: [
