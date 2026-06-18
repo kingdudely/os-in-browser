@@ -17,8 +17,13 @@ jobs:
   vm:
     runs-on: ${{ github.event.inputs.os }}-latest
     timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
 
     steps:
-      - name: 9remote
-        shell: bash
-        run: npx --yes 9remote
+      - name: Install 9remote
+        run: npm install -g 9remote
+
+      - name: Run 9remote
+        run: 9remote
