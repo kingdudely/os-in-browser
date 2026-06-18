@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Setup Node 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@main
         with:
           node-version: 24
 
