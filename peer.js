@@ -11,35 +11,38 @@ const RTCPeerConnectionInit = {
 
 // Only supports this in exact order: audio, video, data channel
 export default class Peer extends RTCPeerConnection {
-	#srflxCandidate;
+	#shareId;
 
 	constructor() {
 		super(RTCPeerConnectionInit);
 	};
 
 	async getShareId() {
-		await this.setLocalDescription();
+		if (!this.#shareId) {
+			await this.setLocalDescription();
 
-		this.#srflxCandidate ??= await new Promise((resolve) => {
-			this.addEventListener("icecandidate", function onCandidate(event) {
-				const candidate = event.candidate;
-				if (candidate && candidate.type === "srflx") {
-					this.removeEventListener("icecandidate", onCandidate);
-					resolve(candidate);
-				}
+			const { usernameFragment, address, port } = await new Promise((resolve) => {
+				this.addEventListener("icecandidate", function onCandidate(event) {
+					const candidate = event.candidate;
+					if (candidate && candidate.type === "srflx") {
+						this.removeEventListener("icecandidate", onCandidate);
+						resolve(candidate);
+					}
+				});
 			});
-		});
 
-		const { usernameFragment, address, port } = this.#srflxCandidate;
-		const password = this.localDescription.sdp.match(/a=ice-pwd:(.+)/)[1].trim();
+			const password = this.localDescription.sdp.match(/a=ice-pwd:(.+)/)[1].trim();
 
-		return encodeURIComponent([
-			usernameFragment,
-			password,
-			b64Fingerprint,
-			address,
-			port
-		].join(","));
+			this.#shareId = encodeURIComponent([
+				usernameFragment,
+				password,
+				b64Fingerprint,
+				address,
+				port
+			].join(","));
+		}
+
+		return this.#shareId;
 	}
 
 	async connectToShareId(shareId, type) {
