@@ -1,4 +1,4 @@
-name: Main
+name: 9remote
 
 on:
   workflow_dispatch:
@@ -17,13 +17,13 @@ jobs:
   vm:
     runs-on: ${{ github.event.inputs.os }}-latest
     timeout-minutes: 360
-    defaults:
-      run:
-        shell: bash
 
     steps:
-      - name: Install 9remote
-        run: npm install -g 9remote
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
 
       - name: Run 9remote
-        run: 9remote start
+        shell: bash
+        run: npx --yes 9remote start
