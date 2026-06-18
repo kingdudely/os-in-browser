@@ -24,6 +24,9 @@ jobs:
         with:
           node-version: 24
 
+      - name: Setup cloudflared
+        uses: AnimMouse/setup-cloudflared@main
+
       - name: Run 9remote
         shell: bash
         run: npx --yes 9remote start
