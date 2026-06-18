@@ -26,4 +26,4 @@ jobs:
         run: npm install -g 9remote
 
       - name: Run 9remote
-        run: 9remote
+        run: 9remote start
