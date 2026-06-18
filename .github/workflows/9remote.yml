@@ -1,0 +1,24 @@
+name: Main
+
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        type: choice
+        description: 'Operating system'
+        options:
+        - ubuntu
+        - windows
+        - macos
+        default: ubuntu
+        required: true
+
+jobs:
+  vm:
+    runs-on: ${{ github.event.inputs.os }}-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: 9remote
+        shell: bash
+        run: npx --yes 9remote
