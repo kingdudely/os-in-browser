@@ -8,7 +8,7 @@ on:
         type: string
         required: true
       os:
-        description: 'OS'
+        description: 'Operating system'
         type: choice
         required: true
         default: 'windows-latest'
@@ -21,6 +21,14 @@ jobs:
   remote:
     runs-on: ${{ github.event.inputs.os }}
     timeout-minutes: 360
+    env:
+      EXTENSION_ID: "abcdefghijklmnopqrstuvwxyzabcdef"
+      HOST_NAME: "com.project.native_messaging_host"
+
+      USER_DATA_DIR: "${GITHUB_WORKSPACE}/.chrome-user-data"
+      MANIFEST_DIR: "${USER_DATA_DIR}/NativeMessagingHosts"
+      EXTENSION_PATH: "${GITHUB_WORKSPACE}/path/to/your/extension"
+
     defaults:
       run:
         shell: bash
@@ -38,18 +46,45 @@ jobs:
           Xvfb ${DISPLAY} -screen 0 1920x1080x24 &
           setsid startxfce4 &
 
-      - name: Install Node.js
-        uses: actions/setup-node@main
-        with:
-          node-version: 24
-
-      - name: Install server dependencies
+      - name: Launch Chrome
         run: |
-          npm install
+          # Handle OS-specific binary paths and host extensions
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            echo "Configuring for Windows..."
+            CHROME_PATH="/c/Program Files/Google/Chrome/Application/chrome.exe"
+            HOST_PATH="$GITHUB_WORKSPACE/path/to/host.exe"
+            
+          elif [ "$RUNNER_OS" == "macOS" ]; then
+            echo "Configuring for macOS..."
+            CHROME_PATH="/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome"
+            HOST_PATH="$GITHUB_WORKSPACE/path/to/host"
+            
+          elif [ "$RUNNER_OS" == "Linux" ]; then
+            echo "Configuring for Linux..."
+            CHROME_PATH="google-chrome"
+            HOST_PATH="$GITHUB_WORKSPACE/path/to/host"
+          fi
 
-      - name: Start server
-        env:
-          NODE_OPTIONS: --unhandled-rejections=strict
-          VIEWER_SHARE_ID: ${{ github.event.inputs.viewer_share_id }}
-        run: |
-          npm start
+          # Create the custom Native Messaging directory inside your user data directory
+          mkdir -p "$MANIFEST_DIR"
+
+          # Generate the Native Messaging JSON manifest file
+          cat <<EOF > "$MANIFEST_DIR/$HOST_NAME.json"
+          {
+            "name": "$HOST_NAME",
+            "description": "GitHub Actions Native Messaging Host",
+            "path": "$HOST_PATH",
+            "type": "stdio",
+            "allowed_origins": [
+              "chrome-extension://$EXTENSION_ID/"
+            ]
+          }
+          EOF
+
+          echo "Manifest created at: $MANIFEST_DIR/$HOST_NAME.json"
+
+          # Launch Chrome directly (No xvfb-run needed since your custom GUI step handles it)
+          echo "Launching Chrome..."
+          "$CHROME_PATH" --user-data-dir="$USER_DATA_DIR" --load-extension="$EXTENSION_PATH" --no-sandbox --disable-gpu &
+          
+          sleep 5

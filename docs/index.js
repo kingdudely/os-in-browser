@@ -9,7 +9,7 @@ HidP_TranslateUsagesToI8042ScanCodes for windows (or maybe Interception or vjoy 
 */
 async function enableImmersiveMode(target) {
 	if (document.fullscreenEnabled && !document.fullscreenElement) {
-		await target.requestFullscreen({ 
+		await document.body.requestFullscreen({ // target.body
 			"navigationUI": "hide" 
 		});
 	};
@@ -52,7 +52,7 @@ const keyboardChannel = peer.createDataChannel("keyboard", {
 await navigator.clipboard.writeText(await peer.getShareId());
 window.alert("Copied the share ID into your clipboard");
 const streamerShareId = window.prompt("Share ID response:");
-await peer.connectToShareId(streamerShareId, "answer")
+await peer.connectToShareId(streamerShareId)
 
 peer.addEventListener("track", (event) => {
 	screenshare.srcObject = event.streams[0];

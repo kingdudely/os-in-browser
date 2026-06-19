@@ -13,6 +13,7 @@ const password = "mypasswordthatisverylong12345";
 const sharedBytes = new Uint8Array(50);
 const sharedView = new DataView(sharedBytes.buffer);
 
+// only accepts audio, video, data channel respectively for now
 class Peer extends RTCPeerConnection {
 	#shareId;
 
@@ -22,9 +23,9 @@ class Peer extends RTCPeerConnection {
 
 	async getShareId() {
 		if (!this.#shareId) {
-			const isOfferer = this.signalingState !== "have-remote-offer";
+			const shareIdIsOffer = this.signalingState !== "have-remote-offer";
 
-			const description = isOfferer // !isAnswerer
+			const description = shareIdIsOffer // !isAnswerer
 				? await this.createOffer({
 					offerToReceiveAudio: true,
 					offerToReceiveVideo: true
@@ -97,8 +98,8 @@ class Peer extends RTCPeerConnection {
 			throw new Error("Couldn't connect to share ID");
 		}
 
-		const isOfferer = this.signalingState === "have-local-offer";
-		const [setupRole, mediaRole] = isOfferer ? ["active", "sendonly"] : ["actpass", "recvonly"];
+		const shareIdIsAnswer = this.signalingState === "have-local-offer";
+		const [setupRole, mediaRole] = shareIdIsAnswer ? ["active", "sendonly"] : ["actpass", "recvonly"];
 
 		const commonIceLines = [
 			`c=IN IP4 0.0.0.0`,
@@ -130,6 +131,6 @@ class Peer extends RTCPeerConnection {
 			"",
 		].join("\r\n");
 
-		await this.setRemoteDescription({ type: isOfferer ? "answer" : "offer", sdp });
+		await this.setRemoteDescription({ type: shareIdIsAnswer ? "answer" : "offer", sdp });
 	}
 }
