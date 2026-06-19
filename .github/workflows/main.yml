@@ -48,27 +48,26 @@ jobs:
 
       - name: Launch Chrome
         run: |
-          # Handle OS-specific binary paths and host extensions
+          USER_DATA_DIR="$GITHUB_WORKSPACE/chrome-user-data"
+          MANIFEST_DIR="$USER_DATA_DIR/NativeMessagingHosts"
+          EXTENSION_PATH="$GITHUB_WORKSPACE/path/to/your/extension"
+
           if [ "$RUNNER_OS" == "Windows" ]; then
-            echo "Configuring for Windows..."
             CHROME_PATH="/c/Program Files/Google/Chrome/Application/chrome.exe"
             HOST_PATH="$GITHUB_WORKSPACE/path/to/host.exe"
-            
           elif [ "$RUNNER_OS" == "macOS" ]; then
-            echo "Configuring for macOS..."
             CHROME_PATH="/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome"
             HOST_PATH="$GITHUB_WORKSPACE/path/to/host"
-            
           elif [ "$RUNNER_OS" == "Linux" ]; then
-            echo "Configuring for Linux..."
             CHROME_PATH="google-chrome"
             HOST_PATH="$GITHUB_WORKSPACE/path/to/host"
+          else
+            echo "::error::Unsupported OS encountered: $RUNNER_OS"
+            exit 1
           fi
 
-          # Create the custom Native Messaging directory inside your user data directory
           mkdir -p "$MANIFEST_DIR"
 
-          # Generate the Native Messaging JSON manifest file
           cat <<EOF > "$MANIFEST_DIR/$HOST_NAME.json"
           {
             "name": "$HOST_NAME",
@@ -81,10 +80,4 @@ jobs:
           }
           EOF
 
-          echo "Manifest created at: $MANIFEST_DIR/$HOST_NAME.json"
-
-          # Launch Chrome directly (No xvfb-run needed since your custom GUI step handles it)
-          echo "Launching Chrome..."
           "$CHROME_PATH" --user-data-dir="$USER_DATA_DIR" --load-extension="$EXTENSION_PATH" --no-sandbox --disable-gpu &
-          
-          sleep 5
