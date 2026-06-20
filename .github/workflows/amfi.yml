@@ -1,4 +1,4 @@
-name: AMFI
+name: Check MacOS permissions (AMFI + SIP)
 
 on: 
   push:
@@ -7,8 +7,13 @@ jobs:
   remote:
     runs-on: macos-latest
     timeout-minutes: 1
+    defaults:
+      run:
+        shell: bash
 
     steps:
-      - name: nvram boot-args
-        shell: bash
+      - name: AMFI
         run: nvram boot-args
+
+      - name: SIP
+        run: csrutil status
