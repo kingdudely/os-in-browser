@@ -4,7 +4,8 @@
 	"version": "1.0",
 	"description": "Lets you control your PC using Native Messaging and WebRTC!",
 	"permissions": [
-		"nativeMessaging"
+		"nativeMessaging",
+		"offscreen"
 	],
 	"background": {
 		"service_worker": "background.js"

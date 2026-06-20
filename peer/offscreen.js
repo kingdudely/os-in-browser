@@ -1,29 +1,22 @@
-import { mouse, keyboard, screen, Button, Key, Point } from '@nut-tree-fork/nut-js';
-import Peer from "./peer.js";
-import { env } from "node:process";
-import { setTimeout } from "node:timers/promises";
+import Peer from "../docs/peer.js";
 const { VIEWER_SHARE_ID } = env;
 
+const VirtualHIDDevice = await chrome.runtime.connectNative("VirtualHIDDevice");
+
 const peer = new Peer();
-const viewerSdp = await peer.connectToShareId(VIEWER_SHARE_ID, "offer");
+const viewerSdp = await peer.connectToShareId(VIEWER_SHARE_ID);
 peer.addTransceiver("audio", { direction: "sendonly" });
 peer.addTransceiver("video", { direction: "sendonly" });
 
-nw.Screen.Init();
-const sourceId = await new Promise((resolve) => nw.Screen.DesktopCapture.chooseDesktopMedia(["screen"], resolve));
-const screenshare = await navigator.mediaDevices.getUserMedia({
-	audio: {
-		mandatory: {
-			chromeMediaSource: "desktop"
-		}
-	},
-	video: {
-		mandatory: {
-			chromeMediaSource: "desktop",
-			chromeMediaSourceId: sourceId
-		}
-	}
-});
+const screenshare = navigator.mediaDevices.getDisplayMedia({
+    video: {
+        cursor: "always",
+        displaySurface: "monitor",
+    },
+    audio: {
+        systemAudio: 'include'
+    }
+})
 const videoTrack = screenshare.getVideoTracks()[0];
 peer.addTrack(videoTrack, screenshare);
 

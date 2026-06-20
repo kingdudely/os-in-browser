@@ -1,0 +1,9 @@
+{
+	"name": "VirtualHIDDevice",
+	"description": "GitHub Actions Native Messaging Host",
+	"path": "${GITHUB_WORKSPACE}/main.py",
+	"type": "stdio",
+	"allowed_origins": [
+		"chrome-extension://$EXTENSION_ID/"
+	]
+}

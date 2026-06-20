@@ -21,13 +21,6 @@ jobs:
   remote:
     runs-on: ${{ github.event.inputs.os }}
     timeout-minutes: 360
-    env:
-      EXTENSION_ID: "abcdefghijklmnopqrstuvwxyzabcdef"
-      HOST_NAME: "com.project.native_messaging_host"
-
-      USER_DATA_DIR: "${GITHUB_WORKSPACE}/.chrome-user-data"
-      MANIFEST_DIR: "${USER_DATA_DIR}/NativeMessagingHosts"
-      EXTENSION_PATH: "${GITHUB_WORKSPACE}/path/to/your/extension"
 
     defaults:
       run:
@@ -69,15 +62,7 @@ jobs:
           mkdir -p "$MANIFEST_DIR"
 
           cat <<EOF > "$MANIFEST_DIR/$HOST_NAME.json"
-          {
-            "name": "$HOST_NAME",
-            "description": "GitHub Actions Native Messaging Host",
-            "path": "$HOST_PATH",
-            "type": "stdio",
-            "allowed_origins": [
-              "chrome-extension://$EXTENSION_ID/"
-            ]
-          }
+          
           EOF
 
           "$CHROME_PATH" --user-data-dir="$USER_DATA_DIR" --load-extension="$EXTENSION_PATH" --no-sandbox --disable-gpu &
