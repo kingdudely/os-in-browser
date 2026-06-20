@@ -25,7 +25,7 @@ class Peer extends RTCPeerConnection {
 		if (!this.#shareId) {
 			const shareIdIsOffer = this.signalingState !== "have-remote-offer";
 
-			const description = shareIdIsOffer // !isAnswerer
+			const description = shareIdIsOffer
 				? await this.createOffer({
 					offerToReceiveAudio: true,
 					offerToReceiveVideo: true

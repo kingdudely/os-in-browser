@@ -1,0 +1,14 @@
+name: AMFI
+
+on: 
+  push:
+
+jobs:
+  remote:
+    runs-on: macos-latest
+    timeout-minutes: 1
+
+    steps:
+      - name: nvram boot-args
+        shell: bash
+        run: nvram boot-args
