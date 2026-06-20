@@ -1,0 +1,25 @@
+name: Generate static Pion certificate
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+
+      - name: Generate cert (expires year 9999)
+        run: |
+          openssl req -new -x509 -newkey rsa:2048 -noenc \
+            -keyout key.pem -out cert.pem \
+            -subj "/CN=pion-webrtc-static-cert" \
+            -enddate 99991231235959Z
+
+          openssl x509 -in cert.pem -noout -fingerprint -sha256 \
+            | sed 's/sha256 Fingerprint=//' > fingerprint.txt
+
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Generate static Pion certificate"
+          file_pattern: "cert.pem key.pem fingerprint.txt"
