@@ -1,4 +1,7 @@
 import codeMap from "./code-map.json" with { type: "json" };
+import workflowFingerprint from "./workflowFingerprint.txt" with { type: "text" };
+import usernameFragment from "./usernameFragment.txt" with { type: "text" };
+import password from "./password.txt" with { type: "text" };
 
 async function enableImmersiveMode(target) {
 	if (document.fullscreenEnabled && !document.fullscreenElement) {
@@ -16,19 +19,11 @@ async function enableImmersiveMode(target) {
 
 const screenshare = document.getElementById("screenshare");
 
-// shared buffer: 16 (max ip) + 2 (port) + 32 (fingerprint) = 50
-const sharedBytes = new Uint8Array(50);
+const sharedBytes = new Uint8Array(18); // 16 (max ip) + 2 (port)
 const sharedView = new DataView(sharedBytes.buffer);
-const certificate = await RTCPeerConnection.generateCertificate({ name: "ECDSA", namedCurve: "P-256" });
-const fingerprint = certificate.getFingerprints().find(f => f.algorithm === "sha-256").value;
-const fingerprintBytes = Uint8Array.fromHex(fingerprint.replace(/:/g, ''));
-const usernameFragment = "myufraghere1234";
-const password = "mypasswordthatisverylong12345";
-const streamerFingerprint = "";
 
 const peer = new RTCPeerConnection({
-	iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-	certificates: [certificate]
+	iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
 });
 
 peer.addEventListener("track", (event) => {
@@ -57,17 +52,17 @@ const keyboardChannel = peer.createDataChannel("keyboard", {
 	id: 2
 });
 
-const shareIdOffer = await (async function () {
+const offer = await (async function () {
 	const offer = await peer.createOffer({
 		offerToReceiveAudio: true,
 		offerToReceiveVideo: true
 	})
 
-	offer.sdp = offer.sdp
+	const sdp = offer.sdp // offer.sdp = offer.sdp...
 		.replace(/a=ice-ufrag:\S+/g, `a=ice-ufrag:${usernameFragment}`)
 		.replace(/a=ice-pwd:\S+/g, `a=ice-pwd:${password}`);
 
-	await peer.setLocalDescription(offer);
+	await peer.setLocalDescription({ type: "offer", sdp }); // setLocalDescription(offer)
 
 	const { address, port } = await new Promise((resolve) => {
 		peer.addEventListener("icecandidate", function onCandidate({ candidate }) {
@@ -91,37 +86,35 @@ const shareIdOffer = await (async function () {
 
 	sharedView.setUint16(offset, port, true);
 	offset += 2;
-	sharedBytes.set(fingerprintBytes, offset);
-	offset += 32;
 
 	return sharedBytes.subarray(0, offset).toBase64({ alphabet: "base64url" });
 })();
 
-await navigator.clipboard.writeText(shareIdOffer);
-window.alert("Copied the share ID into your clipboard");
-const streamerShareId = window.prompt("Share ID response:");
+await navigator.clipboard.writeText(offer);
+window.alert("Copied the offer into your clipboard");
+const answer = window.prompt("Workflow response:");
 
-await (async function connectToStreamerShareId() {
+await (async function connectToAnswer() {
 	let offset = 0;
-	const bytes = Uint8Array.fromBase64(streamerShareId, { alphabet: "base64url" });
-	const view = new DataView(bytes.buffer);
-	const isIPv6 = bytes.length === 18;
+	const answerSize = sharedBytes.setFromBase64(answer, { alphabet: "base64url" }).written;
+	const isIPv6 = answerSize === 18;
+	const addressType = isIPv6 ? "IP6" : "IP4";
 	const address = isIPv6
-		? (offset += 16, bytes.subarray(0, 16).toHex().match(/.{1,4}/g).join(':'))
-		: (offset += 4, bytes.subarray(0, 4).join("."));
+		? (offset += 16, sharedBytes.subarray(0, 16).toHex().match(/.{1,4}/g).join(':'))
+		: (offset += 4, sharedBytes.subarray(0, 4).join("."));
 
-	const port = view.getUint16(offset, true);
+	const port = sharedView.getUint16(offset, true);
 	offset += 2;
 
-	if (offset !== bytes.length) {
+	if (offset !== answerSize) {
 		throw new Error("Couldn't connect to share ID");
 	}
 
 	const commonIceLines = [
-		`c=IN IP4 0.0.0.0`,
+		`c=IN ${addressType} ${address}`, // `c=IN IP4 0.0.0.0`,
 		`a=ice-ufrag:${usernameFragment}`,
 		`a=ice-pwd:${password}`,
-		`a=fingerprint:sha-256 ${streamerFingerprint}`,
+		`a=fingerprint:sha-256 ${workflowFingerprint}`,
 		`a=setup:active`,
 		`a=candidate:1 1 udp 1686052607 ${address} ${port} typ srflx`,
 	];
