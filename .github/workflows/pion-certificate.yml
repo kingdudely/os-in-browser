@@ -7,7 +7,7 @@ jobs:
   generate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@main
+      - uses: actions/checkout@v7
 
       - name: Generate cert (never expires, per RFC 5280)
         run: |
@@ -19,7 +19,7 @@ jobs:
           openssl x509 -in cert.pem -noout -fingerprint -sha256 \
             | sed 's/sha256 Fingerprint=//' > docs/fingerprint.txt
 
-      - uses: stefanzweifel/git-auto-commit-action@main
+      - uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: "Generate static Pion certificate"
           file_pattern: "cert.pem key.pem docs/fingerprint.txt"
