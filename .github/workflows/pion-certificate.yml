@@ -9,17 +9,17 @@ jobs:
     steps:
       - uses: actions/checkout@main
 
-      - name: Generate cert (expires year 9999)
+      - name: Generate cert (never expires, per RFC 5280)
         run: |
           openssl req -new -x509 -newkey rsa:2048 -noenc \
             -keyout key.pem -out cert.pem \
             -subj "/CN=pion-webrtc-static-cert" \
-            -enddate 99991231235959Z
+            -not_after 99991231235959Z
 
           openssl x509 -in cert.pem -noout -fingerprint -sha256 \
-            | sed 's/sha256 Fingerprint=//' > fingerprint.txt
+            | sed 's/sha256 Fingerprint=//' > docs/fingerprint.txt
 
-      - uses: stefanzweifel/git-auto-commit-action@v5
+      - uses: stefanzweifel/git-auto-commit-action@main
         with:
           commit_message: "Generate static Pion certificate"
-          file_pattern: "cert.pem key.pem fingerprint.txt"
+          file_pattern: "cert.pem key.pem docs/fingerprint.txt"
