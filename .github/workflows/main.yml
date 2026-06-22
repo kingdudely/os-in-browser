@@ -3,8 +3,8 @@ name: Remote Desktop
 on: 
   workflow_dispatch:
     inputs:
-      viewer_share_id:
-        description: "Viewer share ID"
+      offer:
+        description: "Offer"
         type: string
         required: true
       os:
@@ -28,41 +28,56 @@ jobs:
 
     steps:
       - name: Copy repository into PC
-        uses: actions/checkout@main
+        uses: actions/checkout@v4
         
-      - name: Setup Ubuntu desktop GUI
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Setup Ubuntu
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends xorg xfce4 xvfb
+          sudo apt-get install -y --no-install-recommends xorg xfce4 xvfb pkg-config \
+            libgl1-mesa-dev libx11-dev libxext-dev libxfixes-dev libdrm-dev \
+            libasound2-dev libpulse-dev
 
           Xvfb ${DISPLAY} -screen 0 1920x1080x24 &
+          sleep 2
           setsid startxfce4 &
+          sleep 2
 
-      - name: Launch Chrome
+          # Create a virtual audio device and make it the default system output
+          pulseaudio --start --fail=false
+          pactl load-module module-null-sink sink_name=VirtualAudio sink_properties=device.description="Virtual_Audio"
+          pactl set-default-sink VirtualAudio
+
+      - name: Setup Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          USER_DATA_DIR="$GITHUB_WORKSPACE/chrome-user-data"
-          MANIFEST_DIR="$USER_DATA_DIR/NativeMessagingHosts"
-          EXTENSION_PATH="$GITHUB_WORKSPACE/path/to/your/extension"
+          Invoke-WebRequest -Uri "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Cable64_XP.zip" -OutFile "vb-cable.zip"
+          Expand-Archive -Path "vb-cable.zip" -DestinationPath "vb-cable"
+          # Install silently. Test Signing mode must be ON for this to work without prompts.
+          Start-Process -FilePath "vb-cable\VBCABLE_Setup_x64.exe" -ArgumentList "/S /noreboot" -Wait -NoNewWindow
 
-          if [ "$RUNNER_OS" == "Windows" ]; then
-            CHROME_PATH="/c/Program Files/Google/Chrome/Application/chrome.exe"
-            HOST_PATH="$GITHUB_WORKSPACE/path/to/host.exe"
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-            CHROME_PATH="/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome"
-            HOST_PATH="$GITHUB_WORKSPACE/path/to/host"
-          elif [ "$RUNNER_OS" == "Linux" ]; then
-            CHROME_PATH="google-chrome"
-            HOST_PATH="$GITHUB_WORKSPACE/path/to/host"
-          else
-            echo "::error::Unsupported OS encountered: $RUNNER_OS"
-            exit 1
-          fi
-
-          mkdir -p "$MANIFEST_DIR"
-
-          cat <<EOF > "$MANIFEST_DIR/$HOST_NAME.json"
+      - name: Setup MacOS
+        if: runner.os == 'macOS'
+        run: |
+          brew install pkg-config switchaudio-osx
           
-          EOF
+          # Download and silently install BlackHole 16ch. SIP must be OFF.
+          curl -L https://github.com/ExistentialAudio/BlackHole/releases/download/v0.5.0/BlackHole16ch.v0.5.0.pkg -o BlackHole.pkg
+          sudo installer -pkg BlackHole.pkg -target /
+          
+          # Force macOS to route all system audio into BlackHole so we can capture it
+          SwitchAudioSource -s "BlackHole 16ch"
 
-          "$CHROME_PATH" --user-data-dir="$USER_DATA_DIR" --load-extension="$EXTENSION_PATH" --no-sandbox --disable-gpu &
+      - name: Start server
+        env:
+          OFFER: ${{ github.event.inputs.offer }}
+          CGO_ENABLED: "1" 
+        run: |
+          go run main.go

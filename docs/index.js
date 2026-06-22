@@ -1,25 +1,34 @@
+window.addEventListener("error", (event) => {
+	const errorMessage = event.message || "Unknown error occurred";
+    window.alert(`Error:\n${errorMessage}`);
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+    const asyncErrorMessage = event.reason?.message || event.reason || "Unknown async error occurred";
+    window.alert(`Async error:\n${asyncErrorMessage}`);
+});
+
 import codeMap from "./code-map.json" with { type: "json" };
 import workflowFingerprint from "./workflowFingerprint.txt" with { type: "text" };
 import usernameFragment from "./usernameFragment.txt" with { type: "text" };
 import password from "./password.txt" with { type: "text" };
 
-async function enableImmersiveMode(target) {
+function enableImmersiveMode() {
 	if (document.fullscreenEnabled && !document.fullscreenElement) {
-		await document.body.requestFullscreen({ // target
+		document.body.requestFullscreen({ // target, await
 			"navigationUI": "hide"
-		});
+		}).catch(() => {});
 	};
 
 	if (!document.pointerLockElement) {
-		await target.requestPointerLock({
+		document.body.requestPointerLock({ // target, await
 			"unadjustedMovement": true
-		});
+		}).catch(() => {});
 	}
 }
 
 const screenshare = document.getElementById("screenshare");
-
-const sharedBytes = new Uint8Array(18); // 16 (max ip) + 2 (port)
+const sharedBytes = new Uint8Array(5); 
 const sharedView = new DataView(sharedBytes.buffer);
 
 const peer = new RTCPeerConnection({
@@ -52,108 +61,107 @@ const keyboardChannel = peer.createDataChannel("keyboard", {
 	id: 2
 });
 
-const offer = await (async function () {
-	const offer = await peer.createOffer({
-		offerToReceiveAudio: true,
-		offerToReceiveVideo: true
-	})
+const offer = await peer.createOffer({
+	offerToReceiveAudio: true,
+	offerToReceiveVideo: true
+});
 
-	const sdp = offer.sdp // offer.sdp = offer.sdp...
-		.replace(/a=ice-ufrag:\S+/g, `a=ice-ufrag:${usernameFragment}`)
-		.replace(/a=ice-pwd:\S+/g, `a=ice-pwd:${password}`);
+const offerSdp = offer.sdp
+	.replace(/a=ice-ufrag:\S+/g, `a=ice-ufrag:${usernameFragment}`)
+	.replace(/a=ice-pwd:\S+/g, `a=ice-pwd:${password}`);
 
-	await peer.setLocalDescription({ type: "offer", sdp }); // setLocalDescription(offer)
+await peer.setLocalDescription({ type: "offer", sdp: offerSdp });
 
-	const { address, port } = await new Promise((resolve) => {
-		peer.addEventListener("icecandidate", function onCandidate({ candidate }) {
-			if (candidate?.type === "srflx") {
-				peer.removeEventListener("icecandidate", onCandidate);
-				resolve(candidate);
-			}
-		});
-	});
+await new Promise((resolve, reject) => {
+	async function onCandidate({ candidate }) {
+        if (candidate?.type === "srflx") {
+            peer.removeEventListener("icecandidate", onCandidate);
+            peer.removeEventListener("icegatheringstatechange", onGatheringChange);
 
-	let offset = 0;
-	const isIPv6 = address.includes(':');
+            const { address, port } = candidate;
+            const isIPv6Address = address.includes(':');
+            const fullAddress = isIPv6Address ? `[${address}]:${port}` : `${address}:${port}`;
+            
+            await navigator.clipboard.writeText(fullAddress).catch(console.error);
+            window.alert(`Copied address to clipboard!`);
+            resolve();
+        }
+    }
 
-	if (isIPv6) {
-		address.split(':').forEach((hextet, index) => sharedView.setUint16(index * 2, parseInt(hextet, 16), true));
-		offset += 16;
-	} else {
-		address.split('.').forEach((octet, index) => sharedView.setUint8(index, parseInt(octet, 10)));
-		offset += 4;
-	}
+    function onGatheringChange() {
+        if (peer.iceGatheringState === "complete") {
+            peer.removeEventListener("icegatheringstatechange", onGatheringChange);
+            peer.removeEventListener("icecandidate", onCandidate);
+            
+            reject(new Error("ICE gathering complete, but no srflx candidate found."));
+        }
+    }
 
-	sharedView.setUint16(offset, port, true);
-	offset += 2;
+	peer.addEventListener("icecandidate", onCandidate);
+    peer.addEventListener("icegatheringstatechange", onGatheringChange);
+});
 
-	return sharedBytes.subarray(0, offset).toBase64({ alphabet: "base64url" });
-})();
+const commonIceLines = [
+	"c=IN IP4 0.0.0.0",
+	`a=ice-ufrag:${usernameFragment}`,
+	`a=ice-pwd:${password}`,
+	`a=fingerprint:sha-256 ${workflowFingerprint}`,
+	"a=setup:active"
+];
 
-await navigator.clipboard.writeText(offer);
-window.alert("Copied the offer into your clipboard");
-const answer = window.prompt("Workflow response:");
-
-await (async function connectToAnswer() {
-	let offset = 0;
-	const answerSize = sharedBytes.setFromBase64(answer, { alphabet: "base64url" }).written;
-	const isIPv6 = answerSize === 18;
-	const addressType = isIPv6 ? "IP6" : "IP4";
-	const address = isIPv6
-		? (offset += 16, sharedBytes.subarray(0, 16).toHex().match(/.{1,4}/g).join(':'))
-		: (offset += 4, sharedBytes.subarray(0, 4).join("."));
-
-	const port = sharedView.getUint16(offset, true);
-	offset += 2;
-
-	if (offset !== answerSize) {
-		throw new Error("Couldn't connect to share ID");
-	}
-
-	const commonIceLines = [
-		`c=IN ${addressType} ${address}`, // `c=IN IP4 0.0.0.0`,
-		`a=ice-ufrag:${usernameFragment}`,
-		`a=ice-pwd:${password}`,
-		`a=fingerprint:sha-256 ${workflowFingerprint}`,
-		`a=setup:active`,
-		`a=candidate:1 1 udp 1686052607 ${address} ${port} typ srflx`,
-	];
-
-	const streamerSdp = [
+await peer.setRemoteDescription({
+	type: "answer",
+	sdp: [
 		"v=0",
-		"o=- 0 0 IN IP4 127.0.0.1",
+		"o=- 0 0 IN IP4 0.0.0.0",
 		"s=-",
 		"t=0 0",
 		"a=group:BUNDLE 0 1 2",
 
 		"m=audio 9 UDP/TLS/RTP/SAVPF 111",
 		...commonIceLines,
-		`a=sendonly`, "a=mid:0", "a=rtcp-mux", "a=rtpmap:111 opus/48000/2",
+		"a=sendonly",
+		"a=mid:0",
+		"a=rtcp-mux",
+		"a=rtpmap:111 opus/48000/2",
 
 		"m=video 9 UDP/TLS/RTP/SAVPF 96",
 		...commonIceLines,
-		`a=sendonly`, "a=mid:1", "a=rtcp-mux", "a=rtpmap:96 AV1/90000",
+		"a=sendonly",
+		"a=mid:1",
+		"a=rtcp-mux",
+		"a=rtpmap:96 AV1/90000",
 
 		"m=application 9 UDP/DTLS/SCTP webrtc-datachannel",
 		...commonIceLines,
-		"a=mid:2", "a=sctp-port:5000", "a=max-message-size:262144",
+		"a=mid:2",
+		"a=sctp-port:5000",
+		"a=max-message-size:262144",
 		"",
-	].join("\r\n");
+	].join("\r\n")
+});
 
-	await peer.setRemoteDescription({ type: "answer", sdp: streamerSdp });
-})()
-
-screenshare.addEventListener("pointermove", (event) => { // pointerrawupdate - safari doesn't support unfortunately (I wish MacOS had touchscreen and stylus APIs)
+screenshare.addEventListener("pointermove", (event) => {
+	event.preventDefault();
 	if (pointerMovementChannel.readyState !== "open") return;
-	// make flag to say if it is clientX or movementX with document.pointerLockElement
-	sharedView.setInt16(0, event.movementX, true);
-	sharedView.setInt16(2, event.movementY, true);
-	pointerMovementChannel.send(sharedBytes.subarray(0, 4));
+
+	if (document.pointerLockElement) {
+		sharedView.setUint8(0, 1); // isRelative
+		sharedView.setInt16(1, event.movementX, true);
+		sharedView.setInt16(3, event.movementY, true);
+	} else {
+		sharedView.setUint8(0, 0); // isRelative
+		sharedView.setInt16(1, event.clientX, true);
+		sharedView.setInt16(3, event.clientY, true);
+	}
+	
+	pointerMovementChannel.send(sharedBytes.subarray(0, 5));
 });
 
 screenshare.addEventListener("pointerdown", (event) => {
+	event.preventDefault();
 	if (pointerClickChannel.readyState !== "open") return;
-	enableImmersiveMode(screenshare).catch(console.warn);
+	enableImmersiveMode();
 
 	sharedView.setUint8(0, 1); // isDown
 	sharedView.setUint8(1, event.button);
@@ -161,15 +169,18 @@ screenshare.addEventListener("pointerdown", (event) => {
 });
 
 screenshare.addEventListener("pointerup", (event) => {
+	event.preventDefault();
 	if (pointerClickChannel.readyState !== "open") return;
+
 	sharedView.setUint8(0, 0); // isDown
 	sharedView.setUint8(1, event.button);
 	pointerClickChannel.send(sharedBytes.subarray(0, 2));
 });
 
-screenshare.addEventListener("keydown", (event) => {
+window.addEventListener("keydown", (event) => { // screenshare
+	event.preventDefault();
 	if (keyboardChannel.readyState !== "open" || event.repeat || !event.code) return;
-	enableImmersiveMode(screenshare).catch(console.warn);
+	enableImmersiveMode();
 
 	const codeIndex = codeMap.indexOf(event.code);
 	if (codeIndex === -1) {
@@ -182,7 +193,8 @@ screenshare.addEventListener("keydown", (event) => {
 	keyboardChannel.send(sharedBytes.subarray(0, 2));
 });
 
-screenshare.addEventListener("keyup", (event) => {
+window.addEventListener("keyup", (event) => {
+	event.preventDefault();
 	if (keyboardChannel.readyState !== "open" || !event.code) return;
 
 	const codeIndex = codeMap.indexOf(event.code);
@@ -194,4 +206,4 @@ screenshare.addEventListener("keyup", (event) => {
 	sharedView.setUint8(0, 0); // isDown
 	sharedView.setUint8(1, codeIndex);
 	keyboardChannel.send(sharedBytes.subarray(0, 2));
-})
+});
