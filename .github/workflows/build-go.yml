@@ -1,0 +1,44 @@
+name: Build main.go
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            ext: ""
+          - os: macos-latest
+            goos: darwin
+            ext: ""
+          - os: windows-latest
+            goos: windows
+            ext: ".exe"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+
+      - name: Build
+        shell: bash
+        run: |
+          mkdir -p dist
+          GOARCH=amd64 CGO_ENABLED=1 GOOS=${{ matrix.goos }} \
+            go build -o "dist/${{ matrix.goos }}${{ matrix.ext }}" .
+
+      - name: Commit Files to Repo
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Add cross-platform binaries for ${{ matrix.goos }} to dist/"
+          file_pattern: "dist/${{ matrix.goos }}${{ matrix.ext }}"

@@ -31,6 +31,7 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@master
         with:
           commit_message: "Update WebRTC DTLS Fingerprint and Certificates"
+          file_pattern: "workflow_cert.pem workflow_key.pem docs/constants.json"
 
       - name: Setup GitHub Pages
         uses: actions/configure-pages@main

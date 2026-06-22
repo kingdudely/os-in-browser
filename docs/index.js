@@ -231,7 +231,17 @@ screenshare.addEventListener("wheel", (event) => {
     event.preventDefault();
     if (scrollChannel.readyState !== "open") return;
 
-    sharedView.setInt16(0, event.deltaX, true);
-    sharedView.setInt16(2, event.deltaY, true);
+    const multiplier = (function() {
+		switch (event.deltaMode) {
+			case event.DOM_DELTA_PIXEL: return 1;
+			case event.DOM_DELTA_LINE: return 20;
+			case event.DOM_DELTA_PAGE: return 400; // 800
+
+			default: throw new Error("Unsupported deltaMode");
+		}
+	})();
+
+    sharedView.setInt16(0, event.deltaX * multiplier, true);
+    sharedView.setInt16(2, event.deltaY * multiplier, true);
     scrollChannel.send(sharedBytes.subarray(0, 4));
 });

@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/tls"
-	_ "embed"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -18,127 +17,62 @@ import (
 	"github.com/pion/mediadevices/pkg/prop"
 	_ "github.com/pion/mediadevices/pkg/driver/microphone"
 	_ "github.com/pion/mediadevices/pkg/driver/screen"
+	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v4"
 )
 
-//go:embed robotgo-key-map.json
-var keyMapJSON []byte
-
-//go:embed button-map.json
-var buttonMapJSON []byte
-
-//go:embed docs/workflowFingerprint.txt
-var workflowFingerprint string
-
-//go:embed docs/usernameFragment.txt
-var usernameFragment string
-
-//go:embed docs/password.txt
-var password string
-
-var keyMap []interface{}
-var buttonMap []string
-
-func init() {
-	workflowFingerprint = strings.TrimSpace(workflowFingerprint)
-	usernameFragment = strings.TrimSpace(usernameFragment)
-	password = strings.TrimSpace(password)
-
-	if err := json.Unmarshal(keyMapJSON, &keyMap); err != nil {
-		log.Fatalf("failed to parse robotgo-key-map.json: %v", err)
-	}
-	if err := json.Unmarshal(buttonMapJSON, &buttonMap); err != nil {
-		log.Fatalf("failed to parse button-map.json: %v", err)
-	}
+type Constants struct {
+	UsernameFragment    string `json:"usernameFragment"`
+	Password            string `json:"password"`
+    WorkflowFingerprint string `json:"workflowFingerprint"`
 }
 
-func keyForIndex(index uint8) string {
-	if int(index) >= len(keyMap) || keyMap[index] == nil {
-		return ""
+func mustReadJSON[T any](path string) T {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Fatalf("read %s: %v", path, err)
 	}
-	s, _ := keyMap[index].(string)
-	return s
-}
-
-func buttonForIndex(index uint8) string {
-	if int(index) >= len(buttonMap) {
-		return "left"
+	var v T
+	if err := json.Unmarshal(data, &v); err != nil {
+		log.Fatalf("parse %s: %v", path, err)
 	}
-	return buttonMap[index]
-}
-
-func buildOfferSDP(address, port, ufrag, pwd, fingerprint string) string {
-	isIPv6 := strings.Contains(address, ":")
-	netType := "IP4"
-	if isIPv6 {
-		netType = "IP6"
-	}
-
-	candidate := fmt.Sprintf(
-		"candidate:0 1 UDP 1686052607 %s %s typ srflx",
-		address, port,
-	)
-
-	commonLines := []string{
-		fmt.Sprintf("c=IN %s %s", netType, address),
-		fmt.Sprintf("a=ice-ufrag:%s", ufrag),
-		fmt.Sprintf("a=ice-pwd:%s", pwd),
-		fmt.Sprintf("a=fingerprint:sha-256 %s", fingerprint),
-		"a=setup:active",
-		fmt.Sprintf("a=%s", candidate),
-	}
-
-	lines := []string{
-		"v=0",
-		"o=- 0 0 IN IP4 0.0.0.0",
-		"s=-",
-		"t=0 0",
-		"a=group:BUNDLE 0 1 2",
-
-		"m=audio 9 UDP/TLS/RTP/SAVPF 111",
-	}
-	lines = append(lines, commonLines...)
-	lines = append(lines,
-		"a=recvonly",
-		"a=mid:0",
-		"a=rtcp-mux",
-		"a=rtpmap:111 opus/48000/2",
-
-		"m=video 9 UDP/TLS/RTP/SAVPF 96",
-	)
-	lines = append(lines, commonLines...)
-	lines = append(lines,
-		"a=recvonly",
-		"a=mid:1",
-		"a=rtcp-mux",
-		"a=rtpmap:96 AV1/90000",
-
-		"m=application 9 UDP/DTLS/SCTP webrtc-datachannel",
-	)
-	lines = append(lines, commonLines...)
-	lines = append(lines,
-		"a=mid:2",
-		"a=sctp-port:5000",
-		"a=max-message-size:262144",
-		"",
-	)
-
-	return strings.Join(lines, "\r\n")
+	return v
 }
 
 func main() {
-	// $OFFER is "ip:port" or "[ipv6]:port"
-	offer := strings.TrimSpace(os.Getenv("OFFER"))
-	if offer == "" {
-		log.Fatal("OFFER env var is required (format: ip:port or [ipv6]:port)")
+	// Load files
+	constants := mustReadJSON[Constants]("docs/constants.json")
+	keyMap := mustReadJSON[[]interface{}]("code-map.json")
+	buttonMap := mustReadJSON[[]string]("button-map.json")
+    usernameFragment := constants.UsernameFragment
+    password := constants.Password
+    workflowFingerprint := constants.WorkflowFingerprint
+
+	keyForIndex := func(index uint8) string {
+		if int(index) >= len(keyMap) || keyMap[index] == nil {
+			return ""
+		}
+		s, _ := keyMap[index].(string)
+		return s
+	}
+	buttonForIndex := func(index uint8) string {
+		if int(index) >= len(buttonMap) {
+			return "left"
+		}
+		return buttonMap[index]
 	}
 
+	// Parse OFFER env var
+	offer := strings.TrimSpace(os.Getenv("OFFER"))
+	if offer == "" {
+		log.Fatal("OFFER env var required (format: ip:port or [ipv6]:port)")
+	}
 	host, port, err := net.SplitHostPort(offer)
 	if err != nil {
 		log.Fatalf("invalid OFFER %q: %v", offer, err)
 	}
 
-	// Load cert
+	// Load TLS cert
 	certPEM, err := os.ReadFile("workflow_cert.pem")
 	if err != nil {
 		log.Fatalf("read workflow_cert.pem: %v", err)
@@ -155,14 +89,14 @@ func main() {
 	// SettingEngine
 	se := webrtc.SettingEngine{}
 	se.SetICECredentials(usernameFragment, password)
-	se.DisableCertificateFingerprintVerification(true) // browser doesn't send its fingerprint
+	se.DisableCertificateFingerprintVerification(true)
 
 	// Codec setup
 	av1Params, err := svtav1.NewParams()
-    if err != nil {
-        log.Fatalf("svtav1 params: %v", err)
-    }
-    av1Params.BitRate = 2_000_000
+	if err != nil {
+		log.Fatalf("svtav1 params: %v", err)
+	}
+	av1Params.BitRate = 2_000_000
 
 	opusParams, err := opus.NewParams()
 	if err != nil {
@@ -170,9 +104,9 @@ func main() {
 	}
 
 	codecSelector := mediadevices.NewCodecSelector(
-        mediadevices.WithVideoEncoders(&av1Params),
-        mediadevices.WithAudioEncoders(&opusParams),
-    )
+		mediadevices.WithVideoEncoders(&av1Params),
+		mediadevices.WithAudioEncoders(&opusParams),
+	)
 	codecSelector.Populate(&se)
 
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(se))
@@ -240,9 +174,11 @@ func main() {
 	pointerClick    := ch("pointer-click", true, nil, 1)
 	keyboard        := ch("keyboard", true, nil, 2)
 	screenResize    := ch("screen-resize", false, &maxRetransmits, 3)
-    scroll := ch("scroll", false, &maxRetransmits, 4)
+	scroll          := ch("scroll", false, &maxRetransmits, 4)
 
-	screenWidth, screenHeight := robotgo.GetScreenSize()
+	// Track client viewport for coordinate scaling
+	// Start with actual screen size; updated when client sends screen-resize
+	clientW, clientH := robotgo.GetScreenSize()
 
 	pointerMovement.OnMessage(func(msg webrtc.DataChannelMessage) {
 		if len(msg.Data) < 5 {
@@ -257,7 +193,7 @@ func main() {
 			robotgo.Move(cx+x, cy+y)
 		} else {
 			sw, sh := robotgo.GetScreenSize()
-			robotgo.Move(x*sw/screenWidth, y*sh/screenHeight)
+			robotgo.Move(x*sw/clientW, y*sh/clientH)
 		}
 	})
 
@@ -295,48 +231,134 @@ func main() {
 		if len(msg.Data) < 4 {
 			return
 		}
-		screenWidth = int(binary.LittleEndian.Uint16(msg.Data[0:2]))
-		screenHeight = int(binary.LittleEndian.Uint16(msg.Data[2:4]))
-		fmt.Printf("client viewport: %dx%d\n", screenWidth, screenHeight)
+		clientW = int(binary.LittleEndian.Uint16(msg.Data[0:2]))
+		clientH = int(binary.LittleEndian.Uint16(msg.Data[2:4]))
+		fmt.Printf("client viewport: %dx%d\n", clientW, clientH)
 	})
 
-    scroll.OnMessage(func(msg webrtc.DataChannelMessage) {
-        if len(msg.Data) < 4 {
-            return
-        }
-        dx := int(int16(binary.LittleEndian.Uint16(msg.Data[0:2])))
-        dy := int(int16(binary.LittleEndian.Uint16(msg.Data[2:4])))
+	scroll.OnMessage(func(msg webrtc.DataChannelMessage) {
+		if len(msg.Data) < 4 {
+			return
+		}
+		dx := int(int16(binary.LittleEndian.Uint16(msg.Data[0:2])))
+		dy := int(int16(binary.LittleEndian.Uint16(msg.Data[2:4])))
 
-        if dy != 0 {
-            amount := dy / 100 // deltaY is in pixels, robotgo takes scroll ticks
-            if amount == 0 {
-                amount = 1
-            }
-            if dy > 0 {
-                robotgo.ScrollDir(amount, "down")
-            } else {
-                robotgo.ScrollDir(-amount, "up")
-            }
-        }
-        if dx != 0 {
-            amount := dx / 100
-            if amount == 0 {
-                amount = 1
-            }
-            if dx > 0 {
-                robotgo.ScrollDir(amount, "right")
-            } else {
-                robotgo.ScrollDir(-amount, "left")
-            }
-        }
-    })
+		if dy != 0 {
+			amount := dy / 100
+			if amount == 0 {
+				amount = 1
+			}
+			if dy > 0 {
+				robotgo.ScrollDir(amount, "down")
+			} else {
+				robotgo.ScrollDir(-amount, "up")
+			}
+		}
+		if dx != 0 {
+			amount := dx / 100
+			if amount == 0 {
+				amount = 1
+			}
+			if dx > 0 {
+				robotgo.ScrollDir(amount, "right")
+			} else {
+				robotgo.ScrollDir(-amount, "left")
+			}
+		}
+	})
 
-	// Reconstruct offer SDP from the browser's srflx address
-	offerSDP := buildOfferSDP(host, port, usernameFragment, password, workflowFingerprint)
+	// Build offer SDP using pion/sdp v3 API
+	isIPv6 := strings.Contains(host, ":")
+	netType := "IP4"
+	if isIPv6 {
+		netType = "IP6"
+	}
+
+	candidateStr := fmt.Sprintf("0 1 UDP 1686052607 %s %s typ srflx", host, port)
+
+	newMedia := func(typ, mid, rtpmap string, payloadType uint8) *sdp.MediaDescription {
+		portNum, _ := fmt.Sscan(port)
+		_ = portNum
+		return (&sdp.MediaDescription{
+			MediaName: sdp.MediaName{
+				Media:   typ,
+				Port:    sdp.RangedPort{Value: 9},
+				Protos:  []string{"UDP", "TLS", "RTP", "SAVPF"},
+				Formats: []string{fmt.Sprintf("%d", payloadType)},
+			},
+			ConnectionInformation: &sdp.ConnectionInformation{
+				NetworkType: "IN",
+				AddressType: netType,
+				Address:     &sdp.Address{Address: host},
+			},
+		}).
+			WithICECredentials(usernameFragment, password).
+			WithFingerprint("sha-256", workflowFingerprint).
+			WithPropertyAttribute("setup:active").
+			WithCandidate(candidateStr).
+			WithPropertyAttribute("recvonly").
+			WithValueAttribute("mid", mid).
+			WithPropertyAttribute("rtcp-mux").
+			WithCodec(payloadType, rtpmap, func() uint32 {
+				if typ == "audio" { return 48000 }
+				return 90000
+			}(), func() uint16 {
+				if typ == "audio" { return 2 }
+				return 0
+			}(), "")
+	}
+
+	appMedia := &sdp.MediaDescription{
+		MediaName: sdp.MediaName{
+			Media:   "application",
+			Port:    sdp.RangedPort{Value: 9},
+			Protos:  []string{"UDP", "DTLS", "SCTP"},
+			Formats: []string{"webrtc-datachannel"},
+		},
+		ConnectionInformation: &sdp.ConnectionInformation{
+			NetworkType: "IN",
+			AddressType: netType,
+			Address:     &sdp.Address{Address: host},
+		},
+	}
+	appMedia.
+		WithICECredentials(usernameFragment, password).
+		WithFingerprint("sha-256", workflowFingerprint).
+		WithPropertyAttribute("setup:active").
+		WithCandidate(candidateStr).
+		WithValueAttribute("mid", "2").
+		WithValueAttribute("sctp-port", "5000").
+		WithValueAttribute("max-message-size", "262144")
+
+	sess := &sdp.SessionDescription{
+		Version: 0,
+		Origin: sdp.Origin{
+			Username:       "-",
+			SessionID:      0,
+			SessionVersion: 0,
+			NetworkType:    "IN",
+			AddressType:    "IP4",
+			UnicastAddress: "0.0.0.0",
+		},
+		SessionName: "-",
+		TimeDescriptions: []sdp.TimeDescription{
+			{Timing: sdp.Timing{StartTime: 0, StopTime: 0}},
+		},
+	}
+	sess.
+		WithValueAttribute("group", "BUNDLE 0 1 2").
+		WithMedia(newMedia("audio", "0", "opus", 111)).
+		WithMedia(newMedia("video", "1", "AV1", 96)).
+		WithMedia(appMedia)
+
+	offerSDP, err := sess.Marshal()
+	if err != nil {
+		log.Fatalf("marshal SDP: %v", err)
+	}
 
 	if err := peer.SetRemoteDescription(webrtc.SessionDescription{
 		Type: webrtc.SDPTypeOffer,
-		SDP:  offerSDP,
+		SDP:  string(offerSDP),
 	}); err != nil {
 		log.Fatalf("SetRemoteDescription: %v", err)
 	}
