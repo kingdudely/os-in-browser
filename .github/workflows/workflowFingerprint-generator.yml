@@ -31,6 +31,9 @@ jobs:
           ls -la workflow_cert.pem workflow_key.pem docs/workflowFingerprint.txt
           git status
 
+      - name: Stage certificate files
+        run: git add -f workflow_cert.pem workflow_key.pem docs/workflowFingerprint.txt
+
       - name: Commit Files to Repo
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
