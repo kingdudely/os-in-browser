@@ -20,9 +20,16 @@ jobs:
 
       - name: Generate certificate and fingerprint
         run: |
+          mkdir -p docs
           openssl req -x509 -newkey rsa:2048 -keyout workflow_key.pem -out workflow_cert.pem \
             -nodes -subj "/CN=WebRTC-Workflow" -days 36500
-          openssl x509 -in workflow_cert.pem -noout -fingerprint -sha256 | sed 's/.*=//'
+          openssl x509 -in workflow_cert.pem -noout -fingerprint -sha256 | sed 's/.*=//' > docs/workflowFingerprint.txt
+          cat docs/workflowFingerprint.txt  # sanity check in logs
+
+      - name: Debug files
+        run: |
+          ls -la workflow_cert.pem workflow_key.pem docs/workflowFingerprint.txt
+          git status
 
       - name: Commit Files to Repo
         uses: stefanzweifel/git-auto-commit-action@v5
