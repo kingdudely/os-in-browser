@@ -20,7 +20,8 @@ jobs:
 
       - name: Generate certificate and fingerprint
         run: |
-          openssl req -x509 -newkey rsa:2048 -keyout workflow_key.pem -out workflow_cert.pem -nodes -subj "/CN=WebRTC-Workflow" -not_after 99991231235959Z
+          openssl req -x509 -newkey rsa:2048 -keyout workflow_key.pem -out workflow_cert.pem \
+            -nodes -subj "/CN=WebRTC-Workflow" -days 36500
           openssl x509 -in workflow_cert.pem -noout -fingerprint -sha256 | sed 's/.*=//'
 
       - name: Commit Files to Repo
