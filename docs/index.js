@@ -9,9 +9,7 @@ window.addEventListener("unhandledrejection", (event) => {
 });
 
 import codeMap from "./code-map.json" with { type: "json" };
-import workflowFingerprint from "./workflowFingerprint.txt" with { type: "text" };
-import usernameFragment from "./usernameFragment.txt" with { type: "text" };
-import password from "./password.txt" with { type: "text" };
+import { password, usernameFragment, workflowFingerprint } from "./constants.json" with { type: "json" }; // type: "text"
 
 function enableImmersiveMode() {
 	if (document.fullscreenEnabled && !document.fullscreenElement) {
@@ -65,6 +63,13 @@ const screenResizeChannel = peer.createDataChannel("screen-resize", {
     ordered: false,
     negotiated: true,
     id: 3
+});
+
+const scrollChannel = peer.createDataChannel("scroll", {
+    ordered: false,
+    maxRetransmits: 0,
+    negotiated: true,
+    id: 4
 });
 
 const offer = await peer.createOffer({
@@ -220,4 +225,13 @@ window.addEventListener("resize", () => {
     sharedView.setUint16(0, window.innerWidth, true);
     sharedView.setUint16(2, window.innerHeight, true);
     screenResizeChannel.send(sharedBytes.subarray(0, 4));
+});
+
+screenshare.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    if (scrollChannel.readyState !== "open") return;
+
+    sharedView.setInt16(0, event.deltaX, true);
+    sharedView.setInt16(2, event.deltaY, true);
+    scrollChannel.send(sharedBytes.subarray(0, 4));
 });

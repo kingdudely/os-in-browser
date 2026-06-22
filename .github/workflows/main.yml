@@ -28,56 +28,19 @@ jobs:
 
     steps:
       - name: Copy repository into PC
-        uses: actions/checkout@v4
+        uses: actions/checkout@main
         
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.26'
-          cache: true
-
-      - name: Setup Ubuntu
+      - name: Setup Ubuntu desktop GUI
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends xorg xfce4 xvfb pkg-config \
-            libgl1-mesa-dev libx11-dev libxext-dev libxfixes-dev libdrm-dev \
-            libasound2-dev libpulse-dev
+          sudo apt-get install -y --no-install-recommends xorg xfce4 xvfb
 
           Xvfb ${DISPLAY} -screen 0 1920x1080x24 &
-          sleep 2
           setsid startxfce4 &
-          sleep 2
-
-          # Create a virtual audio device and make it the default system output
-          pulseaudio --start --fail=false
-          pactl load-module module-null-sink sink_name=VirtualAudio sink_properties=device.description="Virtual_Audio"
-          pactl set-default-sink VirtualAudio
-
-      - name: Setup Windows
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          Invoke-WebRequest -Uri "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Cable64_XP.zip" -OutFile "vb-cable.zip"
-          Expand-Archive -Path "vb-cable.zip" -DestinationPath "vb-cable"
-          # Install silently. Test Signing mode must be ON for this to work without prompts.
-          Start-Process -FilePath "vb-cable\VBCABLE_Setup_x64.exe" -ArgumentList "/S /noreboot" -Wait -NoNewWindow
-
-      - name: Setup MacOS
-        if: runner.os == 'macOS'
-        run: |
-          brew install pkg-config switchaudio-osx
-          
-          # Download and silently install BlackHole 16ch. SIP must be OFF.
-          curl -L https://github.com/ExistentialAudio/BlackHole/releases/download/v0.5.0/BlackHole16ch.v0.5.0.pkg -o BlackHole.pkg
-          sudo installer -pkg BlackHole.pkg -target /
-          
-          # Force macOS to route all system audio into BlackHole so we can capture it
-          SwitchAudioSource -s "BlackHole 16ch"
 
       - name: Start server
         env:
           OFFER: ${{ github.event.inputs.offer }}
-          CGO_ENABLED: "1" 
         run: |
           go run main.go
