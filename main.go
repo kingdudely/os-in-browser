@@ -6,7 +6,6 @@ import (
     "fmt"
     "net"
     "os"
-    "regexp"
     "runtime"
     "strconv"
     "strings"
@@ -15,11 +14,13 @@ import (
     "github.com/pion/interceptor"
     "github.com/pion/mediadevices"
     "github.com/pion/mediadevices/pkg/frame"
+    "github.com/pion/mediadevices/pkg/io/video"
     _ "github.com/pion/mediadevices/pkg/driver/alsa"
     _ "github.com/pion/mediadevices/pkg/driver/coreaudio"
     _ "github.com/pion/mediadevices/pkg/driver/pulse"
     _ "github.com/pion/mediadevices/pkg/driver/screen"
     _ "github.com/pion/mediadevices/pkg/driver/wasapi"
+    "github.com/pion/sdp/v3"
     "github.com/pion/webrtc/v4"
 )
 
@@ -55,12 +56,10 @@ func main() {
     // ==========================================
     // 1. LOAD CONFIGURATION
     // ==========================================
-    // Load shared WebRTC secrets from /docs/ (used by both JS and Go)
     sharedUfrag := readFileAsString("docs/usernameFragment.txt")
     sharedPwd := readFileAsString("docs/password.txt")
     sharedFingerprint := readFileAsString("docs/workflowFingerprint.txt")
-    
-    // Load Go-specific input mappings from root directory
+
     codeMap := readJSONStringArray("code-map.json")
     mouseMap := readJSONStringArray("mouse-map.json")
 
@@ -102,7 +101,7 @@ func main() {
     }
 
     s := webrtc.SettingEngine{}
-    s.EnableSCTPZeroChecksum(true) // v4 performance boost
+    s.EnableSCTPZeroChecksum(true) // v4 feature
 
     api := webrtc.NewAPI(
         webrtc.WithMediaEngine(m),
@@ -126,34 +125,75 @@ func main() {
     }
 
     // ==========================================
-    // 4. CAPTURE SCREEN (Video)
+    // 4. SCREEN CAPTURE (Real mediadevices API)
     // ==========================================
-    fmt.Println("Capturing screen...")
-    screen, err := mediadevices.GetVideoTrack(mediadevices.VideoTrackConstraints{
-        FrameFormat: frame.FormatI420,
-        DisplayId:   0,
-        CodecName:   "AV1",
-    })
-    if err != nil {
-        panic(fmt.Errorf("failed to open screen capture: %w", err))
+    var videoRtpSender *webrtc.RTPSender
+    var stopScreenReader func() error
+
+    startScreenCapture := func(targetWidth, targetHeight int) {
+        // 1. Kill the old screen capture if it's running
+        if stopScreenReader != nil {
+            stopScreenReader()
+        }
+
+        // 2. Get raw I420 frames from the OS screen driver
+        rawReader, stop, err := mediadevices.GetVideoReader(mediadevices.VideoTrackConstraints{
+            FrameFormat: frame.FormatI420,
+            DisplayId:   0,
+        })
+        if err != nil {
+            panic(fmt.Errorf("failed to open screen reader: %w", err))
+        }
+        stopScreenReader = stop
+
+        // 3. Force resolution using the real Resizer filter
+        resizer := video.NewResizer(rawReader, targetWidth, targetHeight)
+
+        // 4. Encode the resized frames to AV1
+        videoTrack, err := mediadevices.NewVideoTrack(mediadevices.VideoTrackConstraints{
+            CodecName: "AV1",
+        }, resizer)
+        if err != nil {
+            panic(fmt.Errorf("failed to create video track: %w", err))
+        }
+
+        // 5. Wrap in a Pion track
+        pionTrack, err := webrtc.NewTrackLocalStaticRTP(videoTrack.RTPCodec(), "video", "pion", nil)
+        if err != nil {
+            panic(err)
+        }
+
+        // 6. Hot-swap the track in the PeerConnection
+        if videoRtpSender == nil {
+            videoRtpSender, err = pc.AddTrack(pionTrack)
+            if err != nil {
+                panic(err)
+            }
+        } else {
+            pc.ReplaceTrack(videoRtpSender.Track(), pionTrack)
+        }
+
+        // 7. Read loop
+        localPionTrack := pionTrack
+        go func() {
+            for {
+                pkt, release, err := videoTrack.Read()
+                if err != nil {
+                    return
+                }
+
+                if err := localPionTrack.WriteRTP(pkt); err != nil {
+                    return
+                }
+
+                // CRITICAL: Free the buffer back to mediadevices
+                release()
+            }
+        }()
     }
 
-    videoRtpSender, err := pc.AddTrack(screen.Track)
-    if err != nil {
-        panic(err)
-    }
-    go func() {
-        for {
-            pkt, _, readErr := screen.Read()
-            if readErr != nil {
-                fmt.Println("Screen read error:", readErr)
-                return
-            }
-            if writeErr := videoRtpSender.Write(pkt); writeErr != nil {
-                return
-            }
-        }
-    }()
+    // Start initial capture at 1920x1080
+    startScreenCapture(1920, 1080)
 
     // ==========================================
     // 5. AUTO-DETECT & CAPTURE SYSTEM AUDIO
@@ -170,37 +210,46 @@ func main() {
 
     if audioDeviceID != "" {
         fmt.Printf("Attempting to capture system audio from: %s\n", audioDeviceID)
-        mic, err := mediadevices.GetAudioTrack(mediadevices.AudioTrackConstraints{
+
+        audioTrack, err := mediadevices.GetAudioTrack(mediadevices.AudioTrackConstraints{
             DeviceID:  audioDeviceID,
             CodecName: "Opus",
         })
         if err != nil {
             fmt.Printf("WARNING: Failed to open audio device: %v\n", err)
         } else {
-            audioRtpSender, err := pc.AddTrack(mic.Track)
+            pionAudioTrack, err := webrtc.NewTrackLocalStaticRTP(audioTrack.RTPCodec(), "audio", "pion", nil)
             if err != nil {
                 panic(err)
             }
+
+            audioRtpSender, err := pc.AddTrack(pionAudioTrack)
+            if err != nil {
+                panic(err)
+            }
+
             go func() {
                 for {
-                    pkt, _, readErr := mic.Read()
-                    if readErr != nil {
-                        fmt.Println("Audio read error:", readErr)
+                    pkt, release, err := audioTrack.Read()
+                    if err != nil {
                         return
                     }
-                    if writeErr := audioRtpSender.Write(pkt); writeErr != nil {
+
+                    if err := pionAudioTrack.WriteRTP(pkt); err != nil {
                         return
                     }
+
+                    release()
                 }
             }()
         }
     }
 
     // ==========================================
-    // 6. DATA CHANNELS (Dynamic JSON Mappings)
+    // 6. DATA CHANNELS
     // ==========================================
 
-    // --- Pointer Movement ---
+    // --- Pointer Movement (Unreliable, Unordered - Pure UDP) ---
     chMovement, _ := pc.CreateDataChannel("pointer-movement", &webrtc.DataChannelInit{
         Negotiated:     boolPtr(true),
         ID:             uint16Ptr(0),
@@ -213,14 +262,14 @@ func main() {
         }
         x := int(int16(binary.LittleEndian.Uint16(msg.Data[1:3])))
         y := int(int16(binary.LittleEndian.Uint16(msg.Data[3:5])))
-        if msg.Data[0] == 1 { // isRelative
+        if msg.Data[0] == 1 {
             robotgo.MoveRelative(x, y)
         } else {
             robotgo.Move(x, y)
         }
     })
 
-    // --- Pointer Clicks (Dynamic from root mouse-map.json) ---
+    // --- Pointer Clicks (Reliable, Ordered - TCP style) ---
     chClick, _ := pc.CreateDataChannel("pointer-click", &webrtc.DataChannelInit{
         Negotiated: boolPtr(true),
         ID:         uint16Ptr(1),
@@ -236,7 +285,7 @@ func main() {
         }
     })
 
-    // --- Keyboard (Dynamic from root code-map.json) ---
+    // --- Keyboard (Reliable, Ordered - TCP style) ---
     chKeyboard, _ := pc.CreateDataChannel("keyboard", &webrtc.DataChannelInit{
         Negotiated: boolPtr(true),
         ID:         uint16Ptr(2),
@@ -252,26 +301,64 @@ func main() {
         }
     })
 
+    // --- Viewport Resize (Reliable but Unordered) ---
+    chViewport, _ := pc.CreateDataChannel("viewport-resize", &webrtc.DataChannelInit{
+        Negotiated: boolPtr(true),
+        ID:         uint16Ptr(3),
+        Ordered:    boolPtr(false),
+    })
+    chViewport.OnMessage(func(msg webrtc.DataChannelMessage) {
+        if len(msg.Data) < 4 {
+            return
+        }
+        newW := int(binary.LittleEndian.Uint16(msg.Data[0:2]))
+        newH := int(binary.LittleEndian.Uint16(msg.Data[2:4]))
+
+        if newW < 320 || newH < 240 {
+            return
+        }
+
+        startScreenCapture(newW, newH)
+    })
+
     // ==========================================
-    // 7. THE BEAUTIFUL SDP GENERATION TRICK
+    // 7. THE BEAUTIFUL SDP GENERATION TRICK (AST Manipulation)
     // ==========================================
     offer, err := pc.CreateOffer(nil)
     if err != nil {
         panic(err)
     }
 
-    reUfrag := regexp.MustCompile(`a=ice-ufrag:\S+`)
-    rePwd := regexp.MustCompile(`a=ice-pwd:\S+`)
-    reFingerprint := regexp.MustCompile(`a=fingerprint:sha-256 \S+`)
-    reSetup := regexp.MustCompile(`a=setup:\S+`)
+    parsedSdp := &sdp.SessionDescription{}
+    if err := parsedSdp.Unmarshal([]byte(offer.SDP)); err != nil {
+        panic(fmt.Errorf("failed to parse generated SDP: %w", err))
+    }
 
-    fakeOfferSdp := offer.SDP
-    fakeOfferSdp = reUfrag.ReplaceAllString(fakeOfferSdp, fmt.Sprintf("a=ice-ufrag:%s", sharedUfrag))
-    fakeOfferSdp = rePwd.ReplaceAllString(fakeOfferSdp, fmt.Sprintf("a=ice-pwd:%s", sharedPwd))
-    fakeOfferSdp = reFingerprint.ReplaceAllString(fakeOfferSdp, fmt.Sprintf("a=fingerprint:sha-256 %s", sharedFingerprint))
-    fakeOfferSdp = reSetup.ReplaceAllString(fakeOfferSdp, "a=setup:passive")
+    // Helper function to safely update/add an attribute in a media description
+    setAttribute := func(attrs *[]sdp.Attribute, key, value string) {
+        for i, a := range *attrs {
+            if a.Key == key {
+                (*attrs)[i].Value = value
+                return
+            }
+        }
+        *attrs = append(*attrs, sdp.Attribute{Key: key, Value: value})
+    }
 
-    pc.SetRemoteDescription(webrtc.SessionDescription{SDP: fakeOfferSdp, Type: webrtc.SDPTypeOffer})
+    // Inject our hardcoded shared secrets into all media sections
+    for _, media := range parsedSdp.MediaDescriptions {
+        setAttribute(&media.Attributes, "ice-ufrag", sharedUfrag)
+        setAttribute(&media.Attributes, "ice-pwd", sharedPwd)
+        setAttribute(&media.Attributes, "fingerprint", "sha-256 "+sharedFingerprint)
+        setAttribute(&media.Attributes, "setup", "passive")
+    }
+
+    modifiedSdpBytes, err := parsedSdp.Marshal()
+    if err != nil {
+        panic(fmt.Errorf("failed to marshal modified SDP: %w", err))
+    }
+
+    pc.SetRemoteDescription(webrtc.SessionDescription{SDP: string(modifiedSdpBytes), Type: webrtc.SDPTypeOffer})
     answer, _ := pc.CreateAnswer(nil)
     pc.SetLocalDescription(answer)
 

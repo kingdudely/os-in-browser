@@ -61,6 +61,12 @@ const keyboardChannel = peer.createDataChannel("keyboard", {
 	id: 2
 });
 
+const screenResizeChannel = peer.createDataChannel("screen-resize", {
+    ordered: false,
+    negotiated: true,
+    id: 3
+});
+
 const offer = await peer.createOffer({
 	offerToReceiveAudio: true,
 	offerToReceiveVideo: true
@@ -206,4 +212,12 @@ window.addEventListener("keyup", (event) => {
 	sharedView.setUint8(0, 0); // isDown
 	sharedView.setUint8(1, codeIndex);
 	keyboardChannel.send(sharedBytes.subarray(0, 2));
+});
+
+window.addEventListener("resize", () => {
+    if (screenResizeChannel.readyState !== "open") return;
+
+    sharedView.setUint16(0, window.innerWidth, true);
+    sharedView.setUint16(2, window.innerHeight, true);
+    screenResizeChannel.send(sharedBytes.subarray(0, 4));
 });
