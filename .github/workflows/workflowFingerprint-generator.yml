@@ -31,17 +31,10 @@ jobs:
           ls -la workflow_cert.pem workflow_key.pem docs/workflowFingerprint.txt
           git status
 
-      - name: Stage certificate files
-        run: git add -f workflow_cert.pem workflow_key.pem docs/workflowFingerprint.txt
-
       - name: Commit Files to Repo
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: "Update WebRTC DTLS Fingerprint and Certificates"
-          file_pattern: |
-            docs/workflowFingerprint.txt
-            workflow_cert.pem
-            workflow_key.pem
 
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v5
