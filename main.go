@@ -53,14 +53,16 @@ func stringPtr(s string) *string { return &s }
 
 func main() {
     // ==========================================
-    // 1. LOAD CONFIGURATION FROM /docs/
+    // 1. LOAD CONFIGURATION
     // ==========================================
+    // Load shared WebRTC secrets from /docs/ (used by both JS and Go)
     sharedUfrag := readFileAsString("docs/usernameFragment.txt")
     sharedPwd := readFileAsString("docs/password.txt")
     sharedFingerprint := readFileAsString("docs/workflowFingerprint.txt")
     
-    codeMap := readJSONStringArray("docs/code-map.json")
-    mouseMap := readJSONStringArray("docs/mouse-map.json")
+    // Load Go-specific input mappings from root directory
+    codeMap := readJSONStringArray("code-map.json")
+    mouseMap := readJSONStringArray("mouse-map.json")
 
     // ==========================================
     // 2. PARSE OFFER ENV VARIABLE
@@ -218,7 +220,7 @@ func main() {
         }
     })
 
-    // --- Pointer Clicks (Dynamic from mouse-map.json) ---
+    // --- Pointer Clicks (Dynamic from root mouse-map.json) ---
     chClick, _ := pc.CreateDataChannel("pointer-click", &webrtc.DataChannelInit{
         Negotiated: boolPtr(true),
         ID:         uint16Ptr(1),
@@ -229,13 +231,12 @@ func main() {
             return
         }
         buttonIdx := int(msg.Data[1])
-        // Dynamically look up the robotgo string from the JSON array
         if buttonIdx < len(mouseMap) && mouseMap[buttonIdx] != "" {
             robotgo.Toggle(mouseMap[buttonIdx], msg.Data[0] == 1)
         }
     })
 
-    // --- Keyboard (Dynamic from code-map.json) ---
+    // --- Keyboard (Dynamic from root code-map.json) ---
     chKeyboard, _ := pc.CreateDataChannel("keyboard", &webrtc.DataChannelInit{
         Negotiated: boolPtr(true),
         ID:         uint16Ptr(2),
@@ -246,7 +247,6 @@ func main() {
             return
         }
         keyIdx := int(msg.Data[1])
-        // Dynamically look up the robotgo string from the JSON array
         if keyIdx < len(codeMap) && codeMap[keyIdx] != "" {
             robotgo.KeyToggle(codeMap[keyIdx], msg.Data[0] == 1)
         }
@@ -260,7 +260,6 @@ func main() {
         panic(err)
     }
 
-    // Swap Pion's dynamic secrets with the ones we loaded from /docs/
     reUfrag := regexp.MustCompile(`a=ice-ufrag:\S+`)
     rePwd := regexp.MustCompile(`a=ice-pwd:\S+`)
     reFingerprint := regexp.MustCompile(`a=fingerprint:sha-256 \S+`)
