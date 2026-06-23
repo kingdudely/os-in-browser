@@ -134,6 +134,7 @@ const screenResizeChannel = peer.createDataChannel("screen-resize", {
 
 function fitToScreen() {
 	if (screenResizeChannel.readyState !== "open") return;
+	console.log("Sending screen resize packet...");
 
 	const { width, height } = screenshare.getBoundingClientRect();
     sharedView.setUint32(0, width, true);

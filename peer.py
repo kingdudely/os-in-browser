@@ -102,12 +102,14 @@ async def get_answer(offer):
 	@screen_resize_channel.on("message")
 	def on_screen_resize(data):
 		nonlocal screenshare, stream_w, stream_h
+		print("Resizing screen")
 		stream_w, stream_h = unpack("<II", data)
-		new_screenshare = get_screenshare(framerate="30", video_size=f"{stream_w}x{stream_h}")
-		senders = peer.getSenders()
-		if senders:
-			senders[0].replaceTrack(new_screenshare.video)
-		screenshare = new_screenshare
+		screenshare = get_screenshare(framerate="30", video_size=f"{stream_w}x{stream_h}")
+		for transceiver in peer.getTransceivers():
+			if transceiver.kind == "video" and transceiver.sender.track is not None:
+				transceiver.sender.replaceTrack(screenshare.video)
+				print("Resized screen!")
+				break
 
 	# id=4 — scroll (pixel deltas, already normalized client-side)
 	pointer_scroll_channel = peer.createDataChannel("pointer-scroll", ordered=False, maxRetransmits=0, negotiated=True, id=4)
