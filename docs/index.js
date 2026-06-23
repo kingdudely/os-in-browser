@@ -105,7 +105,7 @@ const browserAddress = await new Promise((resolve, reject) => {
     peer.addEventListener("icegatheringstatechange", onGatheringChange);
 });
 
-const [runnerAddress, runnerPort] = await new Promise((resolve) => {
+const [runnerAddress, runnerPort] = await new Promise((resolve, reject) => {
     const connectDialog = document.getElementById("connect-dialog");
     connectDialog.showModal();
 
