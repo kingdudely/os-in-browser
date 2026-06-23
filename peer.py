@@ -46,6 +46,9 @@ keyboard = KeyboardController()
 
 async def get_answer(offer):
 	screenshare = get_screenshare(framerate="30")
+	print("MediaPlayer created:", screenshare)
+	print("Video track:", screenshare.video)
+
 	peer = RTCPeerConnection()
 	peer.addTrack(screenshare.video)
 
