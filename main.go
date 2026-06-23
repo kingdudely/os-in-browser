@@ -129,6 +129,12 @@ func main() {
 	}
 	defer peer.Close()
 
+	peer.OnICECandidate(func(c *webrtc.ICECandidate) {
+		if c != nil && c.Typ == webrtc.ICECandidateTypeSrflx {
+			fmt.Printf("Runner address: %s:%d\n", c.Address, c.Port)
+		}
+	})
+
 	stream, err := mediadevices.GetDisplayMedia(mediadevices.MediaStreamConstraints{
 		Video: func(c *mediadevices.MediaTrackConstraints) {
 			c.FrameRate = prop.Float(30)

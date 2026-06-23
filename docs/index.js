@@ -84,19 +84,15 @@ const offerSdp = offer.sdp
 
 await peer.setLocalDescription({ type: "offer", sdp: offerSdp });
 
-await new Promise((resolve, reject) => {
-	async function onCandidate({ candidate }) {
+const browserAddress = await new Promise((resolve, reject) => {
+    function onCandidate({ candidate }) {
         if (candidate?.type === "srflx") {
             peer.removeEventListener("icecandidate", onCandidate);
             peer.removeEventListener("icegatheringstatechange", onGatheringChange);
 
             const { address, port } = candidate;
             const isIPv6Address = address.includes(':');
-            const fullAddress = isIPv6Address ? `[${address}]:${port}` : `${address}:${port}`;
-            
-            await navigator.clipboard.writeText(fullAddress).catch(console.error);
-            window.alert(`Copied address to clipboard!`);
-            resolve();
+            resolve(isIPv6Address ? `[${address}]:${port}` : `${address}:${port}`);
         }
     }
 
@@ -104,21 +100,27 @@ await new Promise((resolve, reject) => {
         if (peer.iceGatheringState === "complete") {
             peer.removeEventListener("icegatheringstatechange", onGatheringChange);
             peer.removeEventListener("icecandidate", onCandidate);
-            
             reject(new Error("ICE gathering complete, but no srflx candidate found."));
         }
     }
 
-	peer.addEventListener("icecandidate", onCandidate);
+    peer.addEventListener("icecandidate", onCandidate);
     peer.addEventListener("icegatheringstatechange", onGatheringChange);
 });
 
+await navigator.clipboard.writeText(browserAddress).catch(console.error);
+const runnerAddress = window.prompt("Paste runner address (shown in Actions log):");
+const [runnerHost, runnerPort] = runnerAddress.includes('[')
+    ? [runnerAddress.slice(1, runnerAddress.lastIndexOf(']')), runnerAddress.split(':').at(-1)]
+    : runnerAddress.split(':');
+
 const commonIceLines = [
-	"c=IN IP4 0.0.0.0",
-	`a=ice-ufrag:${usernameFragment}`,
-	`a=ice-pwd:${password}`,
-	`a=fingerprint:sha-256 ${workflowFingerprint}`,
-	"a=setup:active"
+    `c=IN IP4 ${runnerHost}`,
+    `a=ice-ufrag:${usernameFragment}`,
+    `a=ice-pwd:${password}`,
+    `a=fingerprint:sha-256 ${workflowFingerprint}`,
+    "a=setup:active",
+    `a=candidate:0 1 UDP 1686052607 ${runnerHost} ${runnerPort} typ srflx`
 ];
 
 await peer.setRemoteDescription({
