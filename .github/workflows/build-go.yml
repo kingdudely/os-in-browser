@@ -43,11 +43,8 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: bash
         run: |
-          # Create a dummy libssp.a so the linker is satisfied
-          MINGW_LIB="C:/ProgramData/mingw64/mingw64/x86_64-w64-mingw32/lib"
-          if [ ! -f "$MINGW_LIB/libssp.a" ]; then
-            ar rcs "$MINGW_LIB/libssp.a"
-          fi
+          MINGW_LIB=$(dirname $(which ar))/../x86_64-w64-mingw32/lib
+          ar rcs "$MINGW_LIB/libssp.a"
 
       - name: Build
         shell: bash
