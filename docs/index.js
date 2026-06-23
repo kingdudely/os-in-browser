@@ -9,7 +9,8 @@ window.addEventListener("unhandledrejection", (event) => {
 });
 
 import codeMap from "./code-map.json" with { type: "json" };
-import { password, usernameFragment, workflowFingerprint } from "./constants.json" with { type: "json" }; // type: "text"
+import constants from "./constants.json" with { type: "json" }; // type: "text"
+const { password, usernameFragment, workflowFingerprint } = constants;
 
 function enableImmersiveMode() {
 	if (document.fullscreenEnabled && !document.fullscreenElement) {
