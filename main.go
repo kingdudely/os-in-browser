@@ -84,14 +84,12 @@ func main() {
 		log.Fatalf("X509KeyPair: %v", err)
 	}
 
-	// Fix 2: CertificateFromTLSCertificate removed in v4, use CertificateFromX509
 	x509Cert, err := x509.ParseCertificate(tlsCert.Certificate[0])
 	if err != nil {
 		log.Fatalf("parse x509: %v", err)
 	}
 	cert := webrtc.CertificateFromX509(tlsCert.PrivateKey, x509Cert)
 
-	// Fix 1: codecSelector.Populate needs *webrtc.MediaEngine, not *webrtc.SettingEngine
 	mediaEngine := &webrtc.MediaEngine{}
 
 	se := webrtc.SettingEngine{}
@@ -122,6 +120,9 @@ func main() {
 
 	peer, err := api.NewPeerConnection(webrtc.Configuration{
 		Certificates: []webrtc.Certificate{cert},
+		ICEServers: []webrtc.ICEServer{
+			{URLs: []string{"stun:stun.l.google.com:19302"}},
+		},
 	})
 	if err != nil {
 		log.Fatalf("NewPeerConnection: %v", err)
@@ -138,7 +139,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("GetDisplayMedia: %v", err)
 	}
-	// Fix 3: stream.Release() doesn't exist; tracks are closed individually
 	for _, t := range stream.GetVideoTracks() {
 		defer t.Close()
 		if _, err := peer.AddTransceiverFromTrack(t, webrtc.RTPTransceiverInit{
