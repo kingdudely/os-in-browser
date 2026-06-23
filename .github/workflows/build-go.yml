@@ -2,6 +2,10 @@ name: Build main.go
 
 on:
   push:
+    paths:
+      - main.go
+      - go.mod
+      - go.sum
   workflow_dispatch:
 
 permissions:
