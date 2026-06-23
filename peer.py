@@ -97,6 +97,8 @@ async def get_answer(offer):
 		else:
 			keyboard.release(key)
 
+
+	"""
 	# id=3 — screen resize
 	screen_resize_channel = peer.createDataChannel("screen-resize", ordered=False, negotiated=True, id=3)
 	@screen_resize_channel.on("message")
@@ -110,6 +112,7 @@ async def get_answer(offer):
 				transceiver.sender.replaceTrack(screenshare.video)
 				print("Resized screen!")
 				break
+	"""
 
 	# id=4 — scroll (pixel deltas, already normalized client-side)
 	pointer_scroll_channel = peer.createDataChannel("pointer-scroll", ordered=False, maxRetransmits=0, negotiated=True, id=4)

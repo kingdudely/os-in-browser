@@ -126,6 +126,7 @@ window.addEventListener("keyup", (event) => {
 	keyboardTypeChannel.send(sharedBytes.subarray(0, 2));
 })
 
+/*
 const screenResizeChannel = peer.createDataChannel("screen-resize", {
     ordered: false,
     negotiated: true,
@@ -144,6 +145,7 @@ function fitToScreen() {
 
 screenResizeChannel.addEventListener("open", fitToScreen);
 new ResizeObserver(fitToScreen).observe(screenshare); // window.onresize
+*/
 
 const pointerScrollChannel = peer.createDataChannel("pointer-scroll", {
     ordered: false,
