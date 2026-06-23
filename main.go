@@ -12,8 +12,8 @@ import (
 
 	"github.com/go-vgo/robotgo"
 	"github.com/pion/mediadevices"
+	"github.com/pion/mediadevices/pkg/codec/openh264"
 	"github.com/pion/mediadevices/pkg/codec/opus"
-	"github.com/pion/mediadevices/pkg/codec/svtav1"
 	"github.com/pion/mediadevices/pkg/prop"
 	_ "github.com/pion/mediadevices/pkg/driver/microphone"
 	_ "github.com/pion/mediadevices/pkg/driver/screen"
@@ -24,7 +24,7 @@ import (
 type Constants struct {
 	UsernameFragment    string `json:"usernameFragment"`
 	Password            string `json:"password"`
-    WorkflowFingerprint string `json:"workflowFingerprint"`
+	WorkflowFingerprint string `json:"workflowFingerprint"`
 }
 
 func mustReadJSON[T any](path string) T {
@@ -44,9 +44,9 @@ func main() {
 	constants := mustReadJSON[Constants]("docs/constants.json")
 	keyMap := mustReadJSON[[]interface{}]("code-map.json")
 	buttonMap := mustReadJSON[[]string]("button-map.json")
-    usernameFragment := constants.UsernameFragment
-    password := constants.Password
-    workflowFingerprint := constants.WorkflowFingerprint
+	usernameFragment := constants.UsernameFragment
+	password := constants.Password
+	workflowFingerprint := constants.WorkflowFingerprint
 
 	keyForIndex := func(index uint8) string {
 		if int(index) >= len(keyMap) || keyMap[index] == nil {
@@ -92,11 +92,11 @@ func main() {
 	se.DisableCertificateFingerprintVerification(true)
 
 	// Codec setup
-	av1Params, err := svtav1.NewParams()
+	h264Params, err := openh264.NewParams()
 	if err != nil {
-		log.Fatalf("svtav1 params: %v", err)
+		log.Fatalf("openh264 params: %v", err)
 	}
-	av1Params.BitRate = 2_000_000
+	h264Params.BitRate = 2_000_000
 
 	opusParams, err := opus.NewParams()
 	if err != nil {
@@ -104,7 +104,7 @@ func main() {
 	}
 
 	codecSelector := mediadevices.NewCodecSelector(
-		mediadevices.WithVideoEncoders(&av1Params),
+		mediadevices.WithVideoEncoders(&h264Params),
 		mediadevices.WithAudioEncoders(&opusParams),
 	)
 	codecSelector.Populate(&se)
@@ -171,13 +171,11 @@ func main() {
 	}
 
 	pointerMovement := ch("pointer-movement", false, &maxRetransmits, 0)
-	pointerClick    := ch("pointer-click", true, nil, 1)
-	keyboard        := ch("keyboard", true, nil, 2)
-	screenResize    := ch("screen-resize", false, &maxRetransmits, 3)
-	scroll          := ch("scroll", false, &maxRetransmits, 4)
+	pointerClick := ch("pointer-click", true, nil, 1)
+	keyboard := ch("keyboard", true, nil, 2)
+	screenResize := ch("screen-resize", false, &maxRetransmits, 3)
+	scroll := ch("scroll", false, &maxRetransmits, 4)
 
-	// Track client viewport for coordinate scaling
-	// Start with actual screen size; updated when client sends screen-resize
 	clientW, clientH := robotgo.GetScreenSize()
 
 	pointerMovement.OnMessage(func(msg webrtc.DataChannelMessage) {
@@ -187,7 +185,6 @@ func main() {
 		isRelative := msg.Data[0] == 1
 		x := int(int16(binary.LittleEndian.Uint16(msg.Data[1:3])))
 		y := int(int16(binary.LittleEndian.Uint16(msg.Data[3:5])))
-
 		if isRelative {
 			cx, cy := robotgo.Location()
 			robotgo.Move(cx+x, cy+y)
@@ -242,7 +239,6 @@ func main() {
 		}
 		dx := int(int16(binary.LittleEndian.Uint16(msg.Data[0:2])))
 		dy := int(int16(binary.LittleEndian.Uint16(msg.Data[2:4])))
-
 		if dy != 0 {
 			amount := dy / 100
 			if amount == 0 {
@@ -267,7 +263,7 @@ func main() {
 		}
 	})
 
-	// Build offer SDP using pion/sdp v3 API
+	// Build remote SDP
 	isIPv6 := strings.Contains(host, ":")
 	netType := "IP4"
 	if isIPv6 {
@@ -277,8 +273,6 @@ func main() {
 	candidateStr := fmt.Sprintf("0 1 UDP 1686052607 %s %s typ srflx", host, port)
 
 	newMedia := func(typ, mid, rtpmap string, payloadType uint8) *sdp.MediaDescription {
-		portNum, _ := fmt.Sscan(port)
-		_ = portNum
 		return (&sdp.MediaDescription{
 			MediaName: sdp.MediaName{
 				Media:   typ,
@@ -300,10 +294,14 @@ func main() {
 			WithValueAttribute("mid", mid).
 			WithPropertyAttribute("rtcp-mux").
 			WithCodec(payloadType, rtpmap, func() uint32 {
-				if typ == "audio" { return 48000 }
+				if typ == "audio" {
+					return 48000
+				}
 				return 90000
 			}(), func() uint16 {
-				if typ == "audio" { return 2 }
+				if typ == "audio" {
+					return 2
+				}
 				return 0
 			}(), "")
 	}
@@ -348,7 +346,7 @@ func main() {
 	sess.
 		WithValueAttribute("group", "BUNDLE 0 1 2").
 		WithMedia(newMedia("audio", "0", "opus", 111)).
-		WithMedia(newMedia("video", "1", "AV1", 96)).
+		WithMedia(newMedia("video", "1", "H264", 102)). // payload type 102 is conventional for H.264
 		WithMedia(appMedia)
 
 	offerSDP, err := sess.Marshal()

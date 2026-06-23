@@ -136,12 +136,12 @@ await peer.setRemoteDescription({
 		"a=rtcp-mux",
 		"a=rtpmap:111 opus/48000/2",
 
-		"m=video 9 UDP/TLS/RTP/SAVPF 96",
+		"m=video 9 UDP/TLS/RTP/SAVPF 102",
 		...commonIceLines,
 		"a=sendonly",
 		"a=mid:1",
 		"a=rtcp-mux",
-		"a=rtpmap:96 AV1/90000",
+		"a=rtpmap:102 H264/90000",
 
 		"m=application 9 UDP/DTLS/SCTP webrtc-datachannel",
 		...commonIceLines,
