@@ -57,4 +57,5 @@ jobs:
         with:
           commit_message: "Add cross-platform binaries for ${{ matrix.goos }} to dist/"
           file_pattern: "dist/${{ matrix.goos }}${{ matrix.ext }}"
+          add_options: '--force'
           push_options: '--force'  # Fix macOS: avoids non-fast-forward rejection from parallel jobs
