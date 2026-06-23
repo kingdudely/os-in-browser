@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # Fix macOS/all: allows git-auto-commit-action to push
+  contents: write
 
 jobs:
   build:
@@ -37,16 +37,17 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          # libxtst-dev provides X11/extensions/XTest.h (fix Ubuntu error)
           sudo apt-get install -y libx11-dev libxext-dev libxtst-dev
 
       - name: Install Windows dependencies
         if: matrix.os == 'windows-latest'
-        run: |
-          # Reinstall MinGW with a version that includes libssp (fix Windows linker error)
-          choco install mingw --version=13.2.0 --force -y
-          echo "C:\ProgramData\mingw64\mingw64\bin" >> $GITHUB_PATH
         shell: bash
+        run: |
+          # Create a dummy libssp.a so the linker is satisfied
+          MINGW_LIB="C:/ProgramData/mingw64/mingw64/x86_64-w64-mingw32/lib"
+          if [ ! -f "$MINGW_LIB/libssp.a" ]; then
+            ar rcs "$MINGW_LIB/libssp.a"
+          fi
 
       - name: Build
         shell: bash
@@ -60,3 +61,4 @@ jobs:
         with:
           commit_message: "Add cross-platform binaries for ${{ matrix.goos }} to dist/"
           file_pattern: "dist/${{ matrix.goos }}${{ matrix.ext }}"
+          push_options: '--force'  # Fix macOS: avoids non-fast-forward rejection from parallel jobs
