@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -40,7 +41,6 @@ func mustReadJSON[T any](path string) T {
 }
 
 func main() {
-	// Load files
 	constants := mustReadJSON[Constants]("docs/constants.json")
 	keyMap := mustReadJSON[[]interface{}]("code-map.json")
 	buttonMap := mustReadJSON[[]string]("button-map.json")
@@ -62,7 +62,6 @@ func main() {
 		return buttonMap[index]
 	}
 
-	// Parse OFFER env var
 	offer := strings.TrimSpace(os.Getenv("OFFER"))
 	if offer == "" {
 		log.Fatal("OFFER env var required (format: ip:port or [ipv6]:port)")
@@ -72,7 +71,6 @@ func main() {
 		log.Fatalf("invalid OFFER %q: %v", offer, err)
 	}
 
-	// Load TLS cert
 	certPEM, err := os.ReadFile("workflow_cert.pem")
 	if err != nil {
 		log.Fatalf("read workflow_cert.pem: %v", err)
@@ -86,12 +84,20 @@ func main() {
 		log.Fatalf("X509KeyPair: %v", err)
 	}
 
-	// SettingEngine
+	// Fix 2: CertificateFromTLSCertificate removed in v4, use CertificateFromX509
+	x509Cert, err := x509.ParseCertificate(tlsCert.Certificate[0])
+	if err != nil {
+		log.Fatalf("parse x509: %v", err)
+	}
+	cert := webrtc.CertificateFromX509(tlsCert.PrivateKey, x509Cert)
+
+	// Fix 1: codecSelector.Populate needs *webrtc.MediaEngine, not *webrtc.SettingEngine
+	mediaEngine := &webrtc.MediaEngine{}
+
 	se := webrtc.SettingEngine{}
 	se.SetICECredentials(usernameFragment, password)
 	se.DisableCertificateFingerprintVerification(true)
 
-	// Codec setup
 	h264Params, err := openh264.NewParams()
 	if err != nil {
 		log.Fatalf("openh264 params: %v", err)
@@ -107,14 +113,12 @@ func main() {
 		mediadevices.WithVideoEncoders(&h264Params),
 		mediadevices.WithAudioEncoders(&opusParams),
 	)
-	codecSelector.Populate(&se)
+	codecSelector.Populate(mediaEngine)
 
-	api := webrtc.NewAPI(webrtc.WithSettingEngine(se))
-
-	cert, err := webrtc.CertificateFromTLSCertificate(tlsCert)
-	if err != nil {
-		log.Fatalf("certificate: %v", err)
-	}
+	api := webrtc.NewAPI(
+		webrtc.WithSettingEngine(se),
+		webrtc.WithMediaEngine(mediaEngine),
+	)
 
 	peer, err := api.NewPeerConnection(webrtc.Configuration{
 		Certificates: []webrtc.Certificate{cert},
@@ -124,7 +128,6 @@ func main() {
 	}
 	defer peer.Close()
 
-	// Screen + mic capture
 	stream, err := mediadevices.GetDisplayMedia(mediadevices.MediaStreamConstraints{
 		Video: func(c *mediadevices.MediaTrackConstraints) {
 			c.FrameRate = prop.Float(30)
@@ -135,8 +138,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("GetDisplayMedia: %v", err)
 	}
-	defer stream.Release()
-
+	// Fix 3: stream.Release() doesn't exist; tracks are closed individually
 	for _, t := range stream.GetVideoTracks() {
 		defer t.Close()
 		if _, err := peer.AddTransceiverFromTrack(t, webrtc.RTPTransceiverInit{
@@ -154,7 +156,6 @@ func main() {
 		}
 	}
 
-	// Data channels
 	boolTrue := true
 	maxRetransmits := uint16(0)
 	ch := func(label string, ordered bool, retransmits *uint16, id uint16) *webrtc.DataChannel {
@@ -263,7 +264,6 @@ func main() {
 		}
 	})
 
-	// Build remote SDP
 	isIPv6 := strings.Contains(host, ":")
 	netType := "IP4"
 	if isIPv6 {
@@ -346,7 +346,7 @@ func main() {
 	sess.
 		WithValueAttribute("group", "BUNDLE 0 1 2").
 		WithMedia(newMedia("audio", "0", "opus", 111)).
-		WithMedia(newMedia("video", "1", "H264", 102)). // payload type 102 is conventional for H.264
+		WithMedia(newMedia("video", "1", "H264", 102)).
 		WithMedia(appMedia)
 
 	offerSDP, err := sess.Marshal()
