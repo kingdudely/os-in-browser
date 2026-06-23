@@ -113,7 +113,9 @@ const runnerAddress = await new Promise((resolve) => {
     connectDialog.showModal();
 
     document.getElementById("copy-offer").addEventListener("click", () => {
-		navigator.clipboard.writeText(browserAddress).catch(console.error);
+		navigator.clipboard.writeText(browserAddress)
+			.then(() => window.alert("Copied offer to clipboard"))
+			.catch(console.error); // remove?
 	});
 
     document.getElementById("runner-submit").addEventListener("click", () => {
