@@ -52,7 +52,7 @@ jobs:
 
       - name: Start server
         run: |
-          case "${{ runner.os }}" in
+          case "$RUNNER_OS" in
             macOS)
               ./dist/darwin
               ;;
@@ -70,4 +70,3 @@ jobs:
               exit 1
               ;;
           esac
-          ./dist/linux
