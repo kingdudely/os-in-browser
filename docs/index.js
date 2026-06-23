@@ -108,9 +108,23 @@ const browserAddress = await new Promise((resolve, reject) => {
     peer.addEventListener("icegatheringstatechange", onGatheringChange);
 });
 
-await navigator.clipboard.writeText(browserAddress).catch(console.error);
-window.alert("Copied offer to clipboard");
-const runnerAddress = window.prompt("Paste runner address (shown in Actions log):");
+const runnerAddress = await new Promise((resolve) => {
+    const connectDialog = document.getElementById("connect-dialog");
+    connectDialog.showModal();
+
+    document.getElementById("copy-offer").addEventListener("click", () => {
+		navigator.clipboard.writeText(browserAddress).catch(console.error);
+	});
+
+    document.getElementById("runner-submit").addEventListener("click", () => {
+		const value = document.getElementById("runner-input").value.trim();
+        if (value) {
+            connectDialog.close();
+            resolve(value);
+        }
+	});
+});
+
 const [runnerHost, runnerPort] = runnerAddress.includes('[')
     ? [runnerAddress.slice(1, runnerAddress.lastIndexOf(']')), runnerAddress.split(':').at(-1)]
     : runnerAddress.split(':');
