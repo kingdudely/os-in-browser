@@ -28,6 +28,7 @@ jobs:
 
     env:
       OFFER: ${{ github.event.inputs.offer }}
+      DISPLAY: ":0"
 
     steps:
       - name: Copy repository into PC
@@ -35,8 +36,6 @@ jobs:
         
       - name: Ubuntu setup
         if: runner.os == 'Linux'
-        env:
-          DISPLAY: ":0"
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends xorg xfce4 xvfb dbus-x11
@@ -51,14 +50,24 @@ jobs:
 
           setsid startxfce4 &
 
+      - name: Start server
+        run: |
+          case "${{ runner.os }}" in
+            macOS)
+              ./dist/darwin
+              ;;
+
+            Linux)
+              ./dist/linux
+              ;;
+
+            Windows)
+              ./dist/windows.exe
+              ;;
+
+            *)
+              echo "Error: Unsupported OS"
+              exit 1
+              ;;
+          esac
           ./dist/linux
-
-      - name: MacOS setup
-        if: runner.os == 'MacOS'
-        run: |
-          ./dist/darwin
-
-      - name: Windows setup
-        if: runner.os == 'Windows'
-        run: |
-          ./dist/windows.exe
