@@ -109,6 +109,7 @@ const browserAddress = await new Promise((resolve, reject) => {
 });
 
 await navigator.clipboard.writeText(browserAddress).catch(console.error);
+window.alert("Copied offer to clipboard");
 const runnerAddress = window.prompt("Paste runner address (shown in Actions log):");
 const [runnerHost, runnerPort] = runnerAddress.includes('[')
     ? [runnerAddress.slice(1, runnerAddress.lastIndexOf(']')), runnerAddress.split(':').at(-1)]
