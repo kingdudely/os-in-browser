@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write  # Fix macOS/all: allows git-auto-commit-action to push
+
 jobs:
   build:
     strategy:
@@ -32,7 +35,18 @@ jobs:
 
       - name: Install Ubuntu dependencies
         if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get install -y libx11-dev libxext-dev
+        run: |
+          sudo apt-get update
+          # libxtst-dev provides X11/extensions/XTest.h (fix Ubuntu error)
+          sudo apt-get install -y libx11-dev libxext-dev libxtst-dev
+
+      - name: Install Windows dependencies
+        if: matrix.os == 'windows-latest'
+        run: |
+          # Reinstall MinGW with a version that includes libssp (fix Windows linker error)
+          choco install mingw --version=13.2.0 --force -y
+          echo "C:\ProgramData\mingw64\mingw64\bin" >> $GITHUB_PATH
+        shell: bash
 
       - name: Build
         shell: bash
