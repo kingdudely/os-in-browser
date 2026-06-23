@@ -35,8 +35,9 @@ jobs:
         
       - name: Ubuntu setup
         if: runner.os == 'Linux'
+        env:
+          DISPLAY: ":0"
         run: |
-          export DISPLAY=:0
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends xorg xfce4 xvfb
 
