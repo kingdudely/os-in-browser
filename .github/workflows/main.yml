@@ -43,21 +43,13 @@ jobs:
 
           Xvfb "${DISPLAY}" -screen 0 1920x1080x24 &
 
-          echo "Waiting for Xvfb to start..."
+          echo "Waiting for display to initialize..."
           until xset -q &>/dev/null; do
-              echo "Xvfb not ready yet, retrying in 0.5s..."
-              sleep 0.5
+              sleep 0.67
           done
-          echo "Xvfb is ready!"
+          echo "Display is ready!"
 
           setsid startxfce4 &
-
-          echo "Waiting for XFCE Desktop..."
-          until wmctrl -m &>/dev/null || xdotool getactivewindow &>/dev/null; do
-              echo "Desktop not loaded yet, retrying in 0.5s..."
-              sleep 0.5
-          done
-          echo "XFCE Desktop is fully active!"
 
           ./dist/linux
 
