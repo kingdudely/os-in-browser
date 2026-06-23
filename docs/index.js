@@ -89,10 +89,7 @@ const browserAddress = await new Promise((resolve, reject) => {
         if (candidate?.type === "srflx") {
             peer.removeEventListener("icecandidate", onCandidate);
             peer.removeEventListener("icegatheringstatechange", onGatheringChange);
-
-            const { address, port } = candidate;
-            const isIPv6Address = address.includes(':');
-            resolve(isIPv6Address ? `[${address}]:${port}` : `${address}:${port}`);
+            resolve(`${candidate.address}:${candidate.port}`);
         }
     }
 
@@ -108,36 +105,33 @@ const browserAddress = await new Promise((resolve, reject) => {
     peer.addEventListener("icegatheringstatechange", onGatheringChange);
 });
 
-const runnerAddress = await new Promise((resolve) => {
+const [runnerAddress, runnerPort] = await new Promise((resolve) => {
     const connectDialog = document.getElementById("connect-dialog");
     connectDialog.showModal();
 
     document.getElementById("copy-offer").addEventListener("click", () => {
 		navigator.clipboard.writeText(browserAddress)
 			.then(() => window.alert("Copied offer to clipboard"))
-			.catch(console.error); // remove?
+			.catch(reject);
 	});
 
     document.getElementById("runner-submit").addEventListener("click", () => {
 		const value = document.getElementById("runner-input").value.trim();
         if (value) {
             connectDialog.close();
-            resolve(value);
+			const url = new URL(`http://${value}`);
+            resolve([url.hostname, url.port]);
         }
 	});
 });
 
-const [runnerHost, runnerPort] = runnerAddress.includes('[')
-    ? [runnerAddress.slice(1, runnerAddress.lastIndexOf(']')), runnerAddress.split(':').at(-1)]
-    : runnerAddress.split(':');
-
 const commonIceLines = [
-    `c=IN IP4 ${runnerHost}`,
+    `c=IN IP4 ${runnerAddress}`,
     `a=ice-ufrag:${usernameFragment}`,
     `a=ice-pwd:${password}`,
     `a=fingerprint:sha-256 ${workflowFingerprint}`,
     "a=setup:active",
-    `a=candidate:0 1 UDP 1686052607 ${runnerHost} ${runnerPort} typ srflx`
+    `a=candidate:0 1 UDP 1686052607 ${runnerAddress} ${runnerPort} typ srflx`
 ];
 
 await peer.setRemoteDescription({
