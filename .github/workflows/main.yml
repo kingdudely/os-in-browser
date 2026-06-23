@@ -36,10 +36,11 @@ jobs:
       - name: Ubuntu setup
         if: runner.os == 'Linux'
         run: |
+          export DISPLAY=:0
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends xorg xfce4 xvfb
 
-          Xvfb :0 -screen 0 1920x1080x24 &
+          Xvfb "${DISPLAY}" -screen 0 1920x1080x24 &
           setsid startxfce4 &
           ./dist/linux
 
