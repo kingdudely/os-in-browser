@@ -1,26 +1,34 @@
-// TODO: make this in /docs and the flow will be createOffer, paste in workflow input, then click on link to open in new tab
+window.addEventListener("error", (event) => {
+	const errorMessage = event.message || "Unknown error occurred";
+    window.alert(`Error:\n${errorMessage}`);
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+    const asyncErrorMessage = event.reason?.message || event.reason || "Unknown async error occurred";
+    window.alert(`Async error:\n${asyncErrorMessage}`);
+});
+
 import ConnectToServerPeer from "./ConnectToServerPeer.js";
 import code_keys from "./code_keys.json" with { type: "json" };
 
-async function enableImmersiveMode(target) {
+function triggerImmersiveMode() {
 	if (document.fullscreenEnabled && !document.fullscreenElement) {
-		await document.body.requestFullscreen({ // Can't use 'target' because of <video>s
-			"navigationUI": "hide" 
-		});
+		document.body.requestFullscreen({ // target, await
+			"navigationUI": "hide"
+		}).catch(() => {});
 	};
 
 	if (!document.pointerLockElement) {
-		await target.requestPointerLock({
+		document.body.requestPointerLock({ // target, await
 			"unadjustedMovement": true
-        });
+		}).catch(() => {});
 	}
 }
 
 const screenshare = document.getElementById("screenshare");
 
-const sharedBuffer = new ArrayBuffer(4);
-const sharedBytes = new Uint8Array(sharedBuffer);
-const sharedView = new DataView(sharedBuffer);
+const sharedBytes = new Uint8Array(8);
+const sharedView = new DataView(sharedBytes.buffer);
 
 const peer = await ConnectToServerPeer();
 peer.addEventListener("track", (event) => {
@@ -34,11 +42,23 @@ const pointerMovementChannel = peer.createDataChannel("pointer-movement", {
 	id: 0
 });
 
-screenshare.addEventListener("pointermove", (event) => { // pointerrawupdate - safari doesn't support unfortunately (I wish MacOS had touchscreen and stylus APIs)
+// pointerrawupdate
+screenshare.addEventListener("pointermove", (event) => {
+	event.preventDefault();
 	if (pointerMovementChannel.readyState !== "open") return;
-	sharedView.setInt16(0, event.movementX, true);
-	sharedView.setInt16(2, event.movementY, true);
-	pointerMovementChannel.send(sharedBytes.subarray(0, 4));
+
+	let packetSize;
+	if (document.pointerLockElement) {
+		sharedView.setInt16(0, event.movementX, true);
+		sharedView.setInt16(2, event.movementY, true);
+		packetSize = 4;
+	} else {
+		sharedView.setUint32(0, event.clientX, true);
+		sharedView.setUint32(4, event.clientY, true);
+		packetSize = 8;
+	}
+	
+	pointerMovementChannel.send(sharedBytes.subarray(0, packetSize));
 });
 
 const pointerClickChannel = peer.createDataChannel("pointer-click", {
@@ -48,8 +68,9 @@ const pointerClickChannel = peer.createDataChannel("pointer-click", {
 });
 
 screenshare.addEventListener("pointerdown", (event) => {
+	event.preventDefault();
 	if (pointerClickChannel.readyState !== "open") return;
-	enableImmersiveMode(screenshare).catch(console.warn);
+	triggerImmersiveMode();
 
 	sharedView.setUint8(0, 1); // isDown
 	sharedView.setUint8(1, event.button);
@@ -57,21 +78,24 @@ screenshare.addEventListener("pointerdown", (event) => {
 });
 
 screenshare.addEventListener("pointerup", (event) => {
+	event.preventDefault();
 	if (pointerClickChannel.readyState !== "open") return;
+
 	sharedView.setUint8(0, 0); // isDown
 	sharedView.setUint8(1, event.button);
 	pointerClickChannel.send(sharedBytes.subarray(0, 2));
 });
 
-const keyboardChannel = peer.createDataChannel("keyboard", {
+const keyboardTypeChannel = peer.createDataChannel("keyboard-type", {
 	ordered: true,
 	negotiated: true,
 	id: 2
 });
 
-screenshare.addEventListener("keydown", (event) => {
-	if (keyboardChannel.readyState !== "open" || event.repeat) return;
-	enableImmersiveMode(screenshare).catch(console.warn);
+window.addEventListener("keydown", (event) => {
+	event.preventDefault();
+	if (keyboardTypeChannel.readyState !== "open" || event.repeat) return;
+	triggerImmersiveMode();
 
 	const code_index = code_keys.indexOf(event.code);
 	if (code_index === -1) {
@@ -82,11 +106,13 @@ screenshare.addEventListener("keydown", (event) => {
 	sharedView.setUint8(0, 1); // isDown
 	sharedView.setUint8(1, code_index);
 
-	keyboardChannel.send(sharedBytes.subarray(0, 2));
+	keyboardTypeChannel.send(sharedBytes.subarray(0, 2));
 });
 
-screenshare.addEventListener("keyup", (event) => {
-	if (keyboardChannel.readyState !== "open") return;
+window.addEventListener("keyup", (event) => {
+	event.preventDefault();
+	if (keyboardTypeChannel.readyState !== "open") return;
+
 	const code_index = code_keys.indexOf(event.code);
 	if (code_index === -1) {
 		console.warn("Code is not supported");
@@ -96,5 +122,49 @@ screenshare.addEventListener("keyup", (event) => {
 	sharedView.setUint8(0, 0);
 	sharedView.setUint8(1, code_index);
 
-	keyboardChannel.send(sharedBytes.subarray(0, 2));
+	keyboardTypeChannel.send(sharedBytes.subarray(0, 2));
 })
+
+const screenResizeChannel = peer.createDataChannel("screen-resize", {
+    ordered: false,
+    negotiated: true,
+    id: 3
+});
+
+function fitToScreen() {
+	if (screenResizeChannel.readyState !== "open") return;
+
+	const { width, height } = screenshare.getBoundingClientRect();
+    sharedView.setUint32(0, width, true);
+    sharedView.setUint32(4, height, true);
+    screenResizeChannel.send(sharedBytes.subarray(0, 8));
+}
+
+screenResizeChannel.addEventListener("open", fitToScreen);
+new ResizeObserver(fitToScreen).observe(screenshare); // window.onresize
+
+const pointerScrollChannel = peer.createDataChannel("pointer-scroll", {
+    ordered: false,
+    maxRetransmits: 0,
+    negotiated: true,
+    id: 4
+});
+
+screenshare.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    if (pointerScrollChannel.readyState !== "open") return;
+
+	const multiplier = (function() {
+		switch (event.deltaMode) {
+			default: console.warn("Unsupported deltaMode, will use DOM_DELTA_PIXEL");
+			case event.DOM_DELTA_PIXEL: return 1;
+			case event.DOM_DELTA_LINE: return 20; // accurate enough
+			case event.DOM_DELTA_PAGE: return window.innerHeight;
+		}
+	})();
+
+	sharedView.setFloat32(0, event.deltaX * multiplier, true);
+	sharedView.setFloat32(4, event.deltaY * multiplier, true);
+	// sharedView.setFloat32(8, event.deltaZ, true); // unsupported in pynput
+	pointerScrollChannel.send(sharedBytes.subarray(0, 8));
+});
