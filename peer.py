@@ -49,7 +49,7 @@ async def get_answer(offer):
 
 	peer = RTCPeerConnection()
 	peer.addTrack(screenshare.video)
-	"""
+
 	screen_width, screen_height = get_screen_size()
 	stream_width, stream_height = screen_width, screen_height
 
@@ -101,7 +101,7 @@ async def get_answer(offer):
 			keyboard.release(key)
 
 
-	\"""
+	"""
 	screen_resize_channel = peer.createDataChannel("screen-resize", ordered=False, negotiated=True, id=3)
 	@screen_resize_channel.on("message")
 	def on_screen_resize(data):
@@ -114,14 +114,13 @@ async def get_answer(offer):
 				transceiver.sender.replaceTrack(screenshare.video)
 				print("Resized screen!")
 				break
-	\"""
+	"""
 
 	pointer_scroll_channel = peer.createDataChannel("pointer-scroll", ordered=False, maxRetransmits=0, negotiated=True, id=4)
 	@pointer_scroll_channel.on("message")
 	def on_scroll(data):
 		delta_x, delta_y = unpack("<ff", data)
 		mouse.scroll(delta_x, delta_y)
-	"""
 
 	await peer.setRemoteDescription(RTCSessionDescription(sdp=offer, type="offer"))
 	await peer.setLocalDescription()
