@@ -1,7 +1,9 @@
 name: Publish to GitHub Pages
 
 on:
-  workflow_dispatch:
+  push:
+    paths:
+      - 'public/**'
 
 jobs:
   deploy:
@@ -13,11 +15,11 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@main
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@main
         with:
           path: public
 
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@main
