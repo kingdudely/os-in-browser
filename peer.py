@@ -124,5 +124,4 @@ async def get_answer(offer):
 
 	await peer.setRemoteDescription(RTCSessionDescription(sdp=offer, type="offer"))
 	await peer.setLocalDescription()
-	print("NICE")
 	return peer.localDescription.sdp
