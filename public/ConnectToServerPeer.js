@@ -69,7 +69,7 @@ export default async function ConnectToServerPeer(configuration = {}) {
 
 	peer.addEventListener("iceconnectionstatechange", () => {
 		console.log(`ICE connection state: ${peer.iceConnectionState}`);
-		if (peer.iceConnectionState === "failed") {
+		if (["failed", "disconnected"].includes(peer.iceConnectionState)) {
 			peer.restartIce();
 		}
 	});

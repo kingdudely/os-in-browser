@@ -63,7 +63,7 @@ async def get_answer(offer):
 			mouse.move(movement_x, movement_y)
 		else:
 			client_x, client_y = unpack("<II", data)
-			x = client_X * (screen_width / stream_width)
+			x = client_x * (screen_width / stream_width)
 			y = client_y * (screen_height / stream_height)
 			mouse.position = (x, y)
 
