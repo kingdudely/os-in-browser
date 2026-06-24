@@ -36,33 +36,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends xorg xfce4 xvfb
 
-          Xvfb ${DISPLAY} -screen 0 1920x1080x24 &
+          Xvfb :0 -screen 0 1920x1080x24 &
           setsid startxfce4 &
 
       - name: Launch Chrome
-        run: |
-          USER_DATA_DIR="$GITHUB_WORKSPACE/chrome-user-data"
-          MANIFEST_DIR="$USER_DATA_DIR/NativeMessagingHosts"
-          EXTENSION_PATH="$GITHUB_WORKSPACE/path/to/your/extension"
-
-          if [ "$RUNNER_OS" == "Windows" ]; then
-            CHROME_PATH="/c/Program Files/Google/Chrome/Application/chrome.exe"
-            HOST_PATH="$GITHUB_WORKSPACE/path/to/host.exe"
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-            CHROME_PATH="/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome"
-            HOST_PATH="$GITHUB_WORKSPACE/path/to/host"
-          elif [ "$RUNNER_OS" == "Linux" ]; then
-            CHROME_PATH="google-chrome"
-            HOST_PATH="$GITHUB_WORKSPACE/path/to/host"
-          else
-            echo "::error::Unsupported OS encountered: $RUNNER_OS"
-            exit 1
-          fi
-
-          mkdir -p "$MANIFEST_DIR"
-
-          cat <<EOF > "$MANIFEST_DIR/$HOST_NAME.json"
-          
-          EOF
-
-          "$CHROME_PATH" --user-data-dir="$USER_DATA_DIR" --load-extension="$EXTENSION_PATH" --no-sandbox --disable-gpu &
+        run: ./launch-chrome.sh
