@@ -16,8 +16,6 @@ jobs:
             --no-first-run --disable-gpu --no-sandbox \
             --user-data-dir=/tmp/chrome 2>/dev/null 3<&3 4>&4 &
 
-          sleep 2
-
           send() { printf '%s\0' "$1" >&3; }
 
           while IFS= read -r -d $'\0' msg; do
@@ -37,5 +35,4 @@ jobs:
           done <&4 &
 
           send '{"id":1,"method":"Target.getTargets","params":{}}'
-          sleep 3
           rm -f $IN $OUT
