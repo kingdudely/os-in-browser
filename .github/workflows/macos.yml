@@ -1,56 +1,55 @@
-name: Remote Desktop
+name: mac
 
-on: 
+on:
   workflow_dispatch:
     inputs:
-      os:
-        description: 'OS'
-        type: choice
+      password:
+        description: "Password"
         required: true
-        default: 'windows-latest'
-        options:
-          - windows-latest
-          - ubuntu-latest
-          - macos-latest
 
 defaults:
   run:
     shell: bash
 
 jobs:
-  remote:
-    runs-on: ${{ github.event.inputs.os }}
+  build:
+    runs-on: macos-latest
     timeout-minutes: 360
+
     env:
-      DISPLAY: ":0"
+      VNC_PORT: 5901
+      NOVNC_PORT: 6080
 
     steps:
-      - name: Copy repository into PC
-        uses: actions/checkout@main
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-      - name: Install Python
-        uses: actions/setup-python@main
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-          cache-dependency-path: '**/requirements.txt'
-
-      - name: Setup Ubuntu desktop GUI
-        if: runner.os == 'Linux'
+      - name: Install Tools & Dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends xorg xfce4 xvfb # x11-utils
+          brew install git python cloudflared libvncserver cmake
+          git clone https://github.com/novnc/noVNC.git
 
-          Xvfb ${DISPLAY} -screen 0 1920x1080x24 &
-          setsid startxfce4 &
-
-      - name: Install server dependencies
+      - name: Start VNC Server
         run: |
-          pip install -r requirements.txt
+          chmod +x ./macVNC
+          ./macVNC -rfbport "${VNC_PORT}" -passwd "${{ github.event.inputs.password }}" &
 
-      - name: Start server
-        env:
-          USERNAME: ${{ secrets.USERNAME }}
-          PASSWORD: ${{ secrets.PASSWORD }}
+          until nc -z -G 1 localhost "${VNC_PORT}" &>/dev/null; do
+            sleep 1
+          done
+
+      - name: Launch noVNC Proxy
         run: |
-          python3 -u main.py
+          cd noVNC
+          echo "[*] Starting noVNC proxy..."
+          nohup ./utils/novnc_proxy \
+            --vnc "localhost:${VNC_PORT}" \
+            --listen "${NOVNC_PORT}" &
+
+          until nc -z -G 1 localhost "${NOVNC_PORT}" &>/dev/null; do
+            sleep 1
+          done
+
+      - name: Start tunnel
+        run: |
+          cloudflared tunnel --url "http://localhost:${NOVNC_PORT}" 2>&1 | grep --line-buffered -o 'https://[^ ]*trycloudflare.com'
