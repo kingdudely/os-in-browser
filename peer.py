@@ -41,6 +41,7 @@ BUTTON_MAP = {
 	1: Button.middle,
 	2: Button.right,
 }
+PAGE_OFFER = environ["PAGE_OFFER"]
 mouse = MouseController()
 keyboard = KeyboardController()
 

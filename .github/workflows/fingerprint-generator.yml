@@ -1,0 +1,45 @@
+name: Generate new fingerprint
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  generate-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@main
+
+      - name: Generate certificate and fingerprint
+        run: |
+          openssl req -x509 -newkey rsa:2048 -keyout workflow_key.pem -out workflow_cert.pem \
+            -nodes -subj "/CN=WebRTC-Workflow" -days 36500
+
+          FINGERPRINT=$(openssl x509 -in workflow_cert.pem -noout -fingerprint -sha256 | sed 's/.*=//')
+          jq --arg fp "$FINGERPRINT" '.workflowFingerprint = $fp' public/constants.json > public/tmp.json && mv public/tmp.json public/constants.json
+
+      - name: Commit Files to Repo
+        uses: stefanzweifel/git-auto-commit-action@master
+        with:
+          commit_message: "Update WebRTC DTLS Fingerprint and Certificates"
+          file_pattern: "workflow_cert.pem workflow_key.pem public/constants.json"
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@main
+
+      - name: Upload GitHub Pages Artifact
+        uses: actions/upload-pages-artifact@main
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@main

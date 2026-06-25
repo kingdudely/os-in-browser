@@ -12,6 +12,10 @@ on:
           - windows-latest
           - ubuntu-latest
           - macos-latest
+      page_offer:
+        description: "Page offer"
+        type: string
+        required: true
 
 defaults:
   run:
@@ -50,7 +54,6 @@ jobs:
 
       - name: Start server
         env:
-          USERNAME: ${{ secrets.USERNAME }}
-          PASSWORD: ${{ secrets.PASSWORD }}
+          PAGE_OFFER: ${{ github.event.inputs.page_offer }}
         run: |
           python3 -u main.py
