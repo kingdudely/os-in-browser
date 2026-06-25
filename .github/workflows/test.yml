@@ -8,10 +8,9 @@ jobs:
     steps:
       - name: Browser console via pipe
         run: |
-          # Open two named pipes but keep persistent FDs open to avoid EOF
           mkfifo /tmp/in /tmp/out
-          exec 3<>/tmp/in   # open read+write so it never gets EOF
-          exec 4<>/tmp/out  # same
+          exec 3<>/tmp/in
+          exec 4<>/tmp/out
 
           google-chrome --remote-debugging-pipe --headless=new \
             --no-first-run --disable-gpu --no-sandbox \
@@ -24,11 +23,32 @@ jobs:
 
           while IFS= read -r -d $'\0' msg; do
             echo "RAW: $msg"
+
+            # Step 2: got targets, extract targetId and attach
+            if echo "$msg" | grep -q '"id":1'; then
+              TID=$(echo "$msg" | grep -o '"targetId":"[^"]*"' | head -1 | cut -d'"' -f4)
+              echo "Target: $TID"
+              send "{\"id\":2,\"method\":\"Target.attachToTarget\",\"params\":{\"targetId\":\"$TID\",\"flatten\":true}}"
+            fi
+
+            # Step 3: got session, enable runtime and evaluate
+            if echo "$msg" | grep -q '"id":2'; then
+              SID=$(echo "$msg" | grep -o '"sessionId":"[^"]*"' | head -1 | cut -d'"' -f4)
+              echo "Session: $SID"
+              send "{\"id\":3,\"sessionId\":\"$SID\",\"method\":\"Runtime.enable\",\"params\":{}}"
+              sleep 0.3
+              send "{\"id\":4,\"sessionId\":\"$SID\",\"method\":\"Runtime.evaluate\",\"params\":{\"expression\":\"console.log('Hello World')\"}}"
+            fi
+
+            # Step 4: catch console log event
+            if echo "$msg" | grep -q "consoleAPICalled"; then
+              TEXT=$(echo "$msg" | grep -o '"value":"[^"]*"' | head -1 | cut -d'"' -f4)
+              echo "BROWSER: $TEXT"
+            fi
+
           done <&4 &
 
-          send '{"id":1,"method":"Runtime.enable","params":{}}'
-          sleep 0.3
-          send '{"id":2,"method":"Runtime.evaluate","params":{"expression":"console.log(\"Hello World\")"}}'
+          send '{"id":1,"method":"Target.getTargets","params":{}}'
 
-          sleep 3
+          sleep 5
           rm -f /tmp/in /tmp/out
