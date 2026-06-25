@@ -1,0 +1,88 @@
+name: Run 9remote
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner_os:
+        description: "Runner OS"
+        required: true
+        default: "macos-latest"
+        type: choice
+        options:
+          - macos-latest
+          - ubuntu-latest
+          - windows-latest
+      session_duration:
+        description: "Session duration (minutes)"
+        required: true
+        default: "30"
+        type: choice
+        options:
+          - "15"
+          - "30"
+          - "60"
+          - "120"
+
+jobs:
+  run-9remote:
+    runs-on: ${{ github.event.inputs.runner_os }}
+    timeout-minutes: ${{ fromJSON(github.event.inputs.session_duration) + 5 }}
+
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # ── Linux: start a virtual display so there's a desktop to share ──────
+      - name: Start virtual display (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y xvfb xfce4 xfce4-terminal x11vnc
+          Xvfb :99 -screen 0 1280x720x24 &
+          export DISPLAY=:99
+          startxfce4 &
+          sleep 3
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+
+      # ── Install & start 9remote (headless mode) ───────────────────────────
+      - name: Install 9remote
+        shell: bash
+        run: npm install -g 9remote
+
+      - name: Start 9remote (Linux / macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          DURATION_SECS=$(( ${{ github.event.inputs.session_duration }} * 60 ))
+          echo "Starting 9remote — session will last ${DURATION_SECS}s"
+          9remote start &
+          sleep 5
+
+          # Print tunnel URL from the log so it's visible in the job summary
+          echo "## 9remote Session" >> $GITHUB_STEP_SUMMARY
+          echo "**OS:** ${{ github.event.inputs.runner_os }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Duration:** ${{ github.event.inputs.session_duration }} minutes" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Check the step logs above for your tunnel URL and QR code." >> $GITHUB_STEP_SUMMARY
+
+          # Keep the runner alive for the chosen duration
+          sleep $DURATION_SECS
+
+      - name: Start 9remote (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $durationSecs = ${{ github.event.inputs.session_duration }} * 60
+          Write-Host "Starting 9remote — session will last $durationSecs seconds"
+          Start-Process -NoNewWindow -FilePath "9remote" -ArgumentList "start"
+          Start-Sleep -Seconds 5
+
+          # Job summary
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## 9remote Session"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "**OS:** ${{ github.event.inputs.runner_os }}"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "**Duration:** ${{ github.event.inputs.session_duration }} minutes"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "Check the step logs above for your tunnel URL and QR code."
+
+          Start-Sleep -Seconds $durationSecs
