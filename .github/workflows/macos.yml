@@ -1,0 +1,42 @@
+name: Serve HTML (macOS)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  serve:
+    runs-on: macos-latest
+    steps:
+
+      - name: Write HTML
+        run: |
+          cat > index.html <<'EOF'
+          
+          GitHub Actions
+          
+            It works!
+            Served from a GitHub Actions macOS runner.
+          
+          EOF
+
+      - name: Get public IP
+        id: ip
+        run: |
+          IP=$(curl -s https://api.ipify.org)
+          echo "ip=$IP" >> "$GITHUB_OUTPUT"
+          echo "Public IP: $IP"
+
+      - name: Serve HTML and print URL
+        run: |
+          PORT=8080
+          python3 -m http.server $PORT &
+          sleep 2
+
+          echo ""
+          echo "================================================"
+          echo " URL: http://${{ steps.ip.outputs.ip }}:$PORT"
+          echo "================================================"
+          echo ""
+
+          # Keep alive for 5 minutes so you can open it
+          sleep 300
