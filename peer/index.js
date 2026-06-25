@@ -9,6 +9,15 @@ window.createAnswer = async (offer) => {
 	peer.addTransceiver("audio", { direction: "sendonly" });
 	peer.addTransceiver("video", { direction: "sendonly" });
 
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+		video: true,
+		audio: true
+	});
+
+	for (const track of stream.getTracks()) {
+		peer.addTrack(track, stream);
+	};
+
 	const pointerMovementChannel = peer.createDataChannel("pointer-movement", {
 		ordered: false,
 		maxRetransmits: 0,
