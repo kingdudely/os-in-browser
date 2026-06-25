@@ -23,54 +23,43 @@ jobs:
           CHROME_PID=$!
           SID=""
           MSG_ID=4
+          MSGLOG=/tmp/cdp_msgs
 
           send() { printf '%s\0' "$1" >&3; }
 
-          # Bootstrap
+          # Single persistent reader that logs ALL messages to file
           while IFS= read -r -d $'\0' msg; do
-            if echo "$msg" | grep -q '"id":1'; then
-              TID=$(echo "$msg" | grep -o '"targetId":"[^"]*","type":"page"' | cut -d'"' -f4)
-              send "{\"id\":2,\"method\":\"Target.attachToTarget\",\"params\":{\"targetId\":\"$TID\",\"flatten\":true}}"
-            fi
-            if echo "$msg" | grep -q '"id":2' && [ -z "$SID" ]; then
-              SID=$(echo "$msg" | grep -o '"sessionId":"[^"]*"' | head -1 | cut -d'"' -f4)
-              send "{\"id\":3,\"sessionId\":\"$SID\",\"method\":\"Runtime.enable\",\"params\":{}}"
-              break
-            fi
+            echo "$msg" >> $MSGLOG
           done <&4 &
-          READER_PID=$!
 
           sleep 0.5
           send '{"id":1,"method":"Target.getTargets","params":{}}'
-          sleep 1
-          kill $READER_PID 2>/dev/null
+          sleep 0.5
+
+          TID=$(grep -o '"targetId":"[^"]*","type":"page"' $MSGLOG | cut -d'"' -f4)
+          send "{\"id\":2,\"method\":\"Target.attachToTarget\",\"params\":{\"targetId\":\"$TID\",\"flatten\":true}}"
+          sleep 0.5
+
+          SID=$(grep -o '"sessionId":"[^"]*"' $MSGLOG | head -1 | cut -d'"' -f4)
+          send "{\"id\":3,\"sessionId\":\"$SID\",\"method\":\"Runtime.enable\",\"params\":{}}"
+          sleep 0.3
 
           run_js() {
             local code="$1"
             MSG_ID=$((MSG_ID + 1))
             local id=$MSG_ID
-            local result=""
-
-            while IFS= read -r -d $'\0' msg; do
-              if echo "$msg" | grep -q "\"id\":$id"; then
-                # print raw so we can see what Chrome actually returns
-                echo "RAW: $msg" >&2
-                # parse the value field from result.result.value
-                result=$(echo "$msg" | grep -o '"result":{"type":"[^"]*","value":[^}]*}' | grep -o '"value":[^}]*' | cut -d: -f2- | tr -d '"')
-                break
-              fi
-            done <&4 &
-            READER_PID=$!
 
             send "{\"id\":$id,\"sessionId\":\"$SID\",\"method\":\"Runtime.evaluate\",\"params\":{\"expression\":\"$code\",\"returnByValue\":true}}"
             sleep 0.5
-            kill $READER_PID 2>/dev/null
-            echo "$result"
+
+            local raw=$(grep "\"id\":$id" $MSGLOG | tail -1)
+            echo "RAW: $raw" >&2
+            echo "$raw" | grep -o '"value":[^,}]*' | head -1 | cut -d: -f2- | tr -d '"'
           }
 
-          echo "Chrome ready. Running JS..."
+          echo "Chrome ready."
           run_js "1 + 1"
           run_js "document.title"
 
           kill $CHROME_PID 2>/dev/null
-          rm -f $IN $OUT
+          rm -f $IN $OUT $MSGLOG
