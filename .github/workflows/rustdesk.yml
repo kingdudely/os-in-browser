@@ -22,29 +22,25 @@ jobs:
 
     steps:
       - name: Get latest RustDesk version
-        id: version
+        id: rustdesk
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION=$(curl -s https://api.github.com/repos/rustdesk/rustdesk/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          VERSION=$(gh release view --repo rustdesk/rustdesk --json tagName -q '.tagName')
+          echo "download_prefix_path=https://github.com/rustdesk/rustdesk/releases/download/${VERSION}/rustdesk-${VERSION}-x86_64" >> $GITHUB_OUTPUT
 
       - name: Install & Run (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get install -y \
-            libgtk-3-0 \
-            libxcb-randr0 \
-            libxdo3 \
-            libxfixes3 \
-            libxcb-shape0 \
-            libxcb-xfixes0 \
-            libasound2 \
+          sudo apt update
+          sudo apt install -y \
             xvfb \
             xfce4 \
             xfce4-goodies \
             dbus-x11
 
-          wget -q "https://github.com/rustdesk/rustdesk/releases/download/${{ steps.version.outputs.version }}/rustdesk-${{ steps.version.outputs.version }}-x86_64.deb"
-          sudo dpkg -i rustdesk-*.deb || sudo apt-get install -fy
+          wget -qO rustdesk.deb "${{ steps.rustdesk.outputs.download_prefix_path }}.deb"
+          sudo apt install -fy ./rustdesk.deb
 
           PIPE=$(mktemp -u)
           mkfifo "$PIPE"
@@ -55,25 +51,27 @@ jobs:
           rustdesk --service &
           sleep 3
           rustdesk --get-id
+          sleep infinity
 
       - name: Install & Run (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $ver = "${{ steps.version.outputs.version }}"
-          Invoke-WebRequest -Uri "https://github.com/rustdesk/rustdesk/releases/download/$ver/rustdesk-$ver-x86_64.exe" -OutFile rustdesk.exe
+          Invoke-WebRequest -Uri "${{ steps.rustdesk.outputs.download_prefix_path }}.exe" -OutFile rustdesk.exe
           Start-Process -FilePath rustdesk.exe -ArgumentList '--silent-install' -Wait
           Start-Process -FilePath "$env:ProgramFiles\RustDesk\rustdesk.exe" -ArgumentList '--service'
           Start-Sleep 3
           & "$env:ProgramFiles\RustDesk\rustdesk.exe" --get-id
+          Wait-Event
 
       - name: Install & Run (macOS)
         if: runner.os == 'macOS'
         run: |
-          wget -q "https://github.com/rustdesk/rustdesk/releases/download/${{ steps.version.outputs.version }}/rustdesk-${{ steps.version.outputs.version }}-x86_64.dmg"
-          hdiutil attach rustdesk-*.dmg -quiet
+          wget -qO rustdesk.dmg "${{ steps.rustdesk.outputs.download_prefix_path }}.dmg"
+          hdiutil attach rustdesk.dmg -quiet
           cp -r /Volumes/RustDesk/RustDesk.app /Applications/
           hdiutil detach /Volumes/RustDesk -quiet
           /Applications/RustDesk.app/Contents/MacOS/rustdesk --service &
           sleep 3
           /Applications/RustDesk.app/Contents/MacOS/rustdesk --get-id
+          caffeinate
