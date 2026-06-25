@@ -75,7 +75,7 @@ def handle_pointer_scroll(data: bytes):
 PAGE_OFFER = environ["PAGE_OFFER"]
 
 async def run():
-    constants = import_json("constants.json")
+    constants = import_json("./public/constants.json")
     password             = constants["password"]
     username_fragment    = constants["usernameFragment"]
     workflow_fingerprint = constants["workflowFingerprint"]
