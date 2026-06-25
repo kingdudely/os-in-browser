@@ -47,6 +47,7 @@ jobs:
           Xvfb -displayfd 3 -screen 0 1920x1080x24 3>"$PIPE" &
           export DISPLAY=:$(head -1 "$PIPE")
           rm "$PIPE"
+          dbus-launch startxfce4 &
 
           rustdesk --service &
           sleep 3
