@@ -70,7 +70,7 @@ jobs:
 
       - name: Start rustdesk
         run: |
-          "${RUSTDESK}" --password "${{ secrets.PASSWORD }}"
-          "${RUSTDESK}" --service
+          "$RUSTDESK" --password "${{ secrets.PASSWORD }}" >/dev/null 2>&1
+          "$RUSTDESK" --service >/dev/null 2>&1 &
           "${RUSTDESK}" --get-id
           sleep 21600
