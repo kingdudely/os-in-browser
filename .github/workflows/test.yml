@@ -58,8 +58,7 @@ jobs:
           }
 
           echo "Chrome ready."
-          run_js "1 + 1"
-          run_js "document.title"
+          run_js "console.log('a')"
 
           kill $CHROME_PID 2>/dev/null
           rm -f $IN $OUT $MSGLOG
