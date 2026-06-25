@@ -80,9 +80,9 @@ window.createAnswer = async (offer) => {
 		if (peer.iceGatheringState === "complete") {
 			resolve();
 		} else {
-			peer.addEventListener("icegatheringstatechange", function handler() {
+			peer.addEventListener("icegatheringstatechange", function onStateChange() {
 				if (peer.iceGatheringState === "complete") {
-					peer.removeEventListener("icegatheringstatechange", handler);
+					peer.removeEventListener("icegatheringstatechange", onStateChange);
 					resolve();
 				}
 			});
