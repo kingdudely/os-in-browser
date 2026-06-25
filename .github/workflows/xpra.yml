@@ -1,0 +1,104 @@
+name: Xpra Remote Desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        description: "Operating System"
+        required: true
+        type: choice
+        options:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+      timeout:
+        description: "Session timeout in minutes (max 360)"
+        required: false
+        default: "60"
+
+jobs:
+  desktop:
+    runs-on: ${{ github.event.inputs.os }}
+    timeout-minutes: ${{ fromJSON(github.event.inputs.timeout) }}
+
+    steps:
+      # ── Install cloudflared (all platforms) ──────────────────────────────────
+      - name: Setup cloudflared
+        uses: AnimMouse/setup-cloudflared@v2
+
+      # ── Install Xpra: Linux ──────────────────────────────────────────────────
+      - name: "[Linux] Install Xpra"
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y ca-certificates
+          curl https://xpra.org/get-xpra.sh | sudo bash
+          sudo apt-get install -y xpra xterm xfce4 xfce4-terminal dbus-x11
+
+      # ── Install Xpra: macOS ──────────────────────────────────────────────────
+      - name: "[macOS] Install Xpra"
+        if: runner.os == 'macOS'
+        run: |
+          ARCH=$(uname -m)
+          curl -fSL "https://xpra.org/stable/MacOS/${ARCH}/Xpra.pkg" -o /tmp/Xpra.pkg
+          sudo xattr -rd com.apple.quarantine /tmp/Xpra.pkg 2>/dev/null || true
+          sudo installer -pkg /tmp/Xpra.pkg -target /
+          echo "/Applications/Xpra.app/Contents/MacOS" >> "$GITHUB_PATH"
+
+      # ── Install Xpra: Windows ────────────────────────────────────────────────
+      - name: "[Windows] Install Xpra"
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://xpra.org/stable/windows/Xpra.msi" -OutFile "$env:TEMP\Xpra.msi" -UseBasicParsing
+          Start-Process msiexec -ArgumentList "/i `"$env:TEMP\Xpra.msi`" /qn /norestart" -Wait
+          echo "C:\Program Files\Xpra" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      # ── Start Xpra + tunnel (all platforms) ──────────────────────────────────
+      - name: Start Xpra and Cloudflare tunnel
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xpra start-desktop \
+              --bind-tcp=0.0.0.0:10000 \
+              --html=on \
+              --start=xfce4-session \
+              --daemon=no \
+              --mdns=no \
+              --pulseaudio=no \
+              --notifications=no \
+              --bell=no \
+              --xvfb="Xvfb +extension Composite -screen 0 1920x1080x24 -nolisten tcp -noreset" \
+              &
+          else
+            # macOS and Windows: shadow the existing desktop
+            xpra shadow \
+              --bind-tcp=0.0.0.0:10000 \
+              --html=on \
+              --daemon=no \
+              --mdns=no \
+              --pulseaudio=no \
+              --notifications=no \
+              --bell=no \
+              &
+          fi
+
+          sleep 5
+
+          cloudflared tunnel --url http://localhost:10000 --no-autoupdate 2>&1 | tee /tmp/cf.log &
+          CF_PID=$!
+
+          for i in $(seq 1 30); do
+            URL=$(grep -oE 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' /tmp/cf.log | head -1)
+            [ -n "$URL" ] && break
+            sleep 2
+          done
+
+          echo ""
+          echo "╔══════════════════════════════════════════╗"
+          echo "║  XPRA REMOTE DESKTOP READY               ║"
+          echo "║  Open in browser:                        ║"
+          echo "║  $URL"
+          echo "║  OS: $RUNNER_OS"
+          echo "╚══════════════════════════════════════════╝"
+
+          wait $CF_PID
