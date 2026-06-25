@@ -54,9 +54,9 @@ jobs:
       - name: Windows setup
         if: runner.os == 'Windows'
         run: |
-          curl -Lo rustdesk.msi "${{ steps.rustdesk.outputs.download_prefix_path }}.msi"
-          msiexec /i rustdesk.msi
-          echo "RUSTDESK=/c/Program Files/RustDesk/rustdesk.exe" >> "${GITHUB_ENV}"
+          curl -Lo rustdesk.exe "${{ steps.rustdesk.outputs.download_prefix_path }}.exe"
+          ./rustdesk.exe --silent-install
+          echo "RUSTDESK=./rustdesk.exe" >> "${GITHUB_ENV}"
 
       - name: MacOS setup
         if: runner.os == 'macOS'
