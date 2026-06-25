@@ -6,9 +6,6 @@ window.createAnswer = async (offer) => {
 		]
 	});
 
-	peer.addTransceiver("audio", { direction: "sendonly" });
-	peer.addTransceiver("video", { direction: "sendonly" });
-
     const stream = await navigator.mediaDevices.getDisplayMedia({
 		video: true,
 		audio: true
@@ -78,6 +75,19 @@ window.createAnswer = async (offer) => {
 
 	await peer.setRemoteDescription({ type: "offer", sdp: offer });
 	await peer.setLocalDescription();
+
+	await new Promise((resolve) => {
+		if (peer.iceGatheringState === "complete") {
+			resolve();
+		} else {
+			peer.addEventListener("icegatheringstatechange", function handler() {
+				if (peer.iceGatheringState === "complete") {
+					peer.removeEventListener("icegatheringstatechange", handler);
+					resolve();
+				}
+			});
+		}
+	});
 
 	return peer.localDescription.sdp;
 };

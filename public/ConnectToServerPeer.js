@@ -1,17 +1,3 @@
-const waitForIceGathering = async (peer) =>
-	new Promise((resolve) => {
-		if (peer.iceGatheringState === "complete") {
-			resolve();
-		} else {
-			peer.addEventListener("icegatheringstatechange", function onStateChange() {
-				if (peer.iceGatheringState === "complete") {
-					peer.removeEventListener("icegatheringstatechange", onStateChange);
-					resolve();
-				}
-			});
-		}
-	});
-
 export default async function ConnectToServerPeer(configuration = {}) {
 	const peer = new RTCPeerConnection({
 		iceServers: [
@@ -37,7 +23,18 @@ export default async function ConnectToServerPeer(configuration = {}) {
 			isNegotiating = true;
 
 			await peer.setLocalDescription();
-			await waitForIceGathering(peer);
+			await new Promise((resolve) => {
+				if (peer.iceGatheringState === "complete") {
+					resolve();
+				} else {
+					peer.addEventListener("icegatheringstatechange", function onStateChange() {
+						if (peer.iceGatheringState === "complete") {
+							peer.removeEventListener("icegatheringstatechange", onStateChange);
+							resolve();
+						}
+					});
+				}
+			});
 
 			const response = await fetch("/whip", {
 				method: "POST",
