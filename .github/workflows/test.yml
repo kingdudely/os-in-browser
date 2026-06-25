@@ -26,7 +26,7 @@ jobs:
 
           send() { printf '%s\0' "$1" >&3; }
 
-          # Bootstrap: get page target and attach
+          # Bootstrap
           while IFS= read -r -d $'\0' msg; do
             if echo "$msg" | grep -q '"id":1'; then
               TID=$(echo "$msg" | grep -o '"targetId":"[^"]*","type":"page"' | cut -d'"' -f4)
@@ -45,36 +45,32 @@ jobs:
           sleep 1
           kill $READER_PID 2>/dev/null
 
-          # API: run JS in Chrome
           run_js() {
             local code="$1"
             MSG_ID=$((MSG_ID + 1))
             local id=$MSG_ID
             local result=""
 
-            # Start reader for this call
             while IFS= read -r -d $'\0' msg; do
               if echo "$msg" | grep -q "\"id\":$id"; then
-                result=$(echo "$msg" | grep -o '"value":[^,}]*' | head -1 | cut -d: -f2 | tr -d '"')
+                # print raw so we can see what Chrome actually returns
+                echo "RAW: $msg" >&2
+                # parse the value field from result.result.value
+                result=$(echo "$msg" | grep -o '"result":{"type":"[^"]*","value":[^}]*}' | grep -o '"value":[^}]*' | cut -d: -f2- | tr -d '"')
                 break
               fi
             done <&4 &
             READER_PID=$!
 
             send "{\"id\":$id,\"sessionId\":\"$SID\",\"method\":\"Runtime.evaluate\",\"params\":{\"expression\":\"$code\",\"returnByValue\":true}}"
-            sleep 0.3
+            sleep 0.5
             kill $READER_PID 2>/dev/null
             echo "$result"
           }
 
-          # ── Usage ─────────────────────────────────────────────────────────────────────
           echo "Chrome ready. Running JS..."
-
           run_js "1 + 1"
           run_js "document.title"
-          run_js "navigator.userAgent"
-          run_js "console.log('Hello World'); 'done'"
 
-          # cleanup
           kill $CHROME_PID 2>/dev/null
           rm -f $IN $OUT
