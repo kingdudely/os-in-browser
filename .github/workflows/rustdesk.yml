@@ -1,4 +1,4 @@
-name: Install & Run RustDesk
+name: RustDesk
 
 on:
   workflow_dispatch:
