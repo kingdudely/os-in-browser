@@ -13,6 +13,8 @@ import nutKeys from "./nutKeys.json" with { type: "json" };
 import nutButtons from "./nutButtons.json" with { type: "json" };
 
 function triggerImmersiveMode() {
+	screenshare.play().catch(() => {});
+
 	if (document.fullscreenEnabled && !document.fullscreenElement) {
 		document.body.requestFullscreen({ // target, await
 			"navigationUI": "hide"
