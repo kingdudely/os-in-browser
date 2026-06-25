@@ -15,7 +15,7 @@ on:
 
 jobs:
   rustdesk:
-    runs-on: ${{ inputs.os }}
+    runs-on: ${{ github.event.inputs.os }}
     defaults:
       run:
         shell: bash
@@ -24,12 +24,12 @@ jobs:
       - name: Get latest RustDesk version
         id: rustdesk
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           VERSION=$(gh release view --repo rustdesk/rustdesk --json tagName -q '.tagName')
           echo "download_prefix_path=https://github.com/rustdesk/rustdesk/releases/download/${VERSION}/rustdesk-${VERSION}-x86_64" >> $GITHUB_OUTPUT
 
-      - name: Install & Run (Linux)
+      - name: Linux setup
         if: runner.os == 'Linux'
         run: |
           sudo apt update
@@ -39,7 +39,7 @@ jobs:
             xfce4-goodies \
             dbus-x11
 
-          wget -qO rustdesk.deb "${{ steps.rustdesk.outputs.download_prefix_path }}.deb"
+          curl -Lo rustdesk.deb "${{ steps.rustdesk.outputs.download_prefix_path }}.deb"
           sudo apt install -fy ./rustdesk.deb
 
           PIPE=$(mktemp -u)
@@ -49,23 +49,16 @@ jobs:
           rm "$PIPE"
           dbus-launch startxfce4 &
 
-          rustdesk --service &
-          sleep 3
-          rustdesk --get-id
-          sleep infinity
+          echo "RUSTDESK=rustdesk" >> $GITHUB_ENV
 
-      - name: Install & Run (Windows)
+      - name: Windows setup
         if: runner.os == 'Windows'
-        shell: pwsh
         run: |
-          Invoke-WebRequest -Uri "${{ steps.rustdesk.outputs.download_prefix_path }}.exe" -OutFile rustdesk.exe
-          Start-Process -FilePath rustdesk.exe -ArgumentList '--silent-install' -Wait
-          Start-Process -FilePath "$env:ProgramFiles\RustDesk\rustdesk.exe" -ArgumentList '--service'
-          Start-Sleep 3
-          & "$env:ProgramFiles\RustDesk\rustdesk.exe" --get-id
-          Wait-Event
+          curl -Lo rustdesk.exe "${{ steps.rustdesk.outputs.download_prefix_path }}.exe"
+          ./rustdesk.exe --silent-install
+          echo "RUSTDESK=./rustdesk.exe" >> $GITHUB_ENV
 
-      - name: Install & Run (macOS)
+      - name: MacOS setup
         if: runner.os == 'macOS'
         run: |
           wget -qO rustdesk.dmg "${{ steps.rustdesk.outputs.download_prefix_path }}.dmg"
@@ -73,7 +66,10 @@ jobs:
           VOLUME=$(ls /Volumes | grep -i rustdesk)
           cp -r "/Volumes/${VOLUME}/RustDesk.app" /Applications/
           hdiutil detach "/Volumes/${VOLUME}" -quiet
-          /Applications/RustDesk.app/Contents/MacOS/rustdesk --service &
-          sleep 3
-          /Applications/RustDesk.app/Contents/MacOS/rustdesk --get-id
-          caffeinate
+          echo "RUSTDESK=/Applications/RustDesk.app/Contents/MacOS/rustdesk" >> $GITHUB_ENV
+
+      - name: Start rustdesk
+        run: |
+          rustdesk --service
+          rustdesk --get-id
+          sleep 21600
