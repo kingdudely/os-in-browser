@@ -8,21 +8,27 @@ jobs:
     steps:
       - name: Browser console via pipe
         run: |
-          coproc CHROME (google-chrome --remote-debugging-pipe --headless=new \
+          # Open two named pipes but keep persistent FDs open to avoid EOF
+          mkfifo /tmp/in /tmp/out
+          exec 3<>/tmp/in   # open read+write so it never gets EOF
+          exec 4<>/tmp/out  # same
+
+          google-chrome --remote-debugging-pipe --headless=new \
             --no-first-run --disable-gpu --no-sandbox \
-            --user-data-dir=/tmp/chrome-dbg 2>/dev/null)
+            --user-data-dir=/tmp/chrome-dbg \
+            2>/dev/null 3<&3 4>&4 &
 
           sleep 2
 
-          send() { printf '%s\0' "$1" >&${CHROME[1]}; }
+          send() { printf '%s\0' "$1" >&3; }
 
           while IFS= read -r -d $'\0' msg; do
             echo "RAW: $msg"
-          done <&${CHROME[0]} &
+          done <&4 &
 
           send '{"id":1,"method":"Runtime.enable","params":{}}'
           sleep 0.3
           send '{"id":2,"method":"Runtime.evaluate","params":{"expression":"console.log(\"Hello World\")"}}'
 
           sleep 3
-          kill $CHROME_PID 2>/dev/null
+          rm -f /tmp/in /tmp/out
