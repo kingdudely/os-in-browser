@@ -11,6 +11,7 @@ const peerUrl = `http://localhost:${server.address().port}`;
 const browser = await puppeteer.launch({
 	channel: "chrome",
 	headless: true,
+	pipe: true,
 	args: [
 		'--no-sandbox',
 		'--disable-gpu',

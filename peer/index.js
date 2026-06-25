@@ -24,14 +24,16 @@ window.createAnswer = (offer) => {
 	pointerMovementChannel.addEventListener("message", (event) => {
 		console.log(typeof(event));
 		const view = new DataView(event.data);
-		const isAbsolute = view.getUint8(0) === 1;
-		const x = view.getInt16(0, true);
-		const y = view.getInt16(2, true);
+		const isRelative = view.byteLength === 4;
 
-		if (isAbsolute) {
-			await setMousePosition(x, y);
+		if (isRelative) {
+			const movementX = view.getInt16(0, true);
+			const movementY = view.getInt16(2, true);
+			await moveMouseDelta(movementX, movementY);
 		} else {
-			await moveMouseDelta(x, y);
+			const x = view.getUint32(0, true);
+			const y = view.getUint32(4, true);
+			await setMousePosition(x, y);
 		};
 	});
 
@@ -53,13 +55,13 @@ window.createAnswer = (offer) => {
 		}
 	});
 
-	const keyboardChannel = peer.createDataChannel("keyboard", {
+	const keyboardTypeChannel = peer.createDataChannel("keyboard-type", {
 		ordered: true,
 		negotiated: true,
 		id: 2
 	});
 
-	keyboardChannel.addEventListener("message", async (event) => {
+	keyboardTypeChannel.addEventListener("message", async (event) => {
 		const view = new DataView(event.data);
 		const isDown = view.getUint8(0) === 1;
 		const key = view.getUint8(1);
