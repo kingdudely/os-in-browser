@@ -32,9 +32,9 @@ const sharedBytes = new Uint8Array(8);
 const sharedView = new DataView(sharedBytes.buffer);
 
 const peer = await ConnectToServerPeer();
-console.log("A")
 peer.addEventListener("track", (event) => {
 	screenshare.srcObject = event.streams[0];
+	screenshare.play().catch(console.warn);
 });
 
 const pointerMovementChannel = peer.createDataChannel("pointer-movement", {
