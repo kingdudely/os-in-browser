@@ -12,6 +12,10 @@ on:
           - ubuntu-latest
           - windows-latest
           - macos-latest
+      password:
+        description: "Password"
+        required: true
+        type: string
 
 jobs:
   rustdesk:
@@ -70,6 +74,7 @@ jobs:
 
       - name: Start rustdesk
         run: |
+          "${RUSTDESK}" --password "${{ github.event.inputs.password }}"
           "${RUSTDESK}" --service
           "${RUSTDESK}" --get-id
           sleep 21600
