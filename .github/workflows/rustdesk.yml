@@ -22,35 +22,20 @@ jobs:
         uses: docker/setup-docker-action@master
 
       - name: Start RustDesk
+        shell: bash
         run: |
-          cat > compose.yml <<'EOF'
-          services:
-            hbbs:
-              container_name: hbbs
-              image: rustdesk/rustdesk-server:latest
-              command: hbbs
-              volumes:
-                - ./data:/root
-              ports:
-                - "21115:21115"
-                - "21116:21116"
-                - "21116:21116/udp"
-                - "21118:21118"
-              depends_on:
-                - hbbr
-              restart: unless-stopped
-            hbbr:
-              container_name: hbbr
-              image: rustdesk/rustdesk-server:latest
-              command: hbbr
-              volumes:
-                - ./data:/root
-              ports:
-                - "21117:21117"
-                - "21119:21119"
-              restart: unless-stopped
-          EOF
-          docker compose up -d
+          docker run -d --name hbbr \
+            -p 21117:21117 -p 21119:21119 \
+            -v ./data:/root \
+            --restart unless-stopped \
+            rustdesk/rustdesk-server:latest hbbr
+
+          docker run -d --name hbbs \
+            -p 21115:21115 -p 21116:21116 -p 21116:21116/udp -p 21118:21118 \
+            -v ./data:/root \
+            --restart unless-stopped \
+            rustdesk/rustdesk-server:latest hbbs
+
           sleep 5
           docker logs hbbs 2>&1 | grep -i key
-        shell: bash
+          sleep infinity
