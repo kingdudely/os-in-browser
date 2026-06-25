@@ -1,4 +1,4 @@
-window.createAnswer = (offer) => {
+window.createAnswer = async (offer) => {
 	const peer = new RTCPeerConnection({
 		iceServers: [
 			{ urls: "stun:stun.l.google.com:19302" },
@@ -6,13 +6,8 @@ window.createAnswer = (offer) => {
 		]
 	});
 
-	peer.addTransceiver("audio", {
-		direction: "sendonly"
-	});
-
-	peer.addTransceiver("video", {
-		direction: "sendonly"
-	});
+	peer.addTransceiver("audio", { direction: "sendonly" });
+	peer.addTransceiver("video", { direction: "sendonly" });
 
 	const pointerMovementChannel = peer.createDataChannel("pointer-movement", {
 		ordered: false,
@@ -21,8 +16,7 @@ window.createAnswer = (offer) => {
 		id: 0
 	});
 
-	pointerMovementChannel.addEventListener("message", (event) => {
-		console.log(typeof(event));
+	pointerMovementChannel.addEventListener("message", async (event) => {
 		const view = new DataView(event.data);
 		const isRelative = view.byteLength === 4;
 
@@ -34,7 +28,7 @@ window.createAnswer = (offer) => {
 			const x = view.getUint32(0, true);
 			const y = view.getUint32(4, true);
 			await setMousePosition(x, y);
-		};
+		}
 	});
 
 	const pointerClickChannel = peer.createDataChannel("pointer-click", {
@@ -73,10 +67,8 @@ window.createAnswer = (offer) => {
 		}
 	});
 
-	await peer.setRemoteDescription({
-		type: "offer",
-		sdp: offer
-	});
+	await peer.setRemoteDescription({ type: "offer", sdp: offer });
+	await peer.setLocalDescription();
 
 	return peer.localDescription.sdp;
-}
+};

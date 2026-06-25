@@ -2,7 +2,7 @@ import puppeteer from "puppeteer-core";
 import express from "express";
 import { mouse, keyboard, Point } from '@nut-tree-fork/nut-js';
 
-const app = express()
+const app = express();
 app.use(express.static("peer"));
 const server = app.listen(0);
 
@@ -23,9 +23,8 @@ const browser = await puppeteer.launch({
 	]
 });
 
-
 const page = await browser.newPage();
-await page.goto(peerUrl);
+
 await page.exposeFunction("pressKeyboardKey", keyboard.pressKey.bind(keyboard));
 await page.exposeFunction("releaseKeyboardKey", keyboard.releaseKey.bind(keyboard));
 await page.exposeFunction("pressMouseButton", mouse.pressButton.bind(mouse));
@@ -35,13 +34,11 @@ const setMousePosition = async (x, y) => await mouse.setPosition(new Point(x, y)
 await page.exposeFunction("setMousePosition", setMousePosition);
 await page.exposeFunction("moveMouseDelta", async (deltaX, deltaY) => {
 	const currentPos = await mouse.getPosition();
+	await setMousePosition(currentPos.x + deltaX, currentPos.y + deltaY);
+});
 
-	const x = currentPos.x + deltaX;
-	const y = currentPos.y + deltaY;
-
-	await setMousePosition(x, y);
-})
-
+await page.goto(peerUrl);
+await page.waitForFunction(() => typeof window.createAnswer === "function");
 
 export async function createAnswer(offer) {
 	return await page.evaluate((offer) => window.createAnswer(offer), offer);
