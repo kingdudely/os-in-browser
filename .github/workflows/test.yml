@@ -1,4 +1,4 @@
-name: Browser Console
+name: Browser JS API
 
 on: [push]
 
@@ -6,7 +6,7 @@ jobs:
   console:
     runs-on: ubuntu-latest
     steps:
-      - name: Browser console via pipe
+      - name: Run JavaScript in browser via bash
         run: |
           IN=/tmp/in OUT=/tmp/out
           mkfifo $IN $OUT
@@ -14,25 +14,40 @@ jobs:
 
           google-chrome --remote-debugging-pipe --headless=new \
             --no-first-run --disable-gpu --no-sandbox \
+            --disable-extensions --disable-default-apps \
+            --disable-background-networking \
             --user-data-dir=/tmp/chrome 2>/dev/null 3<&3 4>&4 &
 
           send() { printf '%s\0' "$1" >&3; }
 
-          while IFS= read -r -d $'\0' msg; do
-            if echo "$msg" | grep -q '"id":1'; then
-              TID=$(echo "$msg" | grep -o '"targetId":"[^"]*","type":"page"' | cut -d'"' -f4)
-              send "{\"id\":2,\"method\":\"Target.attachToTarget\",\"params\":{\"targetId\":\"$TID\",\"flatten\":true}}"
-            fi
-            if echo "$msg" | grep -q '"id":2' && [ -z "$SID" ]; then
-              SID=$(echo "$msg" | grep -o '"sessionId":"[^"]*"' | head -1 | cut -d'"' -f4)
-              send "{\"id\":3,\"sessionId\":\"$SID\",\"method\":\"Runtime.enable\",\"params\":{}}"
-              send "{\"id\":4,\"sessionId\":\"$SID\",\"method\":\"Runtime.evaluate\",\"params\":{\"expression\":\"console.log('Hello World')\"}}"
-            fi
-            if echo "$msg" | grep -q "consoleAPICalled"; then
-              TEXT=$(echo "$msg" | grep -o '"value":"[^"]*"' | head -1 | cut -d'"' -f4)
-              echo "BROWSER: $TEXT"
-            fi
-          done <&4 &
+          # Run JS in browser, print result to stdout
+          run_js() {
+            local js="$1"
+            local result=""
+            while IFS= read -r -d $'\0' msg; do
+              if echo "$msg" | grep -q '"Target.targetCreated"' && [ -z "$SID" ]; then
+                TID=$(echo "$msg" | grep -o '"targetId":"[^"]*","type":"page"' | cut -d'"' -f4)
+                send "{\"id\":1,\"method\":\"Target.attachToTarget\",\"params\":{\"targetId\":\"$TID\",\"flatten\":true}}"
+              fi
+              if echo "$msg" | grep -q '"id":1' && [ -z "$SID" ]; then
+                SID=$(echo "$msg" | grep -o '"sessionId":"[^"]*"' | head -1 | cut -d'"' -f4)
+                send "{\"id\":2,\"sessionId\":\"$SID\",\"method\":\"Runtime.enable\",\"params\":{}}"
+              fi
+              if echo "$msg" | grep -q '"id":2'; then
+                send "{\"id\":3,\"sessionId\":\"$SID\",\"method\":\"Runtime.evaluate\",\"params\":{\"expression\":\"$js\",\"returnByValue\":true}}"
+              fi
+              if echo "$msg" | grep -q '"id":3'; then
+                result=$(echo "$msg" | grep -o '"value":[^,}]*' | head -1 | cut -d':' -f2- | tr -d '"')
+                echo "$result"
+                break
+              fi
+            done <&4
+          }
 
-          send '{"id":1,"method":"Target.getTargets","params":{}}'
+          # --- use the API here ---
+          run_js "1 + 1"
+          run_js "navigator.userAgent"
+          run_js "'hello from browser'.toUpperCase()"
+          run_js "new Date().toISOString()"
+
           rm -f $IN $OUT
