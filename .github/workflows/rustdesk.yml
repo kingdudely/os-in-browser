@@ -49,14 +49,14 @@ jobs:
           rm "$PIPE"
           dbus-launch startxfce4 &
 
-          echo "RUSTDESK=rustdesk" >> $GITHUB_ENV
+          echo "rustdesk=rustdesk" >> $GITHUB_ENV
 
       - name: Windows setup
         if: runner.os == 'Windows'
         run: |
           curl -Lo rustdesk.exe "${{ steps.rustdesk.outputs.download_prefix_path }}.exe"
           ./rustdesk.exe --silent-install
-          echo "RUSTDESK=./rustdesk.exe" >> $GITHUB_ENV
+          echo "rustdesk=./rustdesk.exe" >> $GITHUB_ENV
 
       - name: MacOS setup
         if: runner.os == 'macOS'
@@ -66,7 +66,7 @@ jobs:
           VOLUME=$(ls /Volumes | grep -i rustdesk)
           cp -r "/Volumes/${VOLUME}/RustDesk.app" /Applications/
           hdiutil detach "/Volumes/${VOLUME}" -quiet
-          echo "RUSTDESK=/Applications/RustDesk.app/Contents/MacOS/rustdesk" >> $GITHUB_ENV
+          echo "rustdesk=/Applications/RustDesk.app/Contents/MacOS/rustdesk" >> $GITHUB_ENV
 
       - name: Start rustdesk
         run: |
