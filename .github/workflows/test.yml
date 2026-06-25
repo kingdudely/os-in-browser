@@ -8,57 +8,34 @@ jobs:
     steps:
       - name: Browser console via pipe
         run: |
-          #!/usr/bin/env bash
-
           IN=/tmp/in OUT=/tmp/out
-          mkfifo $IN $OUT 2>/dev/null
+          mkfifo $IN $OUT
           exec 3<>$IN 4<>$OUT
 
           google-chrome --remote-debugging-pipe --headless=new \
             --no-first-run --disable-gpu --no-sandbox \
-            --disable-extensions --disable-default-apps \
-            --disable-background-networking \
             --user-data-dir=/tmp/chrome 2>/dev/null 3<&3 4>&4 &
 
-          CHROME_PID=$!
-          SID=""
-          MSG_ID=4
-          MSGLOG=/tmp/cdp_msgs
+          sleep 2
 
           send() { printf '%s\0' "$1" >&3; }
 
-          # Single persistent reader that logs ALL messages to file
           while IFS= read -r -d $'\0' msg; do
-            echo "$msg" >> $MSGLOG
+            if echo "$msg" | grep -q '"id":1'; then
+              TID=$(echo "$msg" | grep -o '"targetId":"[^"]*","type":"page"' | cut -d'"' -f4)
+              send "{\"id\":2,\"method\":\"Target.attachToTarget\",\"params\":{\"targetId\":\"$TID\",\"flatten\":true}}"
+            fi
+            if echo "$msg" | grep -q '"id":2' && [ -z "$SID" ]; then
+              SID=$(echo "$msg" | grep -o '"sessionId":"[^"]*"' | head -1 | cut -d'"' -f4)
+              send "{\"id\":3,\"sessionId\":\"$SID\",\"method\":\"Runtime.enable\",\"params\":{}}"
+              send "{\"id\":4,\"sessionId\":\"$SID\",\"method\":\"Runtime.evaluate\",\"params\":{\"expression\":\"console.log('Hello World')\"}}"
+            fi
+            if echo "$msg" | grep -q "consoleAPICalled"; then
+              TEXT=$(echo "$msg" | grep -o '"value":"[^"]*"' | head -1 | cut -d'"' -f4)
+              echo "BROWSER: $TEXT"
+            fi
           done <&4 &
 
-          sleep 0.5
           send '{"id":1,"method":"Target.getTargets","params":{}}'
-          sleep 0.5
-
-          TID=$(grep -o '"targetId":"[^"]*","type":"page"' $MSGLOG | cut -d'"' -f4)
-          send "{\"id\":2,\"method\":\"Target.attachToTarget\",\"params\":{\"targetId\":\"$TID\",\"flatten\":true}}"
-          sleep 0.5
-
-          SID=$(grep -o '"sessionId":"[^"]*"' $MSGLOG | head -1 | cut -d'"' -f4)
-          send "{\"id\":3,\"sessionId\":\"$SID\",\"method\":\"Runtime.enable\",\"params\":{}}"
-          sleep 0.3
-
-          run_js() {
-            local code="$1"
-            MSG_ID=$((MSG_ID + 1))
-            local id=$MSG_ID
-
-            send "{\"id\":$id,\"sessionId\":\"$SID\",\"method\":\"Runtime.evaluate\",\"params\":{\"expression\":\"$code\",\"returnByValue\":true}}"
-            sleep 0.5
-
-            local raw=$(grep "\"id\":$id" $MSGLOG | tail -1)
-            echo "RAW: $raw" >&2
-            echo "$raw" | grep -o '"value":[^,}]*' | head -1 | cut -d: -f2- | tr -d '"'
-          }
-
-          echo "Chrome ready."
-          run_js "console.log('a')"
-
-          kill $CHROME_PID 2>/dev/null
-          rm -f $IN $OUT $MSGLOG
+          sleep 3
+          rm -f $IN $OUT
