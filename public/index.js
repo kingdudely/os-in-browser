@@ -9,7 +9,8 @@ window.addEventListener("unhandledrejection", (event) => {
 });
 
 import ConnectToServerPeer from "./ConnectToServerPeer.js";
-import code_keys from "./code_keys.json" with { type: "json" };
+import nutKeys from "./nutKeys.json" with { type: "json" };
+import nutButtons from "./nutButtons.json" with { type: "json" };
 
 function triggerImmersiveMode() {
 	if (document.fullscreenEnabled && !document.fullscreenElement) {
@@ -97,14 +98,14 @@ window.addEventListener("keydown", (event) => {
 	if (keyboardTypeChannel.readyState !== "open" || event.repeat) return;
 	triggerImmersiveMode();
 
-	const code_index = code_keys.indexOf(event.code);
-	if (code_index === -1) {
-		console.warn("Code is not supported");
+	const nutKey = nutKeys.indexOf(event.code);
+	if (nutKey === -1) {
+		console.warn(`${event.code} does not have a corresponding Nut.JS key`);
 		return;
 	}
 
 	sharedView.setUint8(0, 1); // isDown
-	sharedView.setUint8(1, code_index);
+	sharedView.setUint8(1, nutKey);
 
 	keyboardTypeChannel.send(sharedBytes.subarray(0, 2));
 });
@@ -113,14 +114,14 @@ window.addEventListener("keyup", (event) => {
 	event.preventDefault();
 	if (keyboardTypeChannel.readyState !== "open") return;
 
-	const code_index = code_keys.indexOf(event.code);
-	if (code_index === -1) {
-		console.warn("Code is not supported");
+	const nutKey = nutKeys.indexOf(event.code);
+	if (nutKey === -1) {
+		console.warn(`${event.code} does not have a corresponding Nut.JS key`);
 		return;
 	}
 
-	sharedView.setUint8(0, 0);
-	sharedView.setUint8(1, code_index);
+	sharedView.setUint8(0, 0); // isDown
+	sharedView.setUint8(1, nutKey);
 
 	keyboardTypeChannel.send(sharedBytes.subarray(0, 2));
 })
