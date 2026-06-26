@@ -1,4 +1,4 @@
-name: Check CoreHID Availability
+name: Check CoreHID HIDVirtualDevice
 
 on:
   push:
@@ -12,54 +12,42 @@ jobs:
       - name: Check SIP status
         run: csrutil status
 
-      - name: Check if CoreHID framework exists
+      - name: Try creating a HIDVirtualDevice
         run: |
-          FRAMEWORK_PATH="/System/Library/PrivateFrameworks/CoreHID.framework"
-          if [ -d "$FRAMEWORK_PATH" ]; then
-            echo "✅ CoreHID framework found at $FRAMEWORK_PATH"
-          else
-            echo "❌ CoreHID framework NOT found at $FRAMEWORK_PATH"
-            exit 1
-          fi
+          cat > /tmp/check_hidvirtualdevice.swift << 'SWIFT'
+          import CoreHID
 
-      - name: List CoreHID framework contents
-        run: |
-          ls -la /System/Library/PrivateFrameworks/CoreHID.framework/ || true
+          // Minimal keyboard HID descriptor
+          let descriptor: [UInt8] = [
+            0x05, 0x01,  // Usage Page (Generic Desktop)
+            0x09, 0x06,  // Usage (Keyboard)
+            0xA1, 0x01,  // Collection (Application)
+            0x05, 0x07,  //   Usage Page (Key Codes)
+            0x19, 0x00,  //   Usage Minimum (0)
+            0x29, 0xFF,  //   Usage Maximum (255)
+            0x15, 0x00,  //   Logical Minimum (0)
+            0x25, 0xFF,  //   Logical Maximum (255)
+            0x75, 0x08,  //   Report Size (8)
+            0x95, 0x01,  //   Report Count (1)
+            0x81, 0x00,  //   Input (Data, Array)
+            0xC0         // End Collection
+          ]
 
-      - name: Try loading CoreHID via dlopen (Swift)
-        run: |
-          cat > /tmp/check_corehid.swift << 'EOF'
-          import Foundation
+          let properties = HIDVirtualDevice.Properties(
+            descriptor: Data(descriptor),
+            vendorID: 0x05AC,
+            productID: 0x0001
+          )
 
-          let path = "/System/Library/PrivateFrameworks/CoreHID.framework/CoreHID"
-          guard let handle = dlopen(path, RTLD_NOW) else {
-            let err = String(cString: dlerror())
-            print("❌ dlopen failed: \(err)")
+          guard let device = HIDVirtualDevice(properties: properties) else {
+            print("❌ HIDVirtualDevice init returned nil — likely blocked (SIP, entitlement, or permissions)")
             exit(1)
           }
-          print("✅ CoreHID loaded successfully via dlopen")
-          dlclose(handle)
-          EOF
-          swift /tmp/check_corehid.swift
 
-      - name: Check IOHIDManager access (indicator of HID permission)
-        run: |
-          cat > /tmp/check_iohid.swift << 'EOF'
-          import IOKit.hid
-
-          let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
-          IOHIDManagerSetDeviceMatchingMultiple(manager, nil)
-          let result = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
-
-          if result == kIOReturnSuccess {
-            print("✅ IOHIDManager opened successfully (HID access is available)")
-            IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
-          } else {
-            print("⚠️  IOHIDManager open returned: \(result) (may need entitlements or SIP changes)")
-            // Don't fail — partial access is still informative
-          }
-          EOF
-          swift /tmp/check_iohid.swift
+          print("✅ HIDVirtualDevice created successfully: \(device)")
+          SWIFT
+          swiftc /tmp/check_hidvirtualdevice.swift -o /tmp/check_hidvirtualdevice
+          /tmp/check_hidvirtualdevice
 
       - name: macOS & Xcode version info
         run: |
