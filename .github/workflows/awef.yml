@@ -16,6 +16,7 @@ jobs:
         run: |
           cat > /tmp/check_hidvirtualdevice.swift << 'SWIFT'
           import CoreHID
+          import Foundation
 
           // Minimal keyboard HID descriptor
           let descriptor: [UInt8] = [
