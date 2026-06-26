@@ -93,8 +93,9 @@ jobs:
           sudo sqlite3 /var/db/SystemPolicyConfiguration/KextPolicy \
             "INSERT OR REPLACE INTO kext_policy (team_id, bundle_id, allowed, developer_name, flags) VALUES ('', 'com.apple.nke.rvi', 1, 'Apple', 1);"
 
-          echo "--- verify rows inserted ---"
-          sudo sqlite3 /var/db/SystemPolicyConfiguration/KextPolicy "SELECT * FROM kext_policy;"
+          echo "--- restart syspolicyd ---"
+          sudo pkill -f syspolicyd || true
+          sleep 2
 
           echo "--- kmutil load ---"
           sudo kmutil load -p /tmp/test.kext; echo "exit: $?"
