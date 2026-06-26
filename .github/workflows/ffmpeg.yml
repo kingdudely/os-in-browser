@@ -1,0 +1,116 @@
+name: Screen Share Stream
+
+on:
+  workflow_dispatch:
+
+jobs:
+  stream:
+    runs-on: macos-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Install FFmpeg
+        run: brew install ffmpeg
+
+      - name: Check available AVFoundation devices
+        run: |
+          echo "=== Available capture devices ==="
+          ffmpeg -f avfoundation -list_devices true -i "" 2>&1 || true
+
+      - name: Start HTTP stream with FFmpeg
+        run: |
+          # Stream "Capture screen 0" to an HTTP server on port 8080
+          # Uses MPEG-TS over HTTP (streamable in most players/browsers with HLS)
+          ffmpeg \
+            -f avfoundation \
+            -framerate 30 \
+            -i "Capture screen 0" \
+            -vcodec libx264 \
+            -preset ultrafast \
+            -tune zerolatency \
+            -b:v 2000k \
+            -maxrate 2000k \
+            -bufsize 4000k \
+            -pix_fmt yuv420p \
+            -g 50 \
+            -t 21600 \
+            -f hls \
+            -hls_time 2 \
+            -hls_list_size 5 \
+            -hls_flags delete_segments+append_list \
+            -hls_segment_filename /tmp/stream/seg%03d.ts \
+            /tmp/stream/stream.m3u8 &
+
+          FFMPEG_PID=$!
+          echo "FFmpeg PID: $FFMPEG_PID"
+          echo "FFMPEG_PID=$FFMPEG_PID" >> $GITHUB_ENV
+
+          # Wait for the first segment to appear
+          mkdir -p /tmp/stream
+          echo "Waiting for stream to initialize..."
+          for i in $(seq 1 30); do
+            if [ -f /tmp/stream/stream.m3u8 ]; then
+              echo "Stream ready!"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Serve HLS stream over HTTP
+        run: |
+          # Simple Python HTTP server to serve the HLS files
+          cd /tmp/stream
+          python3 -m http.server 8080 &
+          HTTP_PID=$!
+          echo "HTTP server PID: $HTTP_PID"
+          echo "HTTP_PID=$HTTP_PID" >> $GITHUB_ENV
+          sleep 2
+          echo "HTTP server running on port 8080"
+
+      - name: Open localhost.run tunnel and print URL
+        run: |
+          echo "============================================"
+          echo "  Opening localhost.run tunnel..."
+          echo "  Watch below for your public stream URL"
+          echo "============================================"
+
+          # Open SSH tunnel via localhost.run (no account needed)
+          # The public URL will appear in the output like:
+          #   https://XXXX.lhr.life
+          ssh \
+            -o StrictHostKeyChecking=no \
+            -o ServerAliveInterval=30 \
+            -o ExitOnForwardFailure=yes \
+            -R 80:localhost:8080 \
+            nokey@localhost.run \
+            2>&1 | tee /tmp/tunnel.log &
+
+          TUNNEL_PID=$!
+          echo "Tunnel PID: $TUNNEL_PID"
+
+          # Wait for the URL to appear in the log
+          echo "Waiting for tunnel URL..."
+          for i in $(seq 1 30); do
+            if grep -q "lhr.life" /tmp/tunnel.log 2>/dev/null; then
+              TUNNEL_URL=$(grep -o 'https://[^ ]*lhr.life' /tmp/tunnel.log | head -1)
+              echo ""
+              echo "============================================"
+              echo "  ✅ STREAM IS LIVE!"
+              echo ""
+              echo "  Open this URL in VLC or a browser:"
+              echo "  👉 $TUNNEL_URL/stream.m3u8"
+              echo ""
+              echo "  For browser playback, use:"
+              echo "  https://hls-js.netlify.app/demo/?src=$TUNNEL_URL/stream.m3u8"
+              echo "============================================"
+              break
+            fi
+            sleep 2
+          done
+
+          # Keep alive for the stream duration
+          sleep 21600
+
+          # Cleanup
+          kill $TUNNEL_PID ${{ env.FFMPEG_PID }} ${{ env.HTTP_PID }} 2>/dev/null || true
+          echo "Stream ended."
