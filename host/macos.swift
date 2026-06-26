@@ -1,7 +1,7 @@
 import IOKit.hid
 import Foundation
 
-public class VirtualHIDDevice {
+class VirtualHIDDevice {
 	private var device: IOHIDUserDeviceRef?
 
 	init(

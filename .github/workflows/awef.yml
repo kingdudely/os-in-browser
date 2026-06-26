@@ -1,0 +1,67 @@
+name: Check CoreHID Availability
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  check-corehid:
+    runs-on: macos-latest
+
+    steps:
+      - name: Check SIP status
+        run: csrutil status
+
+      - name: Check if CoreHID framework exists
+        run: |
+          FRAMEWORK_PATH="/System/Library/PrivateFrameworks/CoreHID.framework"
+          if [ -d "$FRAMEWORK_PATH" ]; then
+            echo "✅ CoreHID framework found at $FRAMEWORK_PATH"
+          else
+            echo "❌ CoreHID framework NOT found at $FRAMEWORK_PATH"
+            exit 1
+          fi
+
+      - name: List CoreHID framework contents
+        run: |
+          ls -la /System/Library/PrivateFrameworks/CoreHID.framework/ || true
+
+      - name: Try loading CoreHID via dlopen (Swift)
+        run: |
+          cat > /tmp/check_corehid.swift << 'EOF'
+          import Foundation
+
+          let path = "/System/Library/PrivateFrameworks/CoreHID.framework/CoreHID"
+          guard let handle = dlopen(path, RTLD_NOW) else {
+            let err = String(cString: dlerror())
+            print("❌ dlopen failed: \(err)")
+            exit(1)
+          }
+          print("✅ CoreHID loaded successfully via dlopen")
+          dlclose(handle)
+          EOF
+          swift /tmp/check_corehid.swift
+
+      - name: Check IOHIDManager access (indicator of HID permission)
+        run: |
+          cat > /tmp/check_iohid.swift << 'EOF'
+          import IOKit.hid
+
+          let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
+          IOHIDManagerSetDeviceMatchingMultiple(manager, nil)
+          let result = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
+
+          if result == kIOReturnSuccess {
+            print("✅ IOHIDManager opened successfully (HID access is available)")
+            IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
+          } else {
+            print("⚠️  IOHIDManager open returned: \(result) (may need entitlements or SIP changes)")
+            // Don't fail — partial access is still informative
+          }
+          EOF
+          swift /tmp/check_iohid.swift
+
+      - name: macOS & Xcode version info
+        run: |
+          sw_vers
+          xcodebuild -version

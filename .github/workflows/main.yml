@@ -3,10 +3,6 @@ name: Remote Desktop
 on: 
   workflow_dispatch:
     inputs:
-      viewer_share_id:
-        description: "Viewer share ID"
-        type: string
-        required: true
       os:
         description: 'Operating system'
         type: choice
