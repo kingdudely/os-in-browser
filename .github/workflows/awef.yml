@@ -75,6 +75,18 @@ jobs:
           echo "--- symbols check ---"
           nm /tmp/test.kext/Contents/MacOS/TestKext | grep -E "kmod_info|start|stop"
 
+          echo "--- kext policy schema ---"
+          sudo sqlite3 /var/db/SystemPolicyConfiguration/KextPolicy ".schema"
+
+          echo "--- current kext policy rows ---"
+          sudo sqlite3 /var/db/SystemPolicyConfiguration/KextPolicy "SELECT * FROM kext_policy;"
+
+          echo "--- mdm policy rows ---"
+          sudo sqlite3 /var/db/SystemPolicyConfiguration/KextPolicy "SELECT * FROM kext_policy_mdm;"
+
+          echo "--- all tables ---"
+          sudo sqlite3 /var/db/SystemPolicyConfiguration/KextPolicy ".tables"
+
           echo "--- approving kext in policy db ---"
           sudo sqlite3 /var/db/SystemPolicyConfiguration/KextPolicy \
             "INSERT OR REPLACE INTO kext_policy VALUES ('com.test.virtualhid', 'com.test.virtualhid', 1, 'TestKext', 1);"
