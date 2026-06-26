@@ -32,23 +32,19 @@ jobs:
         run: |
           mkdir -p /tmp/test.kext/Contents/MacOS
 
-          # Minimal kext: just a stub that does nothing
           cat > /tmp/testkext.c <<'EOF'
           #include <mach/mach_types.h>
 
-          extern kern_return_t _start(kmod_info_t *ki, void *d);
-          extern kern_return_t _stop(kmod_info_t *ki, void *d);
+          kern_return_t TestKext_start(kmod_info_t *ki, void *d) { return KERN_SUCCESS; }
+          kern_return_t TestKext_stop(kmod_info_t *ki, void *d)  { return KERN_SUCCESS; }
 
           __attribute__((visibility("default"))) kmod_info_t kmod_info = {
               0, 1, 0,
               "com.test.virtualhid",
               "1.0",
               0, 0, 0, 0, 0,
-              _start, _stop
+              TestKext_start, TestKext_stop
           };
-
-          kern_return_t TestKext_start(kmod_info_t *ki, void *d) { return KERN_SUCCESS; }
-          kern_return_t TestKext_stop(kmod_info_t *ki, void *d)  { return KERN_SUCCESS; }
           EOF
 
           clang -arch arm64e \
@@ -72,6 +68,12 @@ jobs:
 
           sudo chown -R root:wheel /tmp/test.kext
           sudo chmod -R 755 /tmp/test.kext
+
+          echo "--- arch check ---"
+          lipo -info /tmp/test.kext/Contents/MacOS/TestKext
+
+          echo "--- symbols check ---"
+          nm /tmp/test.kext/Contents/MacOS/TestKext | grep -E "kmod_info|start|stop"
 
           echo "--- kmutil load ---"
           sudo kmutil load -p /tmp/test.kext; echo "exit: $?"
