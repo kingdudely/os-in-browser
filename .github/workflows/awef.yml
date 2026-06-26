@@ -9,6 +9,8 @@ jobs:
     runs-on: macos-latest
 
     steps:
+      - uses: actions/checkout@main
+
       - name: Check SIP status
         run: csrutil status
 
