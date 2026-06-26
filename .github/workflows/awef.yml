@@ -14,54 +14,7 @@ jobs:
 
       - name: Try creating a HIDVirtualDevice
         run: |
-          cat > /tmp/check_hidvirtualdevice.swift << 'SWIFT'
-          import CoreHID
-          import Foundation
-
-          // Minimal keyboard HID descriptor
-          let descriptor: [UInt8] = [
-            0x05, 0x01,  // Usage Page (Generic Desktop)
-            0x09, 0x06,  // Usage (Keyboard)
-            0xA1, 0x01,  // Collection (Application)
-            0x05, 0x07,  //   Usage Page (Key Codes)
-            0x19, 0x00,  //   Usage Minimum (0)
-            0x29, 0xFF,  //   Usage Maximum (255)
-            0x15, 0x00,  //   Logical Minimum (0)
-            0x25, 0xFF,  //   Logical Maximum (255)
-            0x75, 0x08,  //   Report Size (8)
-            0x95, 0x01,  //   Report Count (1)
-            0x81, 0x00,  //   Input (Data, Array)
-            0xC0         // End Collection
-          ]
-
-          let properties = HIDVirtualDevice.Properties(
-            descriptor: Data(descriptor),
-            vendorID: 0x05AC,
-            productID: 0x0001
-          )
-
-          guard let device = HIDVirtualDevice(properties: properties) else {
-            print("❌ HIDVirtualDevice init returned nil — likely blocked (SIP, entitlement, or permissions)")
-            exit(1)
-          }
-
-          print("✅ HIDVirtualDevice created successfully: \(device)")
-          SWIFT
-          swiftc /tmp/check_hidvirtualdevice.swift -o /tmp/check_hidvirtualdevice
-
-          # Sign with the entitlement
-          cat > /tmp/entitlements.plist << 'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>com.apple.developer.hid.virtual.device</key>
-            <true/>
-          </dict>
-          </plist>
-          PLIST
-
-          codesign -s - --entitlements /tmp/entitlements.plist /tmp/check_hidvirtualdevice
+          swiftc $GITHUB_WORKSPACE/host/macos.swift -o /tmp/check_hidvirtualdevice
           /tmp/check_hidvirtualdevice
 
       - name: macOS & Xcode version info
