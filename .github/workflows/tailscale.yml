@@ -1,0 +1,110 @@
+name: Remote Desktop via Tailscale
+
+# Trigger manually — choose your OS in the dropdown
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        description: "Runner OS"
+        required: true
+        default: "ubuntu-latest"
+        type: choice
+        options:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+
+jobs:
+  remote-desktop:
+    runs-on: ${{ github.event.inputs.os }}
+    # Keep the runner alive — adjust to your needs (max 6h on free plan)
+    timeout-minutes: 360
+
+    steps:
+      # ── 1. Connect to Tailscale ─────────────────────────────────────────────
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+
+      # ── 2. Print the Tailscale IP so you know what to connect to ───────────
+      - name: Print Tailscale IP
+        shell: bash
+        run: |
+          echo "============================================"
+          echo "  Tailscale IP: $(tailscale ip -4)"
+          echo "  Hostname:     $(tailscale status --self | head -1)"
+          echo "============================================"
+
+      # ── 3a. Ubuntu — set up x11vnc + a virtual display ────────────────────
+      - name: "[Ubuntu] Set up VNC"
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y x11vnc xvfb openbox
+
+          # Start a virtual display
+          Xvfb :99 -screen 0 1920x1080x24 &
+          export DISPLAY=:99
+
+          # Start a minimal window manager so the desktop isn't empty
+          DISPLAY=:99 openbox &
+
+          # Start x11vnc — no password, only reachable via Tailscale
+          x11vnc -display :99 -forever -nopw -rfbport 5900 &
+
+          echo "Connect with any VNC client:"
+          echo "  vnc://$(tailscale ip -4):5900"
+
+      # ── 3b. macOS — enable the built-in Screen Sharing (VNC) ──────────────
+      - name: "[macOS] Enable Screen Sharing"
+        if: runner.os == 'macOS'
+        run: |
+          # Enable Screen Sharing via launchctl
+          sudo /bin/launchctl load -w \
+            /System/Library/LaunchDaemons/com.apple.screensharing.plist
+
+          # Set a VNC password so macOS accepts the connection
+          # (stored only for the lifetime of this runner)
+          /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -configure -clientopts -setvnclegacy -vnclegacy yes
+          /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -configure -clientopts -setvncpw -vncpw runner123
+
+          echo "Connect with any VNC client (e.g. macOS Finder → Go → Connect to Server):"
+          echo "  vnc://$(tailscale ip -4):5900"
+          echo "  Password: runner123"
+
+      # ── 3c. Windows — enable RDP ───────────────────────────────────────────
+      - name: "[Windows] Enable RDP"
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          # Enable Remote Desktop
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+            -Name "fDenyTSConnections" -Value 0
+
+          # Allow RDP through the Windows firewall
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+          # Set a password for the runneradmin user
+          $password = ConvertTo-SecureString "Runner123!" -AsPlainText -Force
+          Set-LocalUser -Name "runneradmin" -Password $password
+
+          $ip = (tailscale ip -4)
+          Write-Host "========================================"
+          Write-Host "  Connect via RDP:"
+          Write-Host "  Host:     $ip"
+          Write-Host "  User:     runneradmin"
+          Write-Host "  Password: Runner123!"
+          Write-Host "========================================"
+
+      # ── 4. Keep the runner alive ───────────────────────────────────────────
+      # The job sleeps until the timeout. Kill the job manually when done.
+      - name: Keep alive (kill this job when you're done)
+        shell: bash
+        run: |
+          echo "Runner is ready. Connect using the address printed above."
+          echo "Kill this workflow run when you're finished to free the runner."
+          # Sleep in chunks so the log stays fresh and GitHub doesn't kill it
+          sleep 21600
