@@ -14,21 +14,10 @@ jobs:
       - name: Check SIP status
         run: csrutil status
 
-      - name: Build, sign, and run
+      - name: Try creating a HIDVirtualDevice
         run: |
-          clang++ -std=c++17 -framework IOKit -framework CoreFoundation \
-            $GITHUB_WORKSPACE/host/macos.cpp -o virtual_mouse
-
-          cat > ent.plist <<'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0"><dict>
-            <key>com.apple.developer.hid.virtual.device</key><true/>
-          </dict></plist>
-          EOF
-
-          codesign -s - --entitlements ent.plist --force ./virtual_mouse
-          ./virtual_mouse
+          clang++ -std=c++17 -framework IOKit -framework CoreFoundation -framework Cocoa $GITHUB_WORKSPACE/host/macos.cpp -o virtual_mouse
+          sudo ./virtual_mouse
 
       - name: macOS & Xcode version info
         run: |
