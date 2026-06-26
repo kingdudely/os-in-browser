@@ -16,8 +16,8 @@ jobs:
 
       - name: Try creating a HIDVirtualDevice
         run: |
-          swiftc $GITHUB_WORKSPACE/host/macos.swift -o /tmp/check_hidvirtualdevice
-          /tmp/check_hidvirtualdevice
+          clang++ -std=c++17 -framework IOKit -framework CoreFoundation -framework Cocoa main.cpp -o virtual_mouse
+          ./virtual_mouse
 
       - name: macOS & Xcode version info
         run: |
