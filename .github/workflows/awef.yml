@@ -97,8 +97,22 @@ jobs:
           sudo pkill -f syspolicyd || true
           sleep 2
 
+          echo "--- syspolicyd pid ---"
+          pgrep -l syspolicyd
+
+          echo "--- spctl assess ---"
+          sudo spctl --assess --type kext /tmp/test.kext 2>&1 || true
+
+          echo "--- try spctl enable ---"
+          sudo spctl --master-disable
+          sudo spctl --enable --label "Developer ID"
+
+          echo "--- amfi boot arg ---"
+          sudo nvram boot-args="amfi_get_out_of_my_way=1"
+          nvram boot-args
+
           echo "--- kmutil load ---"
           sudo kmutil load -p /tmp/test.kext; echo "exit: $?"
 
-          echo "--- dmesg tail ---"
-          sudo dmesg | tail -20
+          echo "--- dmesg for AMFI ---"
+          sudo dmesg | grep -i amfi | tail -20
