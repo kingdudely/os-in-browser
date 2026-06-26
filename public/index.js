@@ -13,8 +13,6 @@ import nutKeys from "./nutKeys.json" with { type: "json" };
 import nutButtons from "./nutButtons.json" with { type: "json" };
 
 function triggerImmersiveMode() {
-	screenshare.play().catch(() => {});
-
 	if (document.fullscreenEnabled && !document.fullscreenElement) {
 		document.body.requestFullscreen({ // target, await
 			"navigationUI": "hide"
@@ -36,6 +34,7 @@ const sharedView = new DataView(sharedBytes.buffer);
 const peer = await ConnectToServerPeer();
 peer.addEventListener("track", (event) => {
 	screenshare.srcObject = event.streams[0];
+	screenshare.play().catch(console.warn);
 });
 
 const pointerMovementChannel = peer.createDataChannel("pointer-movement", {
