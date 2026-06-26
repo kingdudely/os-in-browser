@@ -5,7 +5,7 @@
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/hid/IOHIDManager.h>
-#include <IOKit/hid/IOHIDUserDevice.h>
+// #include <IOKit/hid/IOHIDUserDevice.h>
 
 typedef struct __IOHIDUserDevice *IOHIDUserDeviceRef;
 extern "C" {
