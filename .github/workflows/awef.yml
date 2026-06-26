@@ -9,17 +9,11 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - uses: actions/checkout@main
-
-      - name: Check SIP status
-        run: csrutil status
-
-      - name: Try creating a HIDVirtualDevice
+      - name: Check AMFI / SIP status
         run: |
-          swiftc $GITHUB_WORKSPACE/host/macos.swift -o /tmp/check_hidvirtualdevice
-          /tmp/check_hidvirtualdevice
-
-      - name: macOS & Xcode version info
-        run: |
-          sw_vers
-          xcodebuild -version
+          echo "=== SIP ==="
+          csrutil status
+          echo "=== NVRAM boot-args ==="
+          nvram boot-args 2>/dev/null || echo "(no boot-args set)"
+          echo "=== AMFI in boot-args ==="
+          nvram -p | grep -o 'amfi_get_out_of_my_way=[^ ]*' || echo "AMFI NOT disabled"
