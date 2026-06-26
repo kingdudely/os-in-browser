@@ -20,18 +20,17 @@ jobs:
 
       - name: Generate certificate and fingerprint
         run: |
-          mkdir -p docs
           openssl req -x509 -newkey rsa:2048 -keyout workflow_key.pem -out workflow_cert.pem \
             -nodes -subj "/CN=WebRTC-Workflow" -days 36500
 
           FINGERPRINT=$(openssl x509 -in workflow_cert.pem -noout -fingerprint -sha256 | sed 's/.*=//')
-          jq --arg fp "$FINGERPRINT" '.workflowFingerprint = $fp' docs/constants.json > docs/tmp.json && mv docs/tmp.json docs/constants.json
+          jq --arg fp "$FINGERPRINT" '.workflowFingerprint = $fp' public/constants.json > public/tmp.json && mv public/tmp.json public/constants.json
 
       - name: Commit Files to Repo
         uses: stefanzweifel/git-auto-commit-action@master
         with:
           commit_message: "Update WebRTC DTLS Fingerprint and Certificates"
-          file_pattern: "workflow_cert.pem workflow_key.pem docs/constants.json"
+          file_pattern: "workflow_cert.pem workflow_key.pem public/constants.json"
 
       - name: Setup GitHub Pages
         uses: actions/configure-pages@main
@@ -39,7 +38,7 @@ jobs:
       - name: Upload GitHub Pages Artifact
         uses: actions/upload-pages-artifact@main
         with:
-          path: docs
+          path: public
 
       - name: Deploy to GitHub Pages
         id: deployment

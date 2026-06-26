@@ -41,7 +41,7 @@ func mustReadJSON[T any](path string) T {
 }
 
 func main() {
-	constants := mustReadJSON[Constants]("docs/constants.json")
+	constants := mustReadJSON[Constants]("public/constants.json")
 	keyMap := mustReadJSON[[]interface{}]("code-map.json")
 	buttonMap := mustReadJSON[[]string]("button-map.json")
 	usernameFragment := constants.UsernameFragment
