@@ -48,6 +48,20 @@ jobs:
           print("✅ HIDVirtualDevice created successfully: \(device)")
           SWIFT
           swiftc /tmp/check_hidvirtualdevice.swift -o /tmp/check_hidvirtualdevice
+
+          # Sign with the entitlement
+          cat > /tmp/entitlements.plist << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>com.apple.developer.hid.virtual.device</key>
+            <true/>
+          </dict>
+          </plist>
+          PLIST
+
+          codesign -s - --entitlements /tmp/entitlements.plist /tmp/check_hidvirtualdevice
           /tmp/check_hidvirtualdevice
 
       - name: macOS & Xcode version info
