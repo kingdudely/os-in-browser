@@ -29,26 +29,6 @@ jobs:
           import CoreHID
           import Foundation
 
-          // Minimal HID report descriptor: a mouse with X/Y axes and 3 buttons.
-          // Usage Page: Generic Desktop (0x01)
-          // Usage: Mouse (0x02)
-          // Collection: Application
-          //   Usage: Pointer (0x01)
-          //   Collection: Physical
-          //     Usage Page: Buttons (0x09)
-          //     Usage Min: 1, Usage Max: 3
-          //     Logical Min: 0, Logical Max: 1
-          //     Report Count: 3, Report Size: 1
-          //     Input: Data, Variable, Absolute
-          //     Report Count: 1, Report Size: 5 (padding)
-          //     Input: Constant
-          //     Usage Page: Generic Desktop (0x01)
-          //     Usage: X (0x30), Usage: Y (0x31)
-          //     Logical Min: -127, Logical Max: 127
-          //     Report Size: 8, Report Count: 2
-          //     Input: Data, Variable, Relative
-          //   End Collection
-          // End Collection
           let reportDescriptor: [UInt8] = [
               0x05, 0x01,  // Usage Page (Generic Desktop)
               0x09, 0x02,  // Usage (Mouse)
@@ -78,43 +58,66 @@ jobs:
               0xC0,        // End Collection
           ]
 
-          print("[1/4] Constructing HIDVirtualDevice.Properties...")
+          // Delegate to handle system requests to the virtual device
+          class MyDelegate: HIDVirtualDeviceDelegate {
+              func hidVirtualDevice(_ device: HIDVirtualDevice,
+                                    receivedGetReport type: HIDReportType,
+                                    id: UInt8) {
+                  print("  [delegate] receivedGetReport type=\(type) id=\(id)")
+              }
 
-          var properties = HIDVirtualDevice.Properties(
-              reportDescriptor: Data(reportDescriptor)
-          )
-          properties.vendorID  = 0x05AC  // Apple vendor ID (cosmetic)
-          properties.productID = 0x0001
-          properties.usagePage = 0x0001  // Generic Desktop
-          properties.usage     = 0x0002  // Mouse
-
-          print("[2/4] Properties constructed OK.")
-          print("       vendorID:  \(String(format: "0x%04X", properties.vendorID ?? 0))")
-          print("       productID: \(String(format: "0x%04X", properties.productID ?? 0))")
-
-          print("[3/4] Instantiating HIDVirtualDevice (this is the gating call)...")
-
-          do {
-              let device = try HIDVirtualDevice(properties: properties)
-              print("[4/4] SUCCESS — HIDVirtualDevice created: \(device)")
-              print("")
-              print("✅ CoreHID HIDVirtualDevice works on this runner.")
-
-              // Send one mouse-move report: move +10 X, +5 Y, no buttons pressed.
-              // Report layout (3 bytes): [buttons(1)] [X(1)] [Y(1)]
-              let report = Data([0x00, 0x0A, 0x05])
-              try device.sendReport(report, type: .input)
-              print("✅ sendReport succeeded — HID input pipeline is live.")
-          } catch {
-              print("")
-              print("❌ HIDVirtualDevice FAILED: \(error)")
-              print("")
-              print("Likely causes:")
-              print("  • Missing entitlement com.apple.developer.hid.virtual.device")
-              print("  • TCC Accessibility not granted")
-              print("  • macOS version too old for CoreHID (need 13+)")
-              exit(1)
+              func hidVirtualDevice(_ device: HIDVirtualDevice,
+                                    receivedSetReport data: Data,
+                                    type: HIDReportType,
+                                    id: UInt8) {
+                  print("  [delegate] receivedSetReport \(data.count) bytes type=\(type) id=\(id)")
+              }
           }
+
+          // Must run inside an async context because dispatchInputReport is async
+          // and HIDVirtualDevice is an actor
+          Task {
+              print("[1/5] Constructing HIDVirtualDevice.Properties...")
+
+              // init? returns Optional — no try, no throw
+              guard let device = HIDVirtualDevice(properties: HIDVirtualDevice.Properties(
+                  descriptor: Data(reportDescriptor),
+                  vendorID: 0x05AC,
+                  productID: 0x0001,
+                  product: "Test Virtual Mouse",
+                  manufacturer: "GitHub Actions"
+              )) else {
+                  print("❌ HIDVirtualDevice init returned nil")
+                  print("   Likely causes:")
+                  print("   • Missing entitlement com.apple.developer.hid.virtual.device")
+                  print("   • TCC Accessibility not granted")
+                  exit(1)
+              }
+
+              print("[2/5] Device created OK: \(device)")
+
+              print("[3/5] Activating with delegate...")
+              let delegate = MyDelegate()
+              await device.activate(delegate: delegate)
+              print("[4/5] Activated OK.")
+
+              print("[5/5] Dispatching input report...")
+              do {
+                  // Report layout (3 bytes): [buttons] [X] [Y]
+                  // Move +10 X, +5 Y, no buttons
+                  let report = Data([0x00, 0x0A, 0x05])
+                  let now = SuspendingClock().now
+                  try await device.dispatchInputReport(data: report, timestamp: now)
+                  print("")
+                  print("✅ dispatchInputReport succeeded — HID input pipeline is live.")
+              } catch {
+                  print("❌ dispatchInputReport failed: \(error)")
+                  exit(1)
+              }
+          }
+
+          // Keep the process alive for the async Task to complete
+          RunLoop.main.run(until: Date(timeIntervalSinceNow: 5))
           SWIFT_EOF
           echo "Swift source written to /tmp/test_corehid.swift"
 
