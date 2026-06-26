@@ -35,14 +35,25 @@ jobs:
           # Minimal kext: just a stub that does nothing
           cat > /tmp/testkext.c <<'EOF'
           #include <mach/mach_types.h>
+
+          extern kern_return_t _start(kmod_info_t *ki, void *d);
+          extern kern_return_t _stop(kmod_info_t *ki, void *d);
+
+          __attribute__((visibility("default"))) kmod_info_t kmod_info = {
+              0, 1, 0,
+              "com.test.virtualhid",
+              "1.0",
+              0, 0, 0, 0, 0,
+              _start, _stop
+          };
+
           kern_return_t TestKext_start(kmod_info_t *ki, void *d) { return KERN_SUCCESS; }
           kern_return_t TestKext_stop(kmod_info_t *ki, void *d)  { return KERN_SUCCESS; }
           EOF
 
-          clang -arch x86_64 -arch arm64e \
+          clang -arch arm64e \
             -mkernel -nostdlib -Xlinker -kext \
-            /tmp/testkext.c -o /tmp/test.kext/Contents/MacOS/test.kext
-
+            /tmp/testkext.c -o /tmp/test.kext/Contents/MacOS/TestKext
           cat > /tmp/test.kext/Contents/Info.plist <<'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
