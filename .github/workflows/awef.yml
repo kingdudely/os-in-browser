@@ -39,7 +39,7 @@ jobs:
           kern_return_t TestKext_stop(kmod_info_t *ki, void *d)  { return KERN_SUCCESS; }
           EOF
 
-          clang -arch x86_64 -arch arm64 \
+          clang -arch x86_64 -arch arm64e \
             -mkernel -nostdlib -Xlinker -kext \
             /tmp/testkext.c -o /tmp/test.kext/Contents/MacOS/test.kext
 
