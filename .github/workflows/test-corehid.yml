@@ -1,0 +1,191 @@
+name: Test CoreHID HIDVirtualDevice
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-corehid.yml'
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - name: System info
+        run: |
+          echo "=== macOS version ==="
+          sw_vers
+          echo "=== SIP status ==="
+          csrutil status
+          echo "=== NVRAM boot-args ==="
+          nvram boot-args 2>/dev/null || echo "(no boot-args set)"
+          echo "=== AMFI in boot-args ==="
+          nvram -p | grep -o 'amfi_get_out_of_my_way=[^ ]*' || echo "amfi_get_out_of_my_way not set"
+          echo "=== Swift version ==="
+          swift --version
+
+      - name: Write Swift test program
+        run: |
+          cat > /tmp/test_corehid.swift << 'SWIFT_EOF'
+          import CoreHID
+          import Foundation
+
+          // Minimal HID report descriptor: a mouse with X/Y axes and 3 buttons.
+          // Usage Page: Generic Desktop (0x01)
+          // Usage: Mouse (0x02)
+          // Collection: Application
+          //   Usage: Pointer (0x01)
+          //   Collection: Physical
+          //     Usage Page: Buttons (0x09)
+          //     Usage Min: 1, Usage Max: 3
+          //     Logical Min: 0, Logical Max: 1
+          //     Report Count: 3, Report Size: 1
+          //     Input: Data, Variable, Absolute
+          //     Report Count: 1, Report Size: 5 (padding)
+          //     Input: Constant
+          //     Usage Page: Generic Desktop (0x01)
+          //     Usage: X (0x30), Usage: Y (0x31)
+          //     Logical Min: -127, Logical Max: 127
+          //     Report Size: 8, Report Count: 2
+          //     Input: Data, Variable, Relative
+          //   End Collection
+          // End Collection
+          let reportDescriptor: [UInt8] = [
+              0x05, 0x01,  // Usage Page (Generic Desktop)
+              0x09, 0x02,  // Usage (Mouse)
+              0xA1, 0x01,  // Collection (Application)
+              0x09, 0x01,  //   Usage (Pointer)
+              0xA1, 0x00,  //   Collection (Physical)
+              0x05, 0x09,  //     Usage Page (Buttons)
+              0x19, 0x01,  //     Usage Minimum (1)
+              0x29, 0x03,  //     Usage Maximum (3)
+              0x15, 0x00,  //     Logical Minimum (0)
+              0x25, 0x01,  //     Logical Maximum (1)
+              0x95, 0x03,  //     Report Count (3)
+              0x75, 0x01,  //     Report Size (1)
+              0x81, 0x02,  //     Input (Data, Variable, Absolute)
+              0x95, 0x01,  //     Report Count (1)
+              0x75, 0x05,  //     Report Size (5) - padding
+              0x81, 0x03,  //     Input (Constant)
+              0x05, 0x01,  //     Usage Page (Generic Desktop)
+              0x09, 0x30,  //     Usage (X)
+              0x09, 0x31,  //     Usage (Y)
+              0x15, 0x81,  //     Logical Minimum (-127)
+              0x25, 0x7F,  //     Logical Maximum (127)
+              0x75, 0x08,  //     Report Size (8)
+              0x95, 0x02,  //     Report Count (2)
+              0x81, 0x06,  //     Input (Data, Variable, Relative)
+              0xC0,        //   End Collection
+              0xC0,        // End Collection
+          ]
+
+          print("[1/4] Constructing HIDVirtualDevice.Properties...")
+
+          var properties = HIDVirtualDevice.Properties(
+              reportDescriptor: Data(reportDescriptor)
+          )
+          properties.vendorID  = 0x05AC  // Apple vendor ID (cosmetic)
+          properties.productID = 0x0001
+          properties.usagePage = 0x0001  // Generic Desktop
+          properties.usage     = 0x0002  // Mouse
+
+          print("[2/4] Properties constructed OK.")
+          print("       vendorID:  \(String(format: "0x%04X", properties.vendorID ?? 0))")
+          print("       productID: \(String(format: "0x%04X", properties.productID ?? 0))")
+
+          print("[3/4] Instantiating HIDVirtualDevice (this is the gating call)...")
+
+          do {
+              let device = try HIDVirtualDevice(properties: properties)
+              print("[4/4] SUCCESS — HIDVirtualDevice created: \(device)")
+              print("")
+              print("✅ CoreHID HIDVirtualDevice works on this runner.")
+
+              // Send one mouse-move report: move +10 X, +5 Y, no buttons pressed.
+              // Report layout (3 bytes): [buttons(1)] [X(1)] [Y(1)]
+              let report = Data([0x00, 0x0A, 0x05])
+              try device.sendReport(report, type: .input)
+              print("✅ sendReport succeeded — HID input pipeline is live.")
+          } catch {
+              print("")
+              print("❌ HIDVirtualDevice FAILED: \(error)")
+              print("")
+              print("Likely causes:")
+              print("  • Missing entitlement com.apple.developer.hid.virtual.device")
+              print("  • TCC Accessibility not granted")
+              print("  • macOS version too old for CoreHID (need 13+)")
+              exit(1)
+          }
+          SWIFT_EOF
+          echo "Swift source written to /tmp/test_corehid.swift"
+
+      - name: Write entitlements plist
+        run: |
+          cat > /tmp/entitlements.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>com.apple.developer.hid.virtual.device</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+          echo "Entitlements plist written."
+
+      - name: Compile
+        run: |
+          swiftc /tmp/test_corehid.swift \
+            -framework CoreHID \
+            -o /tmp/test_corehid
+          echo "Compiled OK."
+
+      - name: Ad-hoc sign with HID virtual device entitlement
+        run: |
+          codesign \
+            --sign - \
+            --force \
+            --entitlements /tmp/entitlements.plist \
+            /tmp/test_corehid
+          echo "=== Verifying signature ==="
+          codesign -dvvv /tmp/test_corehid 2>&1 || true
+          echo "=== Entitlements embedded ==="
+          codesign -d --entitlements :- /tmp/test_corehid 2>/dev/null || true
+
+      - name: Grant Accessibility via TCC database (needed for HIDVirtualDevice)
+        run: |
+          # Get the bundle ID / identifier that codesign embedded
+          BINARY_ID=$(codesign -d --identifier /tmp/test_corehid 2>&1 | grep -o '[^ ]*$' || echo "test_corehid")
+          echo "Binary identifier: $BINARY_ID"
+
+          TCC_DB="/Library/Application Support/com.apple.TCC/TCC.db"
+
+          # Column layout for modern macOS TCC.db:
+          # service, client, client_type, auth_value, auth_reason, auth_version,
+          # csreq, policy_id, indirect_object_identifier_type, indirect_object_identifier,
+          # indirect_object_code_identity, flags, last_modified
+          sudo sqlite3 "$TCC_DB" \
+            "INSERT OR REPLACE INTO access VALUES(
+               'kTCCServiceAccessibility',
+               '/tmp/test_corehid',
+               1,
+               2,
+               4,
+               1,
+               NULL,
+               NULL,
+               0,
+               'UNUSED',
+               NULL,
+               0,
+               $(date +%s)
+             );" && echo "TCC entry inserted OK." || echo "TCC insert failed (may not be needed)."
+
+          echo "=== Current TCC Accessibility entries ==="
+          sudo sqlite3 "$TCC_DB" \
+            "SELECT client, auth_value FROM access WHERE service='kTCCServiceAccessibility';" \
+            2>/dev/null || echo "(could not read TCC DB)"
+
+      - name: Run test
+        run: |
+          echo "=== Running HIDVirtualDevice test ==="
+          /tmp/test_corehid
