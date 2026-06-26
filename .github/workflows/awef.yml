@@ -1,118 +1,40 @@
-name: Check Startup Security Policy
+name: Check Karabiner Virtual HID
 
 on:
   push:
   workflow_dispatch:
 
 jobs:
-  check-security-policy:
+  check-virtual-hid:
     runs-on: macos-latest
 
     steps:
-      - name: Check SIP status
-        run: csrutil status
+      - uses: actions/checkout@main
 
-      - name: Check boot args
-        run: nvram boot-args 2>/dev/null || echo "no boot-args set"
-
-      - name: Check security policy via bputil
-        run: sudo bputil -d 2>/dev/null || echo "bputil not available"
-
-      - name: Check via spctl
-        run: spctl --status
-
-      - name: Check kext consent via systempolicy
+      - name: Install Karabiner-DriverKit-VirtualHIDDevice
         run: |
-          sudo sqlite3 /var/db/SystemPolicyConfiguration/KextPolicy \
-            "SELECT * FROM kext_policy_mdm;" 2>/dev/null || echo "no mdm kext policy"
-          sudo sqlite3 /var/db/SystemPolicyConfiguration/KextPolicy \
-            "SELECT * FROM kext_policy;" 2>/dev/null || echo "no user kext policy"
+          curl -L https://github.com/pqrs-org/Karabiner-DriverKit-VirtualHIDDevice/releases/download/v7.1.0/Karabiner-DriverKit-VirtualHIDDevice-7.1.0.pkg \
+            -o vhid.pkg
+          sudo installer -pkg vhid.pkg -target /
 
-      - name: Try loading a real unsigned kext
+      - name: Activate driver and start daemon
         run: |
-          mkdir -p /tmp/test.kext/Contents/MacOS
-
-          cat > /tmp/testkext.c <<'EOF'
-          #include <mach/mach_types.h>
-
-          kern_return_t TestKext_start(kmod_info_t *ki, void *d) { return KERN_SUCCESS; }
-          kern_return_t TestKext_stop(kmod_info_t *ki, void *d)  { return KERN_SUCCESS; }
-
-          __attribute__((visibility("default"))) kmod_info_t kmod_info = {
-              0, 1, 0,
-              "com.test.virtualhid",
-              "1.0",
-              0, 0, 0, 0, 0,
-              TestKext_start, TestKext_stop
-          };
-          EOF
-
-          clang -arch arm64e \
-            -mkernel -nostdlib -Xlinker -kext \
-            /tmp/testkext.c -o /tmp/test.kext/Contents/MacOS/TestKext
-
-          cat > /tmp/test.kext/Contents/Info.plist <<'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0"><dict>
-            <key>CFBundleIdentifier</key><string>com.test.virtualhid</string>
-            <key>CFBundleName</key><string>TestKext</string>
-            <key>CFBundleVersion</key><string>1.0</string>
-            <key>CFBundlePackageType</key><string>KEXT</string>
-            <key>CFBundleExecutable</key><string>TestKext</string>
-            <key>OSBundleLibraries</key><dict>
-              <key>com.apple.kpi.libkern</key><string>12.0</string>
-            </dict>
-          </dict></plist>
-          EOF
-
-          sudo chown -R root:wheel /tmp/test.kext
-          sudo chmod -R 755 /tmp/test.kext
-
-          echo "--- arch check ---"
-          lipo -info /tmp/test.kext/Contents/MacOS/TestKext
-
-          echo "--- symbols check ---"
-          nm /tmp/test.kext/Contents/MacOS/TestKext | grep -E "kmod_info|start|stop"
-
-          echo "--- kext policy schema ---"
-          sudo sqlite3 /var/db/SystemPolicyConfiguration/KextPolicy ".schema"
-
-          echo "--- current kext policy rows ---"
-          sudo sqlite3 /var/db/SystemPolicyConfiguration/KextPolicy "SELECT * FROM kext_policy;"
-
-          echo "--- mdm policy rows ---"
-          sudo sqlite3 /var/db/SystemPolicyConfiguration/KextPolicy "SELECT * FROM kext_policy_mdm;"
-
-          echo "--- all tables ---"
-          sudo sqlite3 /var/db/SystemPolicyConfiguration/KextPolicy ".tables"
-
-          echo "--- approving kext in policy db ---"
-          sudo sqlite3 /var/db/SystemPolicyConfiguration/KextPolicy \
-            "INSERT OR REPLACE INTO kext_policy (team_id, bundle_id, allowed, developer_name, flags) VALUES ('', 'com.test.virtualhid', 1, 'TestKext', 1);"
-          sudo sqlite3 /var/db/SystemPolicyConfiguration/KextPolicy \
-            "INSERT OR REPLACE INTO kext_policy (team_id, bundle_id, allowed, developer_name, flags) VALUES ('', 'com.apple.nke.rvi', 1, 'Apple', 1);"
-
-          echo "--- restart syspolicyd ---"
-          sudo pkill -f syspolicyd || true
+          /Applications/.Karabiner-VirtualHIDDevice-Manager.app/Contents/MacOS/Karabiner-VirtualHIDDevice-Manager activate
           sleep 2
+          systemextensionsctl list
+          sudo '/Library/Application Support/org.pqrs/Karabiner-DriverKit-VirtualHIDDevice/Applications/Karabiner-VirtualHIDDevice-Daemon.app/Contents/MacOS/Karabiner-VirtualHIDDevice-Daemon' &
+          sleep 2
+          ls '/Library/Application Support/org.pqrs/tmp/rootonly/vhidd_server/'
 
-          echo "--- syspolicyd pid ---"
-          pgrep -l syspolicyd
+      - name: Clone headers
+        run: |
+          git clone --depth 1 https://github.com/pqrs-org/Karabiner-DriverKit-VirtualHIDDevice.git karabiner-vhid
 
-          echo "--- spctl assess ---"
-          sudo spctl --assess --type kext /tmp/test.kext 2>&1 || true
-
-          echo "--- try spctl enable ---"
-          sudo spctl --master-disable
-          sudo spctl --enable --label "Developer ID"
-
-          echo "--- amfi boot arg ---"
-          sudo nvram boot-args="amfi_get_out_of_my_way=1"
-          nvram boot-args
-
-          echo "--- kmutil load ---"
-          sudo kmutil load -p /tmp/test.kext; echo "exit: $?"
-
-          echo "--- dmesg for AMFI ---"
-          sudo dmesg | grep -i amfi | tail -20
+      - name: Build and run test client
+        run: |
+          clang++ -std=c++17 \
+            -I karabiner-vhid/include \
+            -I karabiner-vhid/examples/virtual-hid-device-service-client/vendor/include \
+            -framework CoreFoundation \
+            host/macos.cpp -o virtual_hid_test
+          sudo ./virtual_hid_test
