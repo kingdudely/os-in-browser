@@ -16,7 +16,7 @@ jobs:
 
       - name: Try creating a HIDVirtualDevice
         run: |
-          clang++ -std=c++17 -framework IOKit -framework CoreFoundation -framework Cocoa main.cpp -o virtual_mouse
+          clang++ -std=c++17 -framework IOKit -framework CoreFoundation -framework Cocoa /host/macos.cpp -o virtual_mouse
           ./virtual_mouse
 
       - name: macOS & Xcode version info
