@@ -54,6 +54,7 @@ jobs:
           clang -arch arm64e \
             -mkernel -nostdlib -Xlinker -kext \
             /tmp/testkext.c -o /tmp/test.kext/Contents/MacOS/TestKext
+
           cat > /tmp/test.kext/Contents/Info.plist <<'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -62,7 +63,7 @@ jobs:
             <key>CFBundleName</key><string>TestKext</string>
             <key>CFBundleVersion</key><string>1.0</string>
             <key>CFBundlePackageType</key><string>KEXT</string>
-            <key>CFBundleExecutable</key><string>test.kext</string>
+            <key>CFBundleExecutable</key><string>TestKext</string>
             <key>OSBundleLibraries</key><dict>
               <key>com.apple.kpi.libkern</key><string>12.0</string>
             </dict>
