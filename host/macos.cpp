@@ -7,6 +7,13 @@
 #include <IOKit/hid/IOHIDManager.h>
 #include <IOKit/hid/IOHIDUserDevice.h>
 
+typedef struct __IOHIDUserDevice *IOHIDUserDeviceRef;
+extern "C" {
+    IOHIDUserDeviceRef IOHIDUserDeviceCreate(CFAllocatorRef, CFDictionaryRef);
+    IOReturn           IOHIDUserDeviceHandleReport(IOHIDUserDeviceRef, uint8_t *, CFIndex);
+    void               IOHIDUserDeviceScheduleWithRunLoop(IOHIDUserDeviceRef, CFRunLoopRef, CFStringRef);
+}
+
 class VirtualHIDDevice {
 public:
     VirtualHIDDevice(
