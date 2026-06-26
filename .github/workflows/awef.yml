@@ -1,25 +1,51 @@
-name: Check CoreHID HIDVirtualDevice
+name: Check Startup Security Policy
 
 on:
   push:
   workflow_dispatch:
 
 jobs:
-  check-corehid:
+  check-security-policy:
     runs-on: macos-latest
 
     steps:
-      - uses: actions/checkout@main
-
       - name: Check SIP status
         run: csrutil status
 
-      - name: Try creating a HIDVirtualDevice
-        run: |
-          clang++ -std=c++17 -framework IOKit -framework CoreFoundation -framework Cocoa $GITHUB_WORKSPACE/host/macos.cpp -o virtual_mouse
-          sudo ./virtual_mouse
+      - name: Check boot args
+        run: nvram boot-args 2>/dev/null || echo "no boot-args set"
 
-      - name: macOS & Xcode version info
+      - name: Check security policy via bputil
+        run: sudo bputil -d 2>/dev/null || echo "bputil not available"
+
+      - name: Check via spctl
+        run: spctl --status
+
+      - name: Check kext consent via systempolicy
         run: |
-          sw_vers
-          xcodebuild -version
+          sudo sqlite3 /var/db/SystemPolicyConfiguration/KextPolicy \
+            "SELECT * FROM kext_policy_mdm;" 2>/dev/null || echo "no mdm kext policy"
+          sudo sqlite3 /var/db/SystemPolicyConfiguration/KextPolicy \
+            "SELECT * FROM kext_policy;" 2>/dev/null || echo "no user kext policy"
+
+      - name: Try loading a trivial unsigned kext
+        run: |
+          # Create a minimal do-nothing kext to probe the policy
+          mkdir -p /tmp/test.kext/Contents
+          cat > /tmp/test.kext/Contents/Info.plist <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>CFBundleIdentifier</key><string>com.test.kext</string>
+            <key>CFBundleName</key><string>TestKext</string>
+            <key>CFBundleVersion</key><string>1.0</string>
+            <key>CFBundlePackageType</key><string>KEXT</string>
+            <key>OSBundleLibraries</key><dict>
+              <key>com.apple.kpi.libkern</key><string>12.0</string>
+            </dict>
+          </dict></plist>
+          EOF
+          sudo chown -R root:wheel /tmp/test.kext
+          sudo chmod -R 755 /tmp/test.kext
+          sudo kextutil -n /tmp/test.kext 2>&1 || true
+          sudo kextload /tmp/test.kext 2>&1 || true
