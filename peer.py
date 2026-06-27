@@ -6,7 +6,6 @@ from aiortc import RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaPlayer
 from struct import unpack
 from sys import platform
-from screeninfo import get_monitors
 
 match platform:
 	case "linux":
@@ -57,15 +56,13 @@ async def get_answer(offer):
 	@pointer_movement_channel.on("message")
 	def on_pointer_movement(data):
 		is_relative = len(data) == 4
-
+		print(len(data))
 		if is_relative:
 			movement_x, movement_y = unpack("<hh", data)
 			mouse.move(movement_x, movement_y)
 		else:
 			client_x, client_y = unpack("<II", data)
-			x = client_x * (screen_width / stream_width)
-			y = client_y * (screen_height / stream_height)
-			mouse.position = (x, y)
+			mouse.position = (client_x, client_y)
 
 	pointer_click_channel = peer.createDataChannel("pointer-click", ordered=True, negotiated=True, id=1)
 	@pointer_click_channel.on("message")
@@ -101,20 +98,7 @@ async def get_answer(offer):
 			keyboard.release(key)
 
 
-	"""
 	screen_resize_channel = peer.createDataChannel("screen-resize", ordered=False, negotiated=True, id=3)
-	@screen_resize_channel.on("message")
-	def on_screen_resize(data):
-		nonlocal screenshare, stream_width, stream_height
-		print("Resizing screen")
-		stream_width, stream_height = unpack("<II", data)
-		screenshare = get_screenshare(framerate="30", video_size=f"{stream_width}x{stream_height}")
-		for transceiver in peer.getTransceivers():
-			if transceiver.kind == "video" and transceiver.sender.track is not None:
-				transceiver.sender.replaceTrack(screenshare.video)
-				print("Resized screen!")
-				break
-	"""
 
 	pointer_scroll_channel = peer.createDataChannel("pointer-scroll", ordered=False, maxRetransmits=0, negotiated=True, id=4)
 	@pointer_scroll_channel.on("message")
