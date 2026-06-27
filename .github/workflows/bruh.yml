@@ -7,9 +7,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set screen to 1920x1080
+      - name: Probe display modes
         run: |
-          sudo "/Library/Application Support/VMware Tools/vmware-resolutionSet" 1920 1080
+          python3 - <<'EOF'
+          import ctypes, ctypes.util
+
+          cg = ctypes.cdll.LoadLibrary(
+              "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
+          )
+          cf = ctypes.cdll.LoadLibrary(
+              "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation"
+          )
+
+          cg.CGMainDisplayID.restype = ctypes.c_uint32
+          cg.CGDisplayCopyAllDisplayModes.restype = ctypes.c_void_p
+          cg.CGDisplayCopyAllDisplayModes.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
+          cf.CFArrayGetCount.restype = ctypes.c_long
+          cf.CFArrayGetCount.argtypes = [ctypes.c_void_p]
+          cf.CFArrayGetValueAtIndex.restype = ctypes.c_void_p
+          cf.CFArrayGetValueAtIndex.argtypes = [ctypes.c_void_p, ctypes.c_long]
+          cg.CGDisplayModeGetWidth.restype = ctypes.c_size_t
+          cg.CGDisplayModeGetWidth.argtypes = [ctypes.c_void_p]
+          cg.CGDisplayModeGetHeight.restype = ctypes.c_size_t
+          cg.CGDisplayModeGetHeight.argtypes = [ctypes.c_void_p]
+
+          did = cg.CGMainDisplayID()
+          modes = cg.CGDisplayCopyAllDisplayModes(did, None)
+          count = cf.CFArrayGetCount(modes)
+          print(f"Display ID: {did}, modes available: {count}")
+          for i in range(count):
+              m = cf.CFArrayGetValueAtIndex(modes, i)
+              w = cg.CGDisplayModeGetWidth(m)
+              h = cg.CGDisplayModeGetHeight(m)
+              print(f"  {w} x {h}")
+          EOF
 
       - name: Verify resolution
         run: |
