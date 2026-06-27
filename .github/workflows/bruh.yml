@@ -1,0 +1,23 @@
+name: My workflow
+on: [push]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set screen to 1920x1080
+        run: |
+          sudo "/Library/Application Support/VMware Tools/vmware-resolutionSet" 1920 1080
+
+      - name: Verify resolution
+        run: |
+          python3 -c "
+          import subprocess
+          out = subprocess.check_output(['system_profiler', 'SPDisplaysDataType']).decode()
+          print(out)
+          "
+
+      - name: Your actual steps
+        run: python3 your_script.py
