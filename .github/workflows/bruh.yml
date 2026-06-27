@@ -9,7 +9,6 @@ on:
       height:
         description: Target height
         default: "768"
-  push:
 
 jobs:
   resize:
