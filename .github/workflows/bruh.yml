@@ -1,129 +1,55 @@
-name: Set Custom Display Resolution
+name: resize screen
 
 on:
   workflow_dispatch:
     inputs:
       width:
-        description: "Target width in pixels"
-        required: true
-        default: "1920"
+        description: Target width
+        default: "1366"
       height:
-        description: "Target height in pixels"
-        required: true
-        default: "1080"
+        description: Target height
+        default: "768"
+  push:
 
 jobs:
-  set-resolution:
-    # Must run on your self-hosted macOS runner — BetterDisplay requires a
-    # live GUI session (Aqua). The runner must be running as a launch agent
-    # (logged-in user), NOT a launch daemon (root/background service).
+  resize:
     runs-on: macos-latest
-
-    env:
-      TARGET_W: ${{ github.event.inputs.width }}
-      TARGET_H: ${{ github.event.inputs.height }}
-
     steps:
-      - name: Verify betterdisplaycli is installed
-        run: |
-          if ! command -v betterdisplaycli &>/dev/null; then
-            echo "::error::betterdisplaycli not found. Install with:"
-            echo "  brew install waydabber/betterdisplay/betterdisplaycli"
-            exit 1
-          fi
-          echo "betterdisplaycli found: $(which betterdisplaycli)"
+      - uses: actions/checkout@main
 
-      - name: Verify BetterDisplay is running
-        run: |
-          if ! pgrep -x BetterDisplay > /dev/null; then
-            echo "BetterDisplay not running — launching it..."
-            open -a BetterDisplay
-            # Give it time to finish initializing before accepting CLI commands
-            sleep 5
-          else
-            echo "BetterDisplay is already running"
-          fi
+      - name: Resize screen
+        run: sudo python3 resize_screen.py ${{ github.event.inputs.width || '1366' }} ${{ github.event.inputs.height || '768' }}
 
-      - name: Show current resolution (before)
+      - name: Verify resolution
         run: |
-          echo "=== Current resolution before change ==="
-          betterdisplaycli get -resolution 2>&1 || true
+          python3 - ${{ github.event.inputs.width || '1366' }} ${{ github.event.inputs.height || '768' }} <<'EOF'
+          import ctypes, sys
 
-          # Also read via PyObjC — this reports the active logical resolution,
-          # which is what actually matters for rendering (not native pixels).
-          /usr/bin/python3 - <<'EOF'
-          from AppKit import NSScreen
-          for i, s in enumerate(NSScreen.screens()):
-              f = s.frame()
-              print(f"Screen {i}: {int(f.size.width)}x{int(f.size.height)} (logical pts)")
+          want_w, want_h = int(sys.argv[1]), int(sys.argv[2])
+
+          cg = ctypes.cdll.LoadLibrary(
+              "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics"
+          )
+          cg.CGMainDisplayID.restype  = ctypes.c_uint32
+          cg.CGMainDisplayID.argtypes = []
+          cg.CGDisplayCopyDisplayMode.restype  = ctypes.c_void_p
+          cg.CGDisplayCopyDisplayMode.argtypes = [ctypes.c_uint32]
+          cg.CGDisplayModeGetWidth.restype  = ctypes.c_size_t
+          cg.CGDisplayModeGetWidth.argtypes  = [ctypes.c_void_p]
+          cg.CGDisplayModeGetHeight.restype  = ctypes.c_size_t
+          cg.CGDisplayModeGetHeight.argtypes = [ctypes.c_void_p]
+
+          did  = cg.CGMainDisplayID()
+          mode = cg.CGDisplayCopyDisplayMode(did)
+          got_w = cg.CGDisplayModeGetWidth(mode)
+          got_h = cg.CGDisplayModeGetHeight(mode)
+
+          print(f"Expected: {want_w}x{want_h}")
+          print(f"Got:      {got_w}x{got_h}")
+
+          if got_w != want_w or got_h != want_h:
+              print("FAIL: resolution mismatch")
+              sys.exit(1)
+
+          print("OK: resolution matches")
           EOF
-
-      - name: Set resolution via betterdisplaycli
-        run: |
-          echo "Setting resolution to ${TARGET_W}x${TARGET_H}..."
-          betterdisplaycli set -resolution="${TARGET_W}x${TARGET_H}"
-          # BetterDisplay applies the mode change asynchronously;
-          # give the display subsystem a moment to settle.
-          sleep 3
-
-      - name: Verify resolution (betterdisplaycli get)
-        run: |
-          echo "=== Resolution reported by betterdisplaycli ==="
-          RESULT=$(betterdisplaycli get -resolution 2>&1)
-          echo "$RESULT"
-
-          # Parse WxH from the output (format: "1920x1080" or "1920 x 1080")
-          ACTUAL=$(echo "$RESULT" | grep -oE '[0-9]+[ x]+[0-9]+' | head -1 | tr -d ' ')
-          EXPECTED="${TARGET_W}x${TARGET_H}"
-
-          echo "Expected: $EXPECTED"
-          echo "Actual:   $ACTUAL"
-
-          if [ "$ACTUAL" = "$EXPECTED" ]; then
-            echo "::notice::Resolution set successfully to $EXPECTED"
-          else
-            echo "::warning::Resolution mismatch — expected $EXPECTED, got $ACTUAL"
-            echo "This may be normal if the display does not support this exact mode"
-            echo "or if BetterDisplay needs a virtual screen for arbitrary resolutions."
-          fi
-
-      - name: Verify resolution (NSScreen — ground truth)
-        run: |
-          echo "=== Active logical resolution from NSScreen ==="
-          /usr/bin/python3 - <<EOF
-          import sys
-          from AppKit import NSScreen
-
-          target_w = int("$TARGET_W")
-          target_h = int("$TARGET_H")
-          success = False
-
-          for i, screen in enumerate(NSScreen.screens()):
-              f = screen.frame()
-              w, h = int(f.size.width), int(f.size.height)
-              print(f"Screen {i}: {w}x{h} (logical pts)")
-              if w == target_w and h == target_h:
-                  success = True
-
-          if success:
-              print(f"\nPASS: Found a screen at {target_w}x{target_h}")
-              sys.exit(0)
-          else:
-              print(f"\nNOTE: No screen exactly at {target_w}x{target_h}")
-              print("If using HiDPI, logical pts = half the pixel count.")
-              print("If using a virtual screen, it may appear as a separate display.")
-              # Exit 0 — resolution mismatch is informational, not a hard failure,
-              # since HiDPI and virtual screens legitimately report differently.
-              sys.exit(0)
-          EOF
-
-      - name: Show displayplacer info (full picture)
-        run: |
-          # displayplacer gives the most complete view: physical res, scaling, HiDPI.
-          if command -v displayplacer &>/dev/null; then
-            echo "=== displayplacer list ==="
-            displayplacer list
-          else
-            echo "displayplacer not installed (optional). Install with:"
-            echo "  brew tap jakehilborn/jakehilborn && brew install displayplacer"
-          fi
