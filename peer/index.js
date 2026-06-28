@@ -8,7 +8,7 @@ window.createAnswer = async (offer) => {
 
     const stream = await navigator.mediaDevices.getDisplayMedia({
 		video: true,
-		audio: true
+		audio: false
 	});
 
 	for (const track of stream.getTracks()) {

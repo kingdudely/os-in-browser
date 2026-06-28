@@ -19,7 +19,9 @@ const browser = await puppeteer.launch({
 		'--use-fake-ui-for-media-stream',
 		'--auto-select-desktop-capture-source=Entire screen',
 		'--start-maximized',
-		`--unsafely-treat-insecure-origin-as-secure=${peerUrl}`
+		`--unsafely-treat-insecure-origin-as-secure=${peerUrl}`,
+		'--enable-usermedia-screen-capturing',   // add this
+		'--allow-running-insecure-content', 
 	]
 });
 
