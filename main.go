@@ -15,35 +15,30 @@ import (
 	"math/big"
 	"net"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
+	"github.com/quic-go/webtransport-go"
 )
 
 const stunServer = "stun.l.google.com:19302"
 
-// getSrflxAddr performs a minimal STUN binding request on conn
-// and returns the public IP:port from the XOR-MAPPED-ADDRESS attribute.
 func getSrflxAddr(conn *net.UDPConn) (string, int, error) {
 	stunAddr, err := net.ResolveUDPAddr("udp4", stunServer)
 	if err != nil {
 		return "", 0, err
 	}
 
-	// STUN binding request: 20-byte header
-	// type=0x0001, length=0, magic=0x2112A442, transaction ID (12 random bytes)
 	txID := make([]byte, 12)
 	rand.Read(txID)
 	req := make([]byte, 20)
-	binary.BigEndian.PutUint16(req[0:], 0x0001)  // Binding Request
-	binary.BigEndian.PutUint16(req[2:], 0)        // length
-	binary.BigEndian.PutUint32(req[4:], 0x2112A442) // magic cookie
+	binary.BigEndian.PutUint16(req[0:], 0x0001)
+	binary.BigEndian.PutUint16(req[2:], 0)
+	binary.BigEndian.PutUint32(req[4:], 0x2112A442)
 	copy(req[8:], txID)
 
-	_, err = conn.WriteToUDP(req, stunAddr)
-	if err != nil {
+	if _, err = conn.WriteToUDP(req, stunAddr); err != nil {
 		return "", 0, err
 	}
 
@@ -57,18 +52,12 @@ func getSrflxAddr(conn *net.UDPConn) (string, int, error) {
 			return "", 0, fmt.Errorf("STUN read: %w", err)
 		}
 		data := buf[:n]
-		if len(data) < 20 {
-			continue
-		}
-		// Check it's a binding success response (0x0101) with our txID
-		if binary.BigEndian.Uint16(data[0:]) != 0x0101 {
+		if len(data) < 20 || binary.BigEndian.Uint16(data[0:]) != 0x0101 {
 			continue
 		}
 		if string(data[8:20]) != string(req[8:20]) {
 			continue
 		}
-
-		// Parse attributes
 		pos := 20
 		for pos+4 <= len(data) {
 			attrType := binary.BigEndian.Uint16(data[pos:])
@@ -78,191 +67,178 @@ func getSrflxAddr(conn *net.UDPConn) (string, int, error) {
 				break
 			}
 			val := data[pos : pos+attrLen]
-
-			// XOR-MAPPED-ADDRESS = 0x0020, MAPPED-ADDRESS = 0x0001
-			if (attrType == 0x0020 || attrType == 0x0001) && attrLen >= 8 {
-				// val[0] = reserved, val[1] = family (1=IPv4)
-				if val[1] == 0x01 {
-					portBytes := binary.BigEndian.Uint16(val[2:4])
-					ipBytes := val[4:8]
-					if attrType == 0x0020 {
-						// XOR with magic cookie
-						portBytes ^= 0x2112
-						for i := range ipBytes {
-							ipBytes[i] ^= req[4+i]
-						}
+			if (attrType == 0x0020 || attrType == 0x0001) && attrLen >= 8 && val[1] == 0x01 {
+				portBytes := binary.BigEndian.Uint16(val[2:4])
+				ipBytes := make([]byte, 4)
+				copy(ipBytes, val[4:8])
+				if attrType == 0x0020 {
+					portBytes ^= 0x2112
+					for i := range ipBytes {
+						ipBytes[i] ^= req[4+i]
 					}
-					ip := net.IP(ipBytes).String()
-					return ip, int(portBytes), nil
 				}
+				return net.IP(ipBytes).String(), int(portBytes), nil
 			}
-			// attributes are padded to 4-byte boundaries
-			padded := (attrLen + 3) &^ 3
-			pos += padded
+			pos += (attrLen + 3) &^ 3
 		}
 	}
 }
 
-func generateSelfSignedCert() (tls.Certificate, []byte, error) {
+func generateCert() (tls.Certificate, []byte, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return tls.Certificate{}, nil, err
 	}
-
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(1),
 		Subject:      pkix.Name{CommonName: "os-in-browser"},
 		NotBefore:    time.Now().Add(-time.Minute),
-		NotAfter:     time.Now().Add(7 * 24 * time.Hour),
+		// Must be < 14 days for serverCertificateHashes
+		NotAfter: time.Now().Add(13 * 24 * time.Hour),
 	}
-
 	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
 	if err != nil {
 		return tls.Certificate{}, nil, err
 	}
-
-	cert, err := x509.ParseCertificate(certDER)
+	parsed, err := x509.ParseCertificate(certDER)
 	if err != nil {
 		return tls.Certificate{}, nil, err
 	}
-
-	fingerprint := sha256.Sum256(cert.Raw)
-
-	tlsCert := tls.Certificate{
-		Certificate: [][]byte{certDER},
-		PrivateKey:  key,
-	}
-
-	return tlsCert, fingerprint[:], nil
+	fp := sha256.Sum256(parsed.Raw)
+	return tls.Certificate{Certificate: [][]byte{certDER}, PrivateKey: key}, fp[:], nil
 }
 
-func sendStunKeepalive(conn *net.UDPConn) {
+func sendKeepalives(conn *net.UDPConn) {
 	stunAddr, _ := net.ResolveUDPAddr("udp4", stunServer)
-	txID := make([]byte, 12)
 	req := make([]byte, 20)
 	binary.BigEndian.PutUint16(req[0:], 0x0001)
 	binary.BigEndian.PutUint32(req[4:], 0x2112A442)
-
-	ticker := time.NewTicker(25 * time.Second)
-	for range ticker.C {
-		rand.Read(txID)
-		copy(req[8:], txID)
+	for range time.Tick(25 * time.Second) {
+		rand.Read(req[8:])
 		conn.WriteToUDP(req, stunAddr)
 	}
 }
 
 func main() {
-	// 1. Bind UDP socket on ephemeral port
 	conn, err := net.ListenUDP("udp4", &net.UDPAddr{Port: 0})
 	if err != nil {
-		log.Fatal("bind UDP:", err)
+		log.Fatal("bind:", err)
 	}
 
-	// 2. STUN → discover public IP:port
 	log.Println("Discovering public address via STUN...")
 	ip, port, err := getSrflxAddr(conn)
 	if err != nil {
 		log.Fatal("STUN:", err)
 	}
-	log.Printf("Public address: %s:%d", ip, port)
 
-	// 3. Generate self-signed cert, compute fingerprint
-	tlsCert, fingerprintBytes, err := generateSelfSignedCert()
+	tlsCert, fp, err := generateCert()
 	if err != nil {
 		log.Fatal("cert:", err)
 	}
-	fingerprintHex := hex.EncodeToString(fingerprintBytes)
+	fpHex := hex.EncodeToString(fp)
 
-	// 4. Build the URL the user clicks
-	// Fragment encodes cert hash so the browser JS can read location.hash
-	url := fmt.Sprintf("https://%s:%d/#%s", ip, port, fingerprintHex)
 	log.Println("==============================================")
-	log.Println("OPEN THIS URL IN CHROME:")
-	log.Println(url)
+	log.Printf("https://%s:%d/#%s", ip, port, fpHex)
 	log.Println("==============================================")
 
-	// 5. Start STUN keepalives to hold the NAT mapping open
-	go sendStunKeepalive(conn)
+	go sendKeepalives(conn)
 
-	// 6. Set up HTTP/3 server on the same UDP socket
 	mux := http.NewServeMux()
 
+	wts := webtransport.Server{
+		H3: http3.Server{
+			TLSConfig: &tls.Config{Certificates: []tls.Certificate{tlsCert}},
+			QUICConfig: &quic.Config{
+				EnableDatagrams:                 true,
+				EnableStreamResetPartialDelivery: true,
+			},
+		},
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprintf(w, indexHTML, ip, port, fingerprintHex)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, indexHTML, ip, port, fpHex, ip, port)
 	})
 
-	mux.HandleFunc("/webtransport", func(w http.ResponseWriter, r *http.Request) {
-		// WebTransport upgrade happens here — quic-go handles the CONNECT upgrade
-		// For now just confirm it's reachable
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, "WebTransport endpoint ready")
+	mux.HandleFunc("/wt", func(w http.ResponseWriter, r *http.Request) {
+		sess, err := wts.Upgrade(w, r)
+		if err != nil {
+			log.Printf("upgrade: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		go func() {
+			stream, err := sess.AcceptStream(r.Context())
+			if err != nil {
+				log.Printf("AcceptStream: %v", err)
+				return
+			}
+			buf := make([]byte, 4096)
+			n, _ := stream.Read(buf)
+			log.Printf("Received: %s", buf[:n])
+			stream.Write([]byte("hello from runner!"))
+		}()
 	})
 
-	tlsConf := http3.ConfigureTLSConfig(&tls.Config{
-		Certificates: []tls.Certificate{tlsCert},
-	})
+	wts.H3.Handler = mux
 
 	tr := &quic.Transport{Conn: conn}
+	tlsConf := http3.ConfigureTLSConfig(&tls.Config{Certificates: []tls.Certificate{tlsCert}})
 	ln, err := tr.ListenEarly(tlsConf, &quic.Config{
-		EnableDatagrams: true,
+		EnableDatagrams:                 true,
+		EnableStreamResetPartialDelivery: true,
 	})
 	if err != nil {
-		log.Fatal("QUIC listen:", err)
+		log.Fatal("listen:", err)
 	}
 
-	server := &http3.Server{
-		Handler: mux,
-		Addr:    fmt.Sprintf("%s:%d", ip, port),
-	}
-
-	log.Printf("HTTP/3 server listening on UDP %s:%d", ip, port)
-	if err := server.ServeListener(ln); err != nil {
+	log.Printf("Serving on %s:%d", ip, port)
+	if err := wts.ServeListener(ln); err != nil {
 		log.Fatal("serve:", err)
 	}
 }
 
-// indexHTML is served at / — reads the cert hash from location.hash
-// and opens a WebTransport session to itself
 const indexHTML = `<!DOCTYPE html>
 <html>
-<head><title>os-in-browser</title></head>
+<head>
+  <title>os-in-browser</title>
+  <style>body{font-family:monospace;padding:2em}#log{white-space:pre;border:1px solid #ccc;padding:1em;height:300px;overflow:auto}</style>
+</head>
 <body>
-<pre id="log"></pre>
+<h2>os-in-browser</h2>
+<div id="log"></div>
 <script>
-const log = s => document.getElementById('log').textContent += s + '\n';
+const log = s => {
+  const el = document.getElementById('log');
+  el.textContent += s + '\n';
+  el.scrollTop = el.scrollHeight;
+};
 
-const fingerprintHex = location.hash.slice(1);
-if (!fingerprintHex) { log('No cert hash in URL fragment'); }
+const fpHex = location.hash.slice(1) || %q;
+const fp = Uint8Array.fromHex(fpHex);
 
-const hashBytes = Uint8Array.fromHex(fingerprintHex);
+(async () => {
+  try {
+    log('Connecting...');
+    const wt = new WebTransport('https://%s:%d/wt', {
+      serverCertificateHashes: [{ algorithm: 'sha-256', value: fp.buffer }]
+    });
+    await wt.ready;
+    log('Connected!');
 
-async function connect() {
-  const url = 'https://%s:%d/webtransport';
-  log('Connecting to ' + url);
+    const stream = await wt.createBidirectionalStream();
+    const writer = stream.writable.getWriter();
+    await writer.write(new TextEncoder().encode('hello from browser'));
+    log('Sent: hello from browser');
 
-  const wt = new WebTransport(url, {
-    serverCertificateHashes: [{
-      algorithm: 'sha-256',
-      value: hashBytes.buffer,
-    }]
-  });
-
-  await wt.ready;
-  log('WebTransport connected!');
-
-  // Open a bidirectional stream
-  const stream = await wt.createBidirectionalStream();
-  const writer = stream.writable.getWriter();
-  await writer.write(new TextEncoder().encode('hello from browser'));
-  log('Sent: hello from browser');
-
-  const reader = stream.readable.getReader();
-  const { value } = await reader.read();
-  log('Received: ' + new TextDecoder().decode(value));
-}
-
-connect().catch(e => log('Error: ' + e));
+    const reader = stream.readable.getReader();
+    const { value } = await reader.read();
+    log('Received: ' + new TextDecoder().decode(value));
+  } catch(e) {
+    log('Error: ' + e);
+  }
+})();
 </script>
 </body>
 </html>
