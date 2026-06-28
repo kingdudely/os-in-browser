@@ -156,6 +156,8 @@ func main() {
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
 
+	webtransport.ConfigureHTTP3Server(wts.H3)
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprintf(w, indexHTML, ip, port, fpHex, ip, port)
@@ -194,7 +196,7 @@ func main() {
 	}
 
 	log.Printf("Serving on %s:%d", ip, port)
-	if err := wts.H3.ServeQUICListener(ln); err != nil {
+	if err := wts.H3.ServeListener(ln); err != nil {
 		log.Fatal("serve:", err)
 	}
 }
