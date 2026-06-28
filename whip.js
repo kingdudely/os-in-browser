@@ -1,17 +1,23 @@
 import puppeteer from "puppeteer-core";
 import express from "express";
 import { mouse, keyboard, Point } from '@nut-tree-fork/nut-js';
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const app = express();
 app.use(express.static("peer"));
 const server = app.listen(0);
 
+
+const userDataDir = await mkdtemp(join(tmpdir(), "puppeteer-"));
 const peerUrl = `http://localhost:${server.address().port}`;
 
 const browser = await puppeteer.launch({
 	channel: "chrome",
-	headless: true,
+	headless: "shell",
 	pipe: true,
+	userDataDir,
 	args: [
 		'--no-sandbox',
 		'--disable-gpu',
