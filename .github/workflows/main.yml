@@ -13,44 +13,26 @@ on:
           - ubuntu-latest
           - macos-latest
 
-defaults:
-  run:
-    shell: bash
-
 jobs:
   remote:
     runs-on: ${{ github.event.inputs.os }}
     timeout-minutes: 360
-    env:
-      DISPLAY: ":0"
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Copy repository into PC
         uses: actions/checkout@main
 
-      - name: Install Python
-        uses: actions/setup-python@main
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-          cache-dependency-path: '**/requirements.txt'
-
       - name: Setup Ubuntu desktop GUI
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends xorg xfce4 xvfb # x11-utils
-
-          Xvfb ${DISPLAY} -screen 0 1920x1080x24 &
-          setsid startxfce4 &
-
-      - name: Install server dependencies
-        run: |
-          pip install -r requirements.txt
+          sudo apt-get update && \
+          sudo apt-get install -y ubuntu-desktop-minimal && \
+          sudo systemctl enable gdm3 && \
+          sudo systemctl start gdm3
 
       - name: Start server
-        env:
-          USERNAME: ${{ secrets.USERNAME }}
-          PASSWORD: ${{ secrets.PASSWORD }}
         run: |
-          python3 -u main.py
+          ./start.sh
