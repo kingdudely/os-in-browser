@@ -1,0 +1,16 @@
+name: Serve
+
+on:
+  workflow_dispatch:
+
+jobs:
+  serve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+
+      - uses: actions/setup-go@main
+        with:
+          go-version: stable
+
+      - run: go run main.go
