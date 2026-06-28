@@ -1,0 +1,63 @@
+name: Check and Setup Chrome Headless Shell
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: # Allows you to trigger this manually from the GitHub UI
+
+jobs:
+  check-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 1: Probe the environment to see if it's pre-installed
+      - name: Check for pre-installed chrome-headless-shell
+        id: check-shell
+        continue-on-error: true # Prevents the workflow from failing if it's missing
+        run: |
+          echo "=== Searching for chrome-headless-shell ==="
+          if which chrome-headless-shell > /dev/null 2>&1; then
+            echo "FOUND_GLOBAL=true" >> $GITHUB_ENV
+            echo "Location: $(which chrome-headless-shell)"
+          else
+            echo "FOUND_GLOBAL=false" >> $GITHUB_ENV
+            echo "Result: chrome-headless-shell is NOT globally pre-installed."
+          fi
+
+      # Step 2: Fallback configuration if it wasn't found globally
+      - name: Install chrome-headless-shell (Fallback)
+        if: env.FOUND_GLOBAL == 'false'
+        run: |
+          echo "Setting up fallback chrome-headless-shell..."
+          
+          # Setup Node dynamically to run the safe Google browser installer
+          npm init -y > /dev/null
+          
+          # This pulls down the headless-shell binary matching your runner's Chrome version
+          INSTALL_LOG=$(npx @puppeteer/browsers install chrome-headless-shell@stable)
+          echo "$INSTALL_LOG"
+          
+          # Extract the exact executable path from the installer output
+          SHELL_PATH=$(echo "$INSTALL_LOG" | grep -o '/.*chrome-headless-shell' | head -n 1)
+          echo "DYNAMIC_SHELL_PATH=$SHELL_PATH" >> $GITHUB_ENV
+
+      # Step 3: Run your testing tool using whichever binary was resolved
+      - name: Run Extension Automation
+        run: |
+          # Resolve the correct binary path
+          if [ "${{ env.FOUND_GLOBAL }}" = "true" ]; then
+            FINAL_PATH=$(which chrome-headless-shell)
+          else
+            FINAL_PATH="${{ env.DYNAMIC_SHELL_PATH }}"
+          fi
+          
+          echo "Using chrome-headless-shell execution path: $FINAL_PATH"
+          
+          # Verify the binary is functioning by fetching its current version flag
+          $FINAL_PATH --version
+          
+          # Example execution string for your extension context:
+          # $FINAL_PATH --disable-extensions-except=./your-extension --load-extension=./your-extension
