@@ -1,14 +1,14 @@
+const stream = await navigator.mediaDevices.getDisplayMedia({
+	video: true,
+	audio: false
+});
+
 window.createAnswer = async (offer) => {
 	const peer = new RTCPeerConnection({
 		iceServers: [
 			{ urls: "stun:stun.l.google.com:19302" },
 			{ urls: "stun:stun.cloudflare.com:3478" }
 		]
-	});
-
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-		video: true,
-		audio: false
 	});
 
 	for (const track of stream.getTracks()) {
