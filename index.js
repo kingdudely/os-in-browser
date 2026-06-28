@@ -1,7 +1,7 @@
 import express from 'express';
 import basicAuth from 'express-basic-auth';
 import { env } from 'node:process';
-import { startTunnel } from "untun";
+import { spawn } from 'node:child_process';
 import { createAnswer } from "./whip.js";
 
 const { USERNAME = "", PASSWORD = "" } = env;
@@ -25,8 +25,4 @@ app.post('/whip', express.text({ type: 'application/sdp' }), async (req, res) =>
 		.send(await createAnswer(offer)); 
 })
 
-const tunnel = await startTunnel({
-	port: server.address().port,
-	acceptCloudflareNotice: true
-});
-console.log(await tunnel.getURL());
+spawn('cloudflared', ['tunnel', '--url', `http://localhost:${port}`]);
