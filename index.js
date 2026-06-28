@@ -25,4 +25,4 @@ app.post('/whip', express.text({ type: 'application/sdp' }), async (req, res) =>
 		.send(await createAnswer(offer)); 
 })
 
-spawn('cloudflared', ['tunnel', '--url', `http://localhost:${port}`]);
+spawn('cloudflared', ['tunnel', '--url', `http://localhost:${server.address().port}`]);
