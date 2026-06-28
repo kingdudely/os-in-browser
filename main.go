@@ -146,7 +146,7 @@ func main() {
 	mux := http.NewServeMux()
 
 	wts := webtransport.Server{
-		H3: http3.Server{
+		H3: &http3.Server{
 			TLSConfig: &tls.Config{Certificates: []tls.Certificate{tlsCert}},
 			QUICConfig: &quic.Config{
 				EnableDatagrams:                 true,
@@ -194,7 +194,7 @@ func main() {
 	}
 
 	log.Printf("Serving on %s:%d", ip, port)
-	if err := wts.ServeListener(ln); err != nil {
+	if err := wts.H3.ServeQUICListener(ln); err != nil {
 		log.Fatal("serve:", err)
 	}
 }
