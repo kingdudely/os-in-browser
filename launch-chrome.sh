@@ -4,6 +4,8 @@ NATIVE_MESSAGING_HOSTS_DIR="${USER_DATA_DIR}/NativeMessagingHosts"
 EXTENSION_ID="IDK BROOO"
 HOST_PATH="$GITHUB_WORKSPACE/host.py"
 
+pip install --requirements-from-script "${HOST_PATH}"
+
 case "${RUNNER_OS}" in
     Windows)
         CHROME_PATH="/c/Program Files/Google/Chrome/Application/chrome.exe"
@@ -24,7 +26,7 @@ case "${RUNNER_OS}" in
 esac
 
 mkdir -p "$NATIVE_MESSAGING_HOSTS_DIR"
-cat <<EOF > "$NATIVE_MESSAGING_HOSTS_DIR/bash.json"
+cat <<EOF > "$NATIVE_MESSAGING_HOSTS_DIR/host.json"
 {
     "name": "host",
     "description": "os-in-browser",

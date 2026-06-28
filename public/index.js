@@ -1,30 +1,34 @@
-import Peer from "./peer.js";
-import nutKeyMap from './nutKeyMap.json' with { type: 'json' };
-import nutButtonMap from './nutButtonMap.json' with { type: 'json' };
+window.addEventListener("error", (event) => {
+	const errorMessage = event.message || "Unknown error occurred";
+    window.alert(`Error:\n${errorMessage}`);
+});
 
-/*
-IOHIDUserDevice or HIDVirtualDevice for macos (whatever doesn't require payment or something complicated, just sudo)
-/dev/uinput or /dev/uhid for linux
-HidP_TranslateUsagesToI8042ScanCodes for windows (or maybe Interception or vjoy or vigembus, or a different signed kernel driver)
-*/
-async function enableImmersiveMode(target) {
+window.addEventListener("unhandledrejection", (event) => {
+    const asyncErrorMessage = event.reason?.message || event.reason || "Unknown async error occurred";
+    window.alert(`Async error:\n${asyncErrorMessage}`);
+});
+
+import ConnectToServerPeer from "./ConnectToServerPeer.js";
+import code_keys from "./code_keys.json" with { type: "json" };
+
+function triggerImmersiveMode() {
 	if (document.fullscreenEnabled && !document.fullscreenElement) {
-		await document.body.requestFullscreen({ // target.body
-			"navigationUI": "hide" 
-		});
+		document.body.requestFullscreen({ // target, await
+			"navigationUI": "hide"
+		}).catch(() => {});
 	};
 
 	if (!document.pointerLockElement) {
-		await target.requestPointerLock({
+		document.body.requestPointerLock({ // target, await
 			"unadjustedMovement": true
-        });
+		}).catch(() => {});
 	}
 }
 
 const screenshare = document.getElementById("screenshare");
-const sharedBuffer = new ArrayBuffer(4);
-const sharedBytes = new Uint8Array(sharedBuffer);
-const sharedView = new DataView(sharedBuffer);
+
+const sharedBytes = new Uint8Array(8);
+const sharedView = new DataView(sharedBytes.buffer);
 
 const peer = new Peer();
 peer.addTransceiver("audio", { direction: "recvonly" });
@@ -43,10 +47,19 @@ const pointerClickChannel = peer.createDataChannel("pointer-click", {
 	id: 1
 });
 
-const keyboardChannel = peer.createDataChannel("keyboard", {
+const keyboardTypeChannel = peer.createDataChannel("keyboard-type", {
 	ordered: true,
 	negotiated: true,
 	id: 2
+});
+
+// resizeScreen
+
+const pointerScrollChannel = peer.createDataChannel("pointer-scroll", {
+    ordered: false,
+    maxRetransmits: 0,
+    negotiated: true,
+    id: 4
 });
 
 await navigator.clipboard.writeText(await peer.getShareId());
@@ -58,67 +71,112 @@ peer.addEventListener("track", (event) => {
 	screenshare.srcObject = event.streams[0];
 });
 
-screenshare.addEventListener("pointermove", (event) => { // pointerrawupdate - safari doesn't support unfortunately (I wish MacOS had touchscreen and stylus APIs)
+screenshare.addEventListener("pointermove", (event) => {
+	event.preventDefault();
 	if (pointerMovementChannel.readyState !== "open") return;
-	// make flag to say if it is clientX or movementX
-	sharedView.setInt16(0, event.movementX, true);
-	sharedView.setInt16(2, event.movementY, true);
-	pointerMovementChannel.send(sharedBytes.subarray(0, 4));
+
+	let packetSize;
+	if (document.pointerLockElement) {
+		sharedView.setInt16(0, event.movementX, true);
+		sharedView.setInt16(2, event.movementY, true);
+		packetSize = 4;
+	} else {
+		sharedView.setUint32(0, event.clientX, true);
+		sharedView.setUint32(4, event.clientY, true);
+		packetSize = 8;
+	}
+	
+	pointerMovementChannel.send(sharedBytes.subarray(0, packetSize));
 });
 
 screenshare.addEventListener("pointerdown", (event) => {
+	event.preventDefault();
 	if (pointerClickChannel.readyState !== "open") return;
-	enableImmersiveMode(screenshare).catch(console.warn);
-
-	const nutButton = nutButtonMap.indexOf(event.button);
-	if (nutButton === -1) {
-		console.warn("Could not find Nut.JS Button equivalent");
-		return;
-	}
+	triggerImmersiveMode();
 
 	sharedView.setUint8(0, 1); // isDown
-	sharedView.setUint8(1, nutButton);
+	sharedView.setUint8(1, event.button);
 	pointerClickChannel.send(sharedBytes.subarray(0, 2));
 });
 
 screenshare.addEventListener("pointerup", (event) => {
+	event.preventDefault();
 	if (pointerClickChannel.readyState !== "open") return;
-	const nutButton = nutButtonMap.indexOf(event.button);
-	if (nutButton === -1) {
-		console.warn("Could not find Nut.JS Button equivalent");
-		return;
-	}
 
 	sharedView.setUint8(0, 0); // isDown
-	sharedView.setUint8(1, nutButton);
+	sharedView.setUint8(1, event.button);
 	pointerClickChannel.send(sharedBytes.subarray(0, 2));
 });
 
-screenshare.addEventListener("keydown", (event) => {
-	if (keyboardChannel.readyState !== "open" || event.repeat || !event.code) return;
-	enableImmersiveMode(screenshare).catch(console.warn);
+window.addEventListener("keydown", (event) => {
+	event.preventDefault();
+	if (keyboardTypeChannel.readyState !== "open" || event.repeat) return;
+	triggerImmersiveMode();
 
-	const nutKey = nutKeyMap.indexOf(event.code);
-	if (nutKey === -1) {
-		console.warn("Could not find Nut.JS Key equivalent");
+	const code_index = code_keys.indexOf(event.code);
+	if (code_index === -1) {
+		console.warn("Code is not supported");
 		return;
 	}
 
 	sharedView.setUint8(0, 1); // isDown
-	sharedView.setUint8(1, nutKey);
-	keyboardChannel.send(sharedBytes.subarray(0, 2));
+	sharedView.setUint8(1, code_index);
+
+	keyboardTypeChannel.send(sharedBytes.subarray(0, 2));
 });
 
-screenshare.addEventListener("keyup", (event) => {
-	if (keyboardChannel.readyState !== "open" || !event.code) return;
+window.addEventListener("keyup", (event) => {
+	event.preventDefault();
+	if (keyboardTypeChannel.readyState !== "open") return;
 
-	const nutKey = nutKeyMap.indexOf(event.code);
-	if (nutKey === -1) {
-		console.warn("Could not find Nut.JS Key equivalent");
+	const code_index = code_keys.indexOf(event.code);
+	if (code_index === -1) {
+		console.warn("Code is not supported");
 		return;
 	}
 
-	sharedView.setUint8(0, 0); // isDown
-	sharedView.setUint8(1, nutKey);
-	keyboardChannel.send(sharedBytes.subarray(0, 2));
-})
+	sharedView.setUint8(0, 0);
+	sharedView.setUint8(1, code_index);
+
+	keyboardTypeChannel.send(sharedBytes.subarray(0, 2));
+});
+
+/*
+const screenResizeChannel = peer.createDataChannel("screen-resize", {
+    ordered: false,
+    negotiated: true,
+    id: 3
+});
+
+function fitToScreen() {
+	if (screenResizeChannel.readyState !== "open") return;
+	console.log("Sending screen resize packet...");
+
+	const { width, height } = screenshare.getBoundingClientRect();
+    sharedView.setUint32(0, width, true);
+    sharedView.setUint32(4, height, true);
+    screenResizeChannel.send(sharedBytes.subarray(0, 8));
+}
+
+screenResizeChannel.addEventListener("open", fitToScreen);
+new ResizeObserver(fitToScreen).observe(screenshare); // window.onresize
+*/
+
+screenshare.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    if (pointerScrollChannel.readyState !== "open") return;
+
+	const multiplier = (function() {
+		switch (event.deltaMode) {
+			default: console.warn("Unsupported deltaMode, will use DOM_DELTA_PIXEL");
+			case event.DOM_DELTA_PIXEL: return 1;
+			case event.DOM_DELTA_LINE: return 20; // accurate enough
+			case event.DOM_DELTA_PAGE: return window.innerHeight;
+		}
+	})();
+
+	sharedView.setFloat32(0, event.deltaX * multiplier, true);
+	sharedView.setFloat32(4, event.deltaY * multiplier, true);
+	// sharedView.setFloat32(8, event.deltaZ, true); // unsupported in pynput
+	pointerScrollChannel.send(sharedBytes.subarray(0, 8));
+});
