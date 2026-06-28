@@ -1,7 +1,6 @@
 USER_DATA_DIR="${GITHUB_WORKSPACE}/chrome-user-data"
 EXTENSION_PATH="${GITHUB_WORKSPACE}/peer"
 NATIVE_MESSAGING_HOSTS_DIR="${USER_DATA_DIR}/NativeMessagingHosts"
-EXTENSION_ID="IDK BROOO"
 HOST_PATH="${GITHUB_WORKSPACE}/host.py"
 
 pip install --requirements-from-script ${HOST_PATH}"
@@ -33,7 +32,7 @@ cat <<EOF > "$NATIVE_MESSAGING_HOSTS_DIR/host.py.json"
     "path": "${HOST_PATH}",
     "type": "stdio",
     "allowed_origins": [
-        "chrome-extension://${EXTENSION_ID}/"
+        "chrome-extension://lmfokjclogcfklaomgkghnjoagbjfgcb/"
     ]
 }
 EOF
