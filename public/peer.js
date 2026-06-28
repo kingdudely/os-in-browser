@@ -90,8 +90,7 @@ class Peer extends RTCPeerConnection {
 
 		const port = sharedView.getUint16(offset, true);
 		offset += 2;
-		const fingerprint = sharedBytes.subarray(offset).toHex().match(/../g).join(':');
-		offset += 32;
+		const fingerprint = sharedBytes.subarray(offset, offset += 32).toHex().match(/../g).join(':');
 
 		if (offset !== shareIdRawSize) {
 			throw new Error("Couldn't connect to share ID");

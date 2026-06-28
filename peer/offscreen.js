@@ -1,7 +1,7 @@
 import Peer from "../docs/peer.js";
 const { VIEWER_SHARE_ID } = env;
 
-const VirtualHIDDevice = await chrome.runtime.connectNative("VirtualHIDDevice");
+const bash = await chrome.runtime.connectNative("bash");
 
 const peer = new Peer();
 const viewerSdp = await peer.connectToShareId(VIEWER_SHARE_ID);

@@ -1,22 +1,20 @@
 USER_DATA_DIR="${GITHUB_WORKSPACE}/chrome-user-data"
 EXTENSION_PATH="${GITHUB_WORKSPACE}/peer"
-MANIFEST_DIR="${USER_DATA_DIR}/NativeMessagingHosts"
+NATIVE_MESSAGING_HOSTS_DIR="${USER_DATA_DIR}/NativeMessagingHosts"
 EXTENSION_ID="IDK BROOO"
+HOST_PATH="$GITHUB_WORKSPACE/host.py"
 
 case "${RUNNER_OS}" in
     Windows)
         CHROME_PATH="/c/Program Files/Google/Chrome/Application/chrome.exe"
-        HOST_PATH="$GITHUB_WORKSPACE/host/dist/host.exe"
         ;;
 
     macOS)
         CHROME_PATH="/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome"
-        HOST_PATH="$GITHUB_WORKSPACE/host/dist/host"
         ;;
 
     Linux)
-        CHROME_PATH="google-chrome"
-        HOST_PATH="$GITHUB_WORKSPACE/host/dist/host"
+        CHROME_PATH="/usr/bin/google-chrome"
         ;;
 
     *)
@@ -25,8 +23,8 @@ case "${RUNNER_OS}" in
         ;;
 esac
 
-mkdir -p "$MANIFEST_DIR"
-cat <<EOF > "$MANIFEST_DIR/host.json"
+mkdir -p "$NATIVE_MESSAGING_HOSTS_DIR"
+cat <<EOF > "$NATIVE_MESSAGING_HOSTS_DIR/bash.json"
 {
     "name": "host",
     "description": "os-in-browser",
