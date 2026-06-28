@@ -38,7 +38,7 @@ cat <<EOF > "$NATIVE_MESSAGING_HOSTS_DIR/host.py.json"
 EOF
 
 # --no-sandbox --disable-gpu --allow-http-screen-capture --unsafely-treat-insecure-origin-as-secure="http://localhost:${PORT}" --start-maximized
-# Chrome for Testing/Chromium, desktopCapture, enterprise policy
+# Chrome for Testing/Chromium, desktopCapture, enterprise policy, shell
 "$CHROME_PATH" \
     --headless=new \
     --user-data-dir="$USER_DATA_DIR" \
