@@ -1,0 +1,113 @@
+name: macOS Browser Remote Desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      vnc_user_password:
+        description: 'VNC user password'
+        required: true
+      vnc_password:
+        description: 'VNC password (max 8 chars)'
+        required: true
+
+jobs:
+  remote-desktop:
+    runs-on: macos-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Create VNC user
+        run: |
+          if ! id -u vncuser &>/dev/null; then
+            sudo dscl . -create /Users/vncuser
+            sudo dscl . -create /Users/vncuser UserShell /bin/bash
+            sudo dscl . -create /Users/vncuser RealName "VNC User"
+            sudo dscl . -create /Users/vncuser UniqueID 1001
+            sudo dscl . -create /Users/vncuser PrimaryGroupID 80
+            sudo dscl . -create /Users/vncuser NFSHomeDirectory /Users/vncuser
+            sudo createhomedir -c -u vncuser &>/dev/null
+          fi
+          sudo dscl . -passwd /Users/vncuser "${{ inputs.vnc_user_password }}"
+
+      - name: Enable Apple VNC
+        run: |
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -configure -allowAccessFor -allUsers -privs -all
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -configure -clientopts -setvnclegacy -vnclegacy yes
+
+          printf '%s\n' "${{ inputs.vnc_password }}" \
+          | perl -we '
+            BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA" }
+            $_ = <>; chomp; s/^(.{8}).*/$1/;
+            @p = unpack "C*", $_;
+            foreach (@k) { printf "%02X", $_ ^ (shift @p || 0) }
+            print "\n";
+          ' | sudo tee /Library/Preferences/com.apple.VNCSettings.txt &>/dev/null
+
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -restart -agent -console
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -activate
+
+      - name: Start Guacamole (Docker)
+        run: |
+          # Wait for Docker
+          for i in {1..30}; do docker info &>/dev/null && break; sleep 5; done
+
+          docker rm -f guacd guacamole 2>/dev/null || true
+
+          docker run -d --name guacd guacamole/guacd
+
+          mkdir -p "$HOME/.guacamole"
+          cat > "$HOME/.guacamole/user-mapping.xml" <<XML
+          <user-mapping>
+            <authorize username="guacadmin" password="guacadmin">
+              <connection name="macOS VNC">
+                <protocol>vnc</protocol>
+                <param name="hostname">host.docker.internal</param>
+                <param name="port">5900</param>
+                <param name="password">${{ inputs.vnc_password }}</param>
+              </connection>
+            </authorize>
+          </user-mapping>
+          XML
+
+          docker run -d --name guacamole \
+            --link guacd:guacd \
+            -e GUACD_HOSTNAME=guacd \
+            -e GUACD_PORT=4822 \
+            -e GUACAMOLE_HOME=/etc/guacamole \
+            -v "$HOME/.guacamole:/etc/guacamole:ro" \
+            -p 8080:8080 \
+            guacamole/guacamole
+
+          echo "Waiting for Guacamole..."
+          for i in {1..30}; do
+            curl -fsS http://127.0.0.1:8080/guacamole/ &>/dev/null && echo "Ready" && break
+            sleep 3
+          done
+
+      - name: Start cloudflared tunnel
+        run: |
+          brew install cloudflared
+
+          cloudflared tunnel --url http://127.0.0.1:8080 --no-autoupdate 2>&1 | tee /tmp/cf.log &
+
+          echo "Waiting for tunnel URL..."
+          for i in {1..30}; do
+            URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/cf.log | head -1)
+            if [[ -n "$URL" ]]; then
+              echo ""
+              echo "══════════════════════════════════════════════"
+              echo "  Open : ${URL}/guacamole/"
+              echo "  User : guacadmin"
+              echo "  Pass : guacadmin"
+              echo "══════════════════════════════════════════════"
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Keep alive
+        run: sleep 21600
