@@ -72,12 +72,11 @@ class Peer extends RTCPeerConnection {
 
 	async connectToShareId(shareId) {
 		let offset = 0;
-		const bytes = Uint8Array.fromBase64(shareId, { alphabet: "base64url" });
-		const view = new DataView(bytes.buffer);
-		const isIPv6 = bytes.length === 50;
+		const shareIdRawSize = sharedBytes.setFromBase64(shareId, { alphabet: "base64url" }).written;
+		const isIPv6 = shareIdRawSize === 50;
 		const address = isIPv6
-			? bytes.subarray(0, 16).toHex().match(/.{1,4}/g).join(':')
-			: bytes.subarray(0, 4).join(".");
+			? sharedBytes.subarray(0, 16).toHex().match(/.{1,4}/g).join(':')
+			: sharedBytes.subarray(0, 4).join(".");
 
 		offset += isIPv6 ? 16 : 4;
 
@@ -89,12 +88,12 @@ class Peer extends RTCPeerConnection {
 			address = parts.join(':');
 		*/
 
-		const port = view.getUint16(offset, true);
+		const port = sharedView.getUint16(offset, true);
 		offset += 2;
-		const fingerprint = bytes.subarray(offset).toHex().match(/../g).join(':');
+		const fingerprint = sharedBytes.subarray(offset).toHex().match(/../g).join(':');
 		offset += 32;
 
-		if (offset !== bytes.length) {
+		if (offset !== shareIdRawSize) {
 			throw new Error("Couldn't connect to share ID");
 		}
 
