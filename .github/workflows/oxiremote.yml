@@ -3,15 +3,6 @@ name: OxiRemote Session
 on:
   workflow_dispatch:
     inputs:
-      os:
-        description: "Runner OS"
-        required: true
-        default: "macos-latest"
-        type: choice
-        options:
-          - macos-latest
-          - ubuntu-latest
-          - windows-latest
       timeout_minutes:
         description: "How long to keep the session alive (minutes)"
         required: false
@@ -28,65 +19,14 @@ defaults:
 jobs:
   remote-session:
     name: Remote Desktop Session
-    runs-on: ${{ inputs.os }}
+    runs-on: macos-latest
     timeout-minutes: ${{ fromJson(inputs.timeout_minutes) }}
 
     steps:
-      - name: Install OxiRemote
-        run: npm install -g oxiremote
-
-      - name: Install codec deps
+      - name: Install OxiRemote + codec deps
         run: |
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            brew install libvpx aom
-
-          elif [ "$RUNNER_OS" = "Linux" ]; then
-            sudo apt-get update -qq
-            sudo apt-get install -y libvpx-dev libaom-dev xvfb x11vnc openbox
-            Xvfb :99 -screen 0 1920x1080x24 &
-            echo "DISPLAY=:99" >> $GITHUB_ENV
-            openbox &
-
-          elif [ "$RUNNER_OS" = "Windows" ]; then
-            PIPELINE="${{ inputs.video_pipeline }}"
-            if [[ "$PIPELINE" == "vp9" || "$PIPELINE" == "av1" || "$PIPELINE" == "auto" ]]; then
-              vcpkg install libvpx aom --triplet x64-windows || true
-            fi
-          fi
-
-      - name: Print session info
-        run: |
-          echo "============================================================"
-          echo "  OxiRemote session starting"
-          echo "  Runner  : $RUNNER_OS / $RUNNER_ARCH"
-          echo "  Pipeline: ${{ inputs.video_pipeline }}"
-          echo "  Timeout : ${{ inputs.timeout_minutes }} minutes"
-          echo "============================================================"
-          echo ""
-          echo "NOTES FOR THIS OS"
-          echo "-----------------"
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            echo "  * Running on a virtual display (Xvfb :99 @ 1920x1080)"
-            echo "  * Audio capture is NOT supported on Linux (deferred upstream)"
-            echo "  * Best codec on Linux is H.264 or JPEG"
-          elif [ "$RUNNER_OS" = "macOS" ]; then
-            echo "  * Audio capture supported (ScreenCaptureKit)"
-            echo "  * All codecs available: AV1, VP9, H.264, JPEG"
-          elif [ "$RUNNER_OS" = "Windows" ]; then
-            echo "  * Audio capture supported via WASAPI loopback"
-            echo "  * H.264 available built-in; VP9/AV1 require vcpkg (best-effort)"
-            echo "  * Remote desktop captures the real Windows session"
-          fi
-          echo ""
-          echo "INSTRUCTIONS"
-          echo "------------"
-          echo "1. Wait for the tunnel URL and pairing code to appear below."
-          echo "2. Open the tunnel URL in your browser."
-          echo "3. Enter the 8-character pairing code when prompted."
-          echo "4. You now have terminal, file browser, and remote desktop access."
-          echo ""
-          echo "TIP: On iOS/Android, use 'Add to Home Screen' to install as a PWA."
-          echo "============================================================"
+          npm install -g oxiremote
+          brew install libvpx aom
 
       - name: Start OxiRemote
         env:
@@ -152,16 +92,16 @@ jobs:
           echo "============================================================"
           echo "  SESSION READY"
           echo "============================================================"
-          echo "  OS           : $RUNNER_OS"
           echo "  Tunnel URL   : $TUNNEL_URL"
           if [ -n "$PAIRING_CODE" ]; then
             echo "  Pairing code : $PAIRING_CODE"
           else
             echo "  Pairing code : (check log above — may use QR / OTK flow)"
           fi
-          echo "  Devices are auto-approved — no host confirmation needed."
-          echo "  Remote desktop codec: ${{ inputs.video_pipeline }}"
-          echo "  Session alive until timeout (${{ inputs.timeout_minutes }} min)."
+          echo "  Pipeline     : ${{ inputs.video_pipeline }}"
+          echo "  Timeout      : ${{ inputs.timeout_minutes }} min"
+          echo "  Audio + all codecs available (ScreenCaptureKit)"
+          echo "  TIP: Add to Home Screen on iOS/Android to install as PWA"
           echo "============================================================"
 
           wait $AGENT_PID
