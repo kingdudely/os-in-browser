@@ -26,286 +26,60 @@ jobs:
     name: Remote Desktop Session
     runs-on: ${{ inputs.os }}
     timeout-minutes: ${{ fromJson(inputs.timeout_minutes) }}
+    defaults:
+      run:
+        shell: bash
 
     steps:
-      - name: Install OxiRemote
-        run: npm install -g oxiremote
-
-      # macOS — VP9/AV1 codecs; H.264 is built-in via VideoToolbox
       - name: Install codec deps (macOS)
         if: runner.os == 'macOS'
         run: brew install libvpx aom
 
-      # Linux — codec libs + virtual display for remote desktop capture
       - name: Install codec deps + Xvfb (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y libvpx-dev libaom-dev xvfb x11vnc openbox
-          # Start a virtual display so the desktop capture crate has a screen to grab
+          sudo apt-get install -y libvpx-dev libaom-dev xvfb openbox
           Xvfb :99 -screen 0 1920x1080x24 &
           echo "DISPLAY=:99" >> $GITHUB_ENV
           openbox &
 
-      # Windows — vcpkg codecs (optional, only needed for VP9/AV1)
-      - name: Install codec deps (Windows)
-        if: runner.os == 'Windows' && (inputs.video_pipeline == 'vp9' || inputs.video_pipeline == 'av1' || inputs.video_pipeline == 'auto')
-        run: |
-          vcpkg install libvpx aom --triplet x64-windows
-        continue-on-error: true   # vcpkg may not be on PATH; H.264 still works without it
-
-      - name: Print session info (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          echo "============================================================"
-          echo "  OxiRemote session starting"
-          echo "  Runner  : ${{ runner.os }} / ${{ runner.arch }}"
-          echo "  Pipeline: ${{ inputs.video_pipeline }}"
-          echo "  Timeout : ${{ inputs.timeout_minutes }} minutes"
-          echo "============================================================"
-          echo ""
-          echo "NOTES FOR THIS OS"
-          echo "-----------------"
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            echo "  * Running on a virtual display (Xvfb :99 @ 1920x1080)"
-            echo "  * Audio capture is NOT supported on Linux (deferred upstream)"
-            echo "  * Best codec on Linux is H.264 or JPEG"
-          fi
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            echo "  * Audio capture supported (SCreenCaptureKit)"
-            echo "  * All codecs available: AV1, VP9, H.264, JPEG"
-          fi
-          echo ""
-          echo "INSTRUCTIONS"
-          echo "------------"
-          echo "1. Wait for the tunnel URL and pairing code to appear below."
-          echo "2. Open the tunnel URL in your browser."
-          echo "3. Enter the 8-character pairing code when prompted."
-          echo "4. You now have terminal, file browser, and remote desktop access."
-          echo ""
-          echo "TIP: On iOS/Android, use 'Add to Home Screen' to install as a PWA."
-          echo "============================================================"
-
-      - name: Print session info (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          Write-Host "============================================================"
-          Write-Host "  OxiRemote session starting"
-          Write-Host "  Runner  : ${{ runner.os }} / ${{ runner.arch }}"
-          Write-Host "  Pipeline: ${{ inputs.video_pipeline }}"
-          Write-Host "  Timeout : ${{ inputs.timeout_minutes }} minutes"
-          Write-Host "============================================================"
-          Write-Host ""
-          Write-Host "NOTES FOR THIS OS"
-          Write-Host "-----------------"
-          Write-Host "  * Audio capture supported via WASAPI loopback"
-          Write-Host "  * H.264 available built-in; VP9/AV1 require vcpkg (best-effort)"
-          Write-Host "  * Remote desktop captures the real Windows session"
-          Write-Host ""
-          Write-Host "INSTRUCTIONS"
-          Write-Host "------------"
-          Write-Host "1. Wait for the tunnel URL and pairing code to appear below."
-          Write-Host "2. Open the tunnel URL in your browser."
-          Write-Host "3. Enter the 8-character pairing code when prompted."
-          Write-Host "4. You now have terminal, file browser, and remote desktop access."
-          Write-Host ""
-          Write-Host "TIP: On iOS/Android, use 'Add to Home Screen' to install as a PWA."
-          Write-Host "============================================================"
-        shell: pwsh
-
-      # -----------------------------------------------------------------------
-      # macOS / Linux — bash agent loop
-      # -----------------------------------------------------------------------
-      - name: Start OxiRemote (Unix)
-        if: runner.os != 'Windows'
+      - name: Start OxiRemote
         env:
           OXI_HEADLESS: "1"
           OXI_SECURE_COOKIES: "1"
           OXI_VIDEO_PIPELINE: ${{ inputs.video_pipeline }}
-          # OXI_WORKSPACE: ${{ github.workspace }}
         run: |
-          oxiremote --auto 2>&1 | tee /tmp/oxiremote.log &
-          AGENT_PID=$!
+          npx oxiremote --auto > /tmp/oxiremote.log 2>&1 &
 
-          echo "Agent PID: $AGENT_PID"
-          echo ""
+          # Wait for HTTP server
+          echo "Waiting for agent..."
+          until curl -sf http://127.0.0.1:8787/api/health > /dev/null; do sleep 2; done
 
-          # ----------------------------------------------------------------
-          # Wait for the agent's local HTTP server to be ready
-          # ----------------------------------------------------------------
-          echo "Waiting for agent to be ready..."
-          for i in $(seq 1 30); do
-            curl -sf http://127.0.0.1:8787/api/health > /dev/null 2>&1 && break
-            sleep 2
-          done
-
-          # ----------------------------------------------------------------
-          # Enable auto-approve so connecting devices don't need host approval
-          # This hits the localhost-only operator control plane (/api/agent/*)
-          # ----------------------------------------------------------------
-          echo "Enabling auto-approve..."
+          # Enable auto-approve
           curl -sf -X POST http://127.0.0.1:8787/api/agent/settings \
             -H 'Content-Type: application/json' \
-            -d '{"auto_approve": true}' \
-            && echo "auto_approve enabled" \
-            || echo "WARNING: Could not set auto_approve — devices may need manual approval"
+            -d '{"auto_approve": true}'
 
-          # ----------------------------------------------------------------
           # Wait for tunnel URL
-          # ----------------------------------------------------------------
           echo "Waiting for tunnel URL..."
-          TUNNEL_URL=""
-          for i in $(seq 1 60); do
-            TUNNEL_URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/oxiremote.log | head -1)
-            [ -n "$TUNNEL_URL" ] && break
+          until TUNNEL_URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/oxiremote.log | head -1) && [ -n "$TUNNEL_URL" ]; do
             sleep 2
           done
 
-          if [ -z "$TUNNEL_URL" ]; then
-            echo "ERROR: Tunnel URL not found after 120 s. Dumping agent log:"
-            cat /tmp/oxiremote.log
-            exit 1
-          fi
-
-          # ----------------------------------------------------------------
           # Wait for pairing code
-          # ----------------------------------------------------------------
           echo "Waiting for pairing code..."
-          PAIRING_CODE=""
-          for i in $(seq 1 30); do
-            PAIRING_CODE=$(grep -oiE 'pairing code[: ]+([A-Z0-9]{8})' /tmp/oxiremote.log \
-                           | grep -oE '[A-Z0-9]{8}' | head -1)
-            [ -n "$PAIRING_CODE" ] && break
+          until PAIRING_CODE=$(grep -oiE 'pairing code[: ]+([A-Z0-9]{8})' /tmp/oxiremote.log | grep -oE '[A-Z0-9]{8}' | head -1) && [ -n "$PAIRING_CODE" ]; do
             sleep 2
           done
 
           echo ""
           echo "============================================================"
           echo "  SESSION READY"
-          echo "============================================================"
-          echo ""
-          echo "  OS           : $RUNNER_OS"
-          echo "  Tunnel URL   : $TUNNEL_URL"
-          if [ -n "$PAIRING_CODE" ]; then
-            echo "  Pairing code : $PAIRING_CODE"
-          else
-            echo "  Pairing code : (check log above — may use QR / OTK flow)"
-          fi
-          echo ""
-          echo "  Open the URL in your browser and enter the pairing code."
-          echo "  Devices are auto-approved — no host confirmation needed."
-          echo "  Remote desktop codec: ${{ inputs.video_pipeline }}"
-          echo ""
-          echo "  Session alive until timeout (${{ inputs.timeout_minutes }} min)."
+          echo "  OS      : $RUNNER_OS"
+          echo "  URL     : $TUNNEL_URL"
+          echo "  PAIRING : $PAIRING_CODE"
+          echo "  CODEC   : ${{ inputs.video_pipeline }}"
           echo "============================================================"
 
-          wait $AGENT_PID
-
-      # -----------------------------------------------------------------------
-      # Windows — PowerShell agent loop
-      # -----------------------------------------------------------------------
-      - name: Start OxiRemote (Windows)
-        if: runner.os == 'Windows'
-        env:
-          OXI_HEADLESS: "1"
-          OXI_SECURE_COOKIES: "1"
-          OXI_VIDEO_PIPELINE: ${{ inputs.video_pipeline }}
-          # OXI_WORKSPACE: ${{ github.workspace }}
-        shell: pwsh
-        run: |
-          $logFile = "$env:TEMP\oxiremote.log"
-
-          # Start agent, redirect output to log file
-          $proc = Start-Process oxiremote `
-            -ArgumentList "--auto" `
-            -RedirectStandardOutput $logFile `
-            -RedirectStandardError "$env:TEMP\oxiremote-err.log" `
-            -PassThru -NoNewWindow
-          Write-Host "Agent PID: $($proc.Id)"
-
-          # Merge stderr into the same log after a moment
-          Start-Job {
-            param($err, $log)
-            Get-Content $err -Wait | Add-Content $log
-          } -ArgumentList "$env:TEMP\oxiremote-err.log", $logFile | Out-Null
-
-          # Wait for agent local HTTP server to be ready
-          Write-Host "Waiting for agent to be ready..."
-          for ($i = 0; $i -lt 30; $i++) {
-            try {
-              Invoke-WebRequest -Uri "http://127.0.0.1:8787/api/health" -UseBasicParsing -ErrorAction Stop | Out-Null
-              break
-            } catch { Start-Sleep -Seconds 2 }
-          }
-
-          # Enable auto-approve via localhost operator API
-          Write-Host "Enabling auto-approve..."
-          try {
-            Invoke-WebRequest -Uri "http://127.0.0.1:8787/api/agent/settings" `
-              -Method POST `
-              -ContentType "application/json" `
-              -Body '{"auto_approve": true}' `
-              -UseBasicParsing -ErrorAction Stop | Out-Null
-            Write-Host "auto_approve enabled"
-          } catch {
-            Write-Host "WARNING: Could not set auto_approve — devices may need manual approval"
-          }
-
-          # Wait for tunnel URL
-          Write-Host "Waiting for tunnel URL..." 
-          $tunnelUrl = ""
-          for ($i = 0; $i -lt 60; $i++) {
-            if (Test-Path $logFile) {
-              $tunnelUrl = Select-String `
-                -Path $logFile `
-                -Pattern 'https://[a-z0-9-]+\.trycloudflare\.com' |
-                ForEach-Object { $_.Matches[0].Value } |
-                Select-Object -First 1
-            }
-            if ($tunnelUrl) { break }
-            Start-Sleep -Seconds 2
-          }
-
-          if (-not $tunnelUrl) {
-            Write-Host "ERROR: Tunnel URL not found after 120 s. Dumping agent log:"
-            Get-Content $logFile -ErrorAction SilentlyContinue
-            exit 1
-          }
-
-          # Wait for pairing code
-          Write-Host "Waiting for pairing code..."
-          $pairingCode = ""
-          for ($i = 0; $i -lt 30; $i++) {
-            if (Test-Path $logFile) {
-              $pairingCode = Select-String `
-                -Path $logFile `
-                -Pattern 'pairing code[: ]+([A-Z0-9]{8})' -CaseSensitive:$false |
-                ForEach-Object { $_.Matches[0].Groups[1].Value } |
-                Select-Object -First 1
-            }
-            if ($pairingCode) { break }
-            Start-Sleep -Seconds 2
-          }
-
-          Write-Host ""
-          Write-Host "============================================================"
-          Write-Host "  SESSION READY"
-          Write-Host "============================================================"
-          Write-Host ""
-          Write-Host "  OS           : Windows"
-          Write-Host "  Tunnel URL   : $tunnelUrl"
-          if ($pairingCode) {
-            Write-Host "  Pairing code : $pairingCode"
-          } else {
-            Write-Host "  Pairing code : (check log above — may use QR / OTK flow)"
-          }
-          Write-Host ""
-          Write-Host "  Open the URL in your browser and enter the pairing code."
-          Write-Host "  Devices are auto-approved — no host confirmation needed."
-          Write-Host "  Remote desktop codec: ${{ inputs.video_pipeline }}"
-          Write-Host ""
-          Write-Host "  Session alive until timeout (${{ inputs.timeout_minutes }} min)."
-          Write-Host "============================================================"
-
-          # Keep alive until timeout
-          $proc.WaitForExit()
+          sleep 21600
