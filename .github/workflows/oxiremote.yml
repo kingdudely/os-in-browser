@@ -22,36 +22,33 @@ jobs:
 
     steps:
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@latest
         with:
           node-version: latest
 
-      - name: Setup macOS
+      - name: Install MacOS packages
         if: runner.os == 'macOS'
         run: brew install libvpx aom wget sqlite
 
-      - name: Setup Linux
+      - name: Install Linux packages
+        if: runner.os == 'Linux'
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: xvfb lxqt openbox dbus-x11 libvpx-dev libaom-dev curl wget sqlite3
+          version: 1.0
+
+      - name: Setup Linux desktop
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update && sudo apt-get install --no-install-recommends -y \
-            xvfb \
-            lxqt \
-            openbox \
-            dbus-x11 \
-            libvpx-dev \
-            libaom-dev \
-            curl \
-            wget \
-            sqlite3
           Xvfb :67 -screen 0 1920x1080x24 &
           echo "DISPLAY=:67" >> $GITHUB_ENV
           startlxqt &
 
-      - name: Setup Windows
+      - name: Install Windows packages
         if: runner.os == 'Windows'
         run: choco install wget sqlite -y
 
-      - name: Pre-seed database
+      - name: Enable auto-approve
         run: |
           mkdir -p ~/.oxiremote
           sqlite3 ~/.oxiremote/oxiremote.sqlite \
