@@ -3,9 +3,6 @@ name: macOS Browser Remote Desktop
 on:
   workflow_dispatch:
     inputs:
-      vnc_user_password:
-        description: 'VNC user password'
-        required: true
       vnc_password:
         description: 'VNC password (max 8 chars)'
         required: true
@@ -16,19 +13,8 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Create VNC user & enable Apple VNC
+      - name: Enable Apple VNC
         run: |
-          if ! id -u vncuser &>/dev/null; then
-            sudo dscl . -create /Users/vncuser
-            sudo dscl . -create /Users/vncuser UserShell /bin/bash
-            sudo dscl . -create /Users/vncuser RealName "VNC User"
-            sudo dscl . -create /Users/vncuser UniqueID 1001
-            sudo dscl . -create /Users/vncuser PrimaryGroupID 80
-            sudo dscl . -create /Users/vncuser NFSHomeDirectory /Users/vncuser
-            sudo createhomedir -c -u vncuser &>/dev/null
-          fi
-          sudo dscl . -passwd /Users/vncuser "${{ inputs.vnc_user_password }}"
-
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -configure -allowAccessFor -allUsers -privs -all
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
@@ -41,62 +27,32 @@ jobs:
             @p = unpack "C*", $_;
             foreach (@k) { printf "%02X", $_ ^ (shift @p || 0) }
             print "\n";
-          ' | sudo tee /Library/Preferences/com.apple.VNCSettings.txt &>/dev/null
+          ' | sudo tee /Library/Preferences/com.apple.VNCSettings.txt
 
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -restart -agent -console
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -activate
 
-      - name: Set up Docker
-        uses: docker/setup-docker-action@master
-
-      - name: Start Guacamole
+      - name: Start novnc-webrtc
         run: |
-          docker rm -f guacd guacamole 2>/dev/null || true
-
-          docker run -d --name guacd guacamole/guacd
-
-          mkdir -p "$HOME/.guacamole"
-          cat > "$HOME/.guacamole/user-mapping.xml" <<XML
-          <user-mapping>
-            <authorize username="guacadmin" password="guacadmin">
-              <connection name="macOS VNC">
-                <protocol>vnc</protocol>
-                <param name="hostname">host.docker.internal</param>
-                <param name="port">5900</param>
-                <param name="password">${{ inputs.vnc_password }}</param>
-              </connection>
-            </authorize>
-          </user-mapping>
-          XML
-
-          docker run -d --name guacamole \
-            --link guacd:guacd \
-            -e GUACD_HOSTNAME=guacd \
-            -e GUACD_PORT=4822 \
-            -e GUACAMOLE_HOME=/etc/guacamole \
-            -v "$HOME/.guacamole:/etc/guacamole:ro" \
-            -p 8080:8080 \
-            guacamole/guacamole
-
-          echo "Waiting for Guacamole..."
-          wget --retry-connrefused --tries=0 --waitretry=3 --spider -q http://127.0.0.1:8080/guacamole/
+          curl -L https://github.com/ngxson/novnc-webrtc/releases/latest/download/novnc-webrtc-macos-arm64 \
+            -o novnc-webrtc
+          chmod +x novnc-webrtc
+          ./novnc-webrtc --listen "0.0.0.0:6901" --upstream "127.0.0.1:5900" &
+          sleep 2
 
       - name: Establish tunnel
         id: tunnel
         uses: anyvm-org/cf-tunnel@v0
         with:
           protocol: http
-          port: 8080
+          port: 6901
 
       - name: Print access details
         run: |
-          echo "══════════════════════════════════════════════"
-          echo "  Open : https://${{ steps.tunnel.outputs.server }}/guacamole/"
-          echo "  User : guacadmin"
-          echo "  Pass : guacadmin"
-          echo "══════════════════════════════════════════════"
+          echo "Open: https://${{ steps.tunnel.outputs.server }}"
+          echo "Password: your VNC password"
 
       - name: Keep alive
         run: sleep 21600
