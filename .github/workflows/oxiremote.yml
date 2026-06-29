@@ -15,7 +15,12 @@ jobs:
       - name: Start OxiRemote
         env:
           OXI_HEADLESS: "1"
-          OXI_SECURE_COOKIES: "1"
+          OXI_SECURE_COOKIES: ""
           OXI_VIDEO_PIPELINE: "auto"
         run: |
-          npx oxiremote --auto
+          # Pre-seed auto_approve so pairing doesn't need manual approval
+          mkdir -p ~/.oxiremote
+          sqlite3 ~/.oxiremote/oxiremote.sqlite \
+            "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT); \
+            INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_approve', 'true');"
+          npx oxiremote --auto &
