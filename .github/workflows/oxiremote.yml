@@ -25,11 +25,11 @@ jobs:
           OXI_SECURE_COOKIES: ""
           OXI_VIDEO_PIPELINE: "auto"
         run: |
-          npx oxiremote --auto &
+          npx oxiremote --auto > /dev/null 2>&1 &
           wget -q --spider --retry-connrefused --waitretry=1 --timeout=5 -t 0 http://127.0.0.1:8787/api/health
 
           PAIRING_CODE=$(sqlite3 ~/.oxiremote/oxiremote.sqlite \
             "SELECT code FROM pairing_codes WHERE used_at IS NULL AND expires_at > strftime('%s','now') ORDER BY expires_at DESC LIMIT 1;")
-          echo "Pairing code: $PAIRING_CODE"
+          echo "URL: https://remote.erai.dev/login?k=${PAIRING_CODE}"
 
           wait
