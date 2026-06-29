@@ -25,19 +25,16 @@ jobs:
           OXI_SECURE_COOKIES: ""
           OXI_VIDEO_PIPELINE: "auto"
         run: |
-          npx oxiremote --auto > /tmp/oxiremote.log 2>&1 &
+          npx oxiremote --auto > /dev/null 2>&1 &
           wget -q --spider --retry-connrefused --waitretry=1 --timeout=5 -t 0 http://127.0.0.1:8787/api/health
 
           while true; do
-            LOG=$(sed 's/\x1b\[[0-9;]*m//g' /tmp/oxiremote.log)
-
-            PAIRING_CODE=$(echo "${LOG}" | grep -oE 'pairing_code=[A-Z0-9]+' | head -1 | cut -d= -f2)
-            TUNNEL_URL=$(echo "${LOG}" | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | head -1)
-            if [ -n "$TUNNEL_URL" ] && [ -n "$PAIRING_CODE" ]; then
-              echo "Tunnel URL: $TUNNEL_URL"
+            PAIRING_CODE=$(sed -nE 's/.*pairing_code=([A-Z0-9]+).*/\1/p' "${HOME}/.oxiremote/logs/agent.log" | head -1)
+            if [ -n "$PAIRING_CODE" ]; then
               echo "Pairing code: $PAIRING_CODE"
               break
             fi
+
             sleep 1
           done
 
