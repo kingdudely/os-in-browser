@@ -21,69 +21,139 @@ on:
         required: false
         default: "auto"
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   remote-session:
     name: Remote Desktop Session
     runs-on: ${{ inputs.os }}
     timeout-minutes: ${{ fromJson(inputs.timeout_minutes) }}
-    defaults:
-      run:
-        shell: bash
 
     steps:
-      - name: Install codec deps (macOS)
-        if: runner.os == 'macOS'
-        run: brew install libvpx aom
+      - name: Install OxiRemote
+        run: npm install -g oxiremote
 
-      - name: Install codec deps + Xvfb (Linux)
-        if: runner.os == 'Linux'
+      - name: Install codec deps
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y libvpx-dev libaom-dev xvfb openbox
-          Xvfb :99 -screen 0 1920x1080x24 &
-          echo "DISPLAY=:99" >> $GITHUB_ENV
-          openbox &
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            brew install libvpx aom
+
+          elif [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y libvpx-dev libaom-dev xvfb x11vnc openbox
+            Xvfb :99 -screen 0 1920x1080x24 &
+            echo "DISPLAY=:99" >> $GITHUB_ENV
+            openbox &
+
+          elif [ "$RUNNER_OS" = "Windows" ]; then
+            PIPELINE="${{ inputs.video_pipeline }}"
+            if [[ "$PIPELINE" == "vp9" || "$PIPELINE" == "av1" || "$PIPELINE" == "auto" ]]; then
+              vcpkg install libvpx aom --triplet x64-windows || true
+            fi
+          fi
+
+      - name: Print session info
+        run: |
+          echo "============================================================"
+          echo "  OxiRemote session starting"
+          echo "  Runner  : $RUNNER_OS / $RUNNER_ARCH"
+          echo "  Pipeline: ${{ inputs.video_pipeline }}"
+          echo "  Timeout : ${{ inputs.timeout_minutes }} minutes"
+          echo "============================================================"
+          echo ""
+          echo "NOTES FOR THIS OS"
+          echo "-----------------"
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            echo "  * Running on a virtual display (Xvfb :99 @ 1920x1080)"
+            echo "  * Audio capture is NOT supported on Linux (deferred upstream)"
+            echo "  * Best codec on Linux is H.264 or JPEG"
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            echo "  * Audio capture supported (ScreenCaptureKit)"
+            echo "  * All codecs available: AV1, VP9, H.264, JPEG"
+          elif [ "$RUNNER_OS" = "Windows" ]; then
+            echo "  * Audio capture supported via WASAPI loopback"
+            echo "  * H.264 available built-in; VP9/AV1 require vcpkg (best-effort)"
+            echo "  * Remote desktop captures the real Windows session"
+          fi
+          echo ""
+          echo "INSTRUCTIONS"
+          echo "------------"
+          echo "1. Wait for the tunnel URL and pairing code to appear below."
+          echo "2. Open the tunnel URL in your browser."
+          echo "3. Enter the 8-character pairing code when prompted."
+          echo "4. You now have terminal, file browser, and remote desktop access."
+          echo ""
+          echo "TIP: On iOS/Android, use 'Add to Home Screen' to install as a PWA."
+          echo "============================================================"
 
       - name: Start OxiRemote
         env:
           OXI_HEADLESS: "1"
           OXI_SECURE_COOKIES: "1"
           OXI_VIDEO_PIPELINE: ${{ inputs.video_pipeline }}
+          # OXI_WORKSPACE: ${{ github.workspace }}
         run: |
-          npx oxiremote --auto > /tmp/oxiremote.log 2>&1 &
+          LOG=/tmp/oxiremote.log
+          oxiremote --auto >"$LOG" 2>&1 &
+          AGENT_PID=$!
+          echo "Agent PID: $AGENT_PID"
 
-          # Wait for HTTP server (up to 60 s)
-          echo "Waiting for agent..."
+          echo "Waiting for agent to be ready..."
           for i in $(seq 1 30); do
-            curl -sf http://127.0.0.1:8787/api/health > /dev/null 2>&1 && break
-            [ $i -eq 30 ] && { echo "Agent failed to start. Log:"; cat /tmp/oxiremote.log; exit 1; }
+            curl -sf http://127.0.0.1:8787/api/health >/dev/null 2>&1 && break
             sleep 2
           done
 
-          # Enable auto-approve
+          echo "Enabling auto-approve..."
           curl -sf -X POST http://127.0.0.1:8787/api/agent/settings \
             -H 'Content-Type: application/json' \
-            -d '{"auto_approve": true}'
+            -d '{"auto_approve": true}' \
+            && echo "auto_approve enabled" \
+            || echo "WARNING: Could not set auto_approve — devices may need manual approval"
 
-          # Wait for tunnel URL
           echo "Waiting for tunnel URL..."
-          until TUNNEL_URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/oxiremote.log | head -1) && [ -n "$TUNNEL_URL" ]; do
+          TUNNEL_URL=""
+          for i in $(seq 1 60); do
+            TUNNEL_URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG" | head -1)
+            [ -n "$TUNNEL_URL" ] && break
             sleep 2
           done
 
-          # Wait for pairing code
+          if [ -z "$TUNNEL_URL" ]; then
+            echo "ERROR: Tunnel URL not found after 120 s. Dumping agent log:"
+            cat "$LOG"
+            exit 1
+          fi
+
           echo "Waiting for pairing code..."
-          until PAIRING_CODE=$(grep -oiE 'pairing code[: ]+([A-Z0-9]{8})' /tmp/oxiremote.log | grep -oE '[A-Z0-9]{8}' | head -1) && [ -n "$PAIRING_CODE" ]; do
+          PAIRING_CODE=""
+          for i in $(seq 1 30); do
+            PAIRING_CODE=$(grep -oiE 'pairing code[: ]+([A-Z0-9]{8})' "$LOG" \
+                           | grep -oE '[A-Z0-9]{8}' | head -1)
+            [ -n "$PAIRING_CODE" ] && break
             sleep 2
           done
 
           echo ""
           echo "============================================================"
           echo "  SESSION READY"
-          echo "  OS      : $RUNNER_OS"
-          echo "  URL     : $TUNNEL_URL"
-          echo "  PAIRING : $PAIRING_CODE"
-          echo "  CODEC   : ${{ inputs.video_pipeline }}"
+          echo "============================================================"
+          echo ""
+          echo "  OS           : $RUNNER_OS"
+          echo "  Tunnel URL   : $TUNNEL_URL"
+          if [ -n "$PAIRING_CODE" ]; then
+            echo "  Pairing code : $PAIRING_CODE"
+          else
+            echo "  Pairing code : (check log above — may use QR / OTK flow)"
+          fi
+          echo ""
+          echo "  Open the URL in your browser and enter the pairing code."
+          echo "  Devices are auto-approved — no host confirmation needed."
+          echo "  Remote desktop codec: ${{ inputs.video_pipeline }}"
+          echo ""
+          echo "  Session alive until timeout (${{ inputs.timeout_minutes }} min)."
           echo "============================================================"
 
-          sleep 21600
+          wait $AGENT_PID
