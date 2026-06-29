@@ -12,15 +12,27 @@ jobs:
       - name: Install codec deps
         run: brew install libvpx aom
 
+      - name: Pre-seed database
+        run: |
+          mkdir -p ~/.oxiremote
+          sqlite3 ~/.oxiremote/oxiremote.sqlite \
+            "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL); \
+             INSERT INTO settings(key, value) VALUES ('auto_approve', 'true');"
+
       - name: Start OxiRemote
         env:
           OXI_HEADLESS: "1"
           OXI_SECURE_COOKIES: ""
           OXI_VIDEO_PIPELINE: "auto"
+        run: npx oxiremote --auto &
+
+      - name: Wait for agent
         run: |
-          # Pre-seed auto_approve so pairing doesn't need manual approval
-          mkdir -p ~/.oxiremote
-          sqlite3 ~/.oxiremote/oxiremote.sqlite \
-            "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT); \
-            INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_approve', 'true');"
-          npx oxiremote --auto
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8787/api/health && echo "Agent ready" && break
+            echo "Waiting... ($i)"
+            sleep 2
+          done
+
+      - name: Keep session alive
+        run: sleep 21600  # 6 hours
