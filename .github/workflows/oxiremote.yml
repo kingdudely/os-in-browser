@@ -36,7 +36,7 @@ jobs:
               echo "Pairing code: $PAIRING_CODE"
               break
             fi
-            ls ~/.oxiremote
+            cat ~/.oxiremote/logs
             sleep 1
           done
 
