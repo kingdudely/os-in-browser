@@ -40,8 +40,7 @@ jobs:
 
       - name: Start novnc
         run: |
-          pip3 install websockify
-          git clone --depth 1 https://github.com/novnc/noVNC
+          git clone https://github.com/novnc/noVNC.git
           ./noVNC/utils/novnc_proxy --vnc localhost:5900 --listen 6901 &
 
       - name: Establish tunnel
