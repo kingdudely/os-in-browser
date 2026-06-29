@@ -27,22 +27,6 @@ jobs:
         run: |
           npx oxiremote --auto > /dev/null 2>&1 &
           wget -q --spider --retry-connrefused --waitretry=1 --timeout=5 -t 0 http://127.0.0.1:8787/api/health
-
-          while true; do # http://127.0.0.1:8787/api/agent/state
-            LOG=$(sed 's/\x1b\[[0-9;]*m//g' ~/.oxiremote/logs/agent.log)
-
-            # PAIRING_CODE=$(echo "${LOG}" | grep -oE 'pairing_code=[A-Z0-9]+' | head -1 | cut -d= -f2)
-            TUNNEL_URL=$(echo "${LOG}" | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | head -1)
-            if [ -n "$TUNNEL_URL" ]; then # && [ -n "$PAIRING_CODE" ]; 
-              OTK=$(curl -s -X POST http://127.0.0.1:8787/api/agent/keys/one-time | grep -oE '"token":"[^"]+' | cut -d'"' -f4)
-              echo "Login URL: $TUNNEL_URL/login?k=$OTK"
-
-              # echo "Tunnel URL: $TUNNEL_URL"
-              # echo "Pairing code: $PAIRING_CODE"
-              break
-            fi
-            sleep 1
-          done
-
-          
+          OTK=$(curl -s -X POST http://127.0.0.1:8787/api/agent/keys/one-time | grep -oE '"token":"[^"]+' | cut -d'"' -f4)
+          echo "https://remote.erai.dev/login?k=${OTK}"
           wait
