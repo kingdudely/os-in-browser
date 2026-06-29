@@ -36,13 +36,14 @@ jobs:
         if: runner.os == 'Linux'
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
-          packages: "xvfb lxqt openbox dbus-x11 libvpx-dev libaom-dev curl sqlite3 libxdo3"
+          packages: "xvfb lxqt openbox dbus-x11 x11-utils libvpx-dev libaom-dev curl sqlite3 libxdo3"
           version: "1.0"
 
       - name: Setup Linux desktop
         if: runner.os == 'Linux'
         run: |
           Xvfb "${DISPLAY}" -screen 0 1920x1080x24 &
+          until xdpyinfo -display "${DISPLAY}" >/dev/null 2>&1; do sleep 0.67; done
           startlxqt &
 
       - name: Install Windows packages
