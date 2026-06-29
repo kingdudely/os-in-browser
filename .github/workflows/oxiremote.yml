@@ -2,137 +2,20 @@ name: OxiRemote Session
 
 on:
   workflow_dispatch:
-    inputs:
-      timeout_minutes:
-        description: "How long to keep the session alive (minutes)"
-        required: false
-        default: "60"
-      video_pipeline:
-        description: "Video pipeline (auto | h264 | vp9 | av1 | jpeg)"
-        required: false
-        default: "auto"
 
 jobs:
   remote-session:
-    name: Remote Desktop Session
-    runs-on: macos-latest   # change to ubuntu-latest for Linux (no audio, JPEG-only)
-    timeout-minutes: ${{ fromJson(inputs.timeout_minutes) }}
+    runs-on: macos-latest
+    timeout-minutes: 360
 
     steps:
-      - name: Install OxiRemote
-        run: npm install -g oxiremote
-
-      # macOS only – VP9 / AV1 need these; H.264 is built-in via VideoToolbox
-      - name: Install codec deps (macOS)
-        if: runner.os == 'macOS'
+      - name: Install codec deps
         run: brew install libvpx aom
 
-      - name: Print session info
-        run: |
-          echo "============================================================"
-          echo "  OxiRemote session starting"
-          echo "  Runner  : ${{ runner.os }} / ${{ runner.arch }}"
-          echo "  Pipeline: ${{ inputs.video_pipeline }}"
-          echo "  Timeout : ${{ inputs.timeout_minutes }} minutes"
-          echo "============================================================"
-          echo ""
-          echo "INSTRUCTIONS"
-          echo "------------"
-          echo "1. Wait for the tunnel URL and pairing code to appear below."
-          echo "2. Open the tunnel URL in your browser."
-          echo "3. Enter the 8-character pairing code when prompted."
-          echo "4. You now have terminal, file browser, and remote desktop access."
-          echo ""
-          echo "TIP: On iOS/Android, use 'Add to Home Screen' to install as a PWA."
-          echo "============================================================"
-
-      - name: Start OxiRemote (headless)
+      - name: Start OxiRemote
         env:
           OXI_HEADLESS: "1"
           OXI_SECURE_COOKIES: "1"
-          OXI_VIDEO_PIPELINE: ${{ inputs.video_pipeline }}
-          # Uncomment to pin the workspace root shown in the file browser:
-          # OXI_WORKSPACE: ${{ github.workspace }}
+          OXI_VIDEO_PIPELINE: "autp"
         run: |
-          # Run oxiremote in the background, tee output so we can scrape it
-          oxiremote --auto 2>&1 | tee /tmp/oxiremote.log &
-          AGENT_PID=$!
-
-          echo "Agent PID: $AGENT_PID"
-          echo ""
-
-          # ----------------------------------------------------------------
-          # Wait for the tunnel URL (one-shot, printed once to stderr/stdout)
-          # ----------------------------------------------------------------
-          echo "Waiting for tunnel URL..."
-          TUNNEL_URL=""
-          for i in $(seq 1 60); do
-            TUNNEL_URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/oxiremote.log | head -1)
-            if [ -n "$TUNNEL_URL" ]; then
-              break
-            fi
-            sleep 2
-          done
-
-          if [ -z "$TUNNEL_URL" ]; then
-            echo "ERROR: Tunnel URL not found after 120 s. Dumping agent log:"
-            cat /tmp/oxiremote.log
-            exit 1
-          fi
-
-          # ----------------------------------------------------------------
-          # Wait for the pairing code (8 hex/alphanum chars)
-          # ----------------------------------------------------------------
-          echo "Waiting for pairing code..."
-          PAIRING_CODE=""
-          for i in $(seq 1 30); do
-            PAIRING_CODE=$(grep -oiE 'pairing code[: ]+([A-Z0-9]{8})' /tmp/oxiremote.log \
-                           | grep -oE '[A-Z0-9]{8}' | head -1)
-            if [ -n "$PAIRING_CODE" ]; then
-              break
-            fi
-            sleep 2
-          done
-
-          echo ""
-          echo "============================================================"
-          echo "  SESSION READY"
-          echo "============================================================"
-          echo ""
-          echo "  Tunnel URL   : $TUNNEL_URL"
-          if [ -n "$PAIRING_CODE" ]; then
-            echo "  Pairing code : $PAIRING_CODE"
-          else
-            echo "  Pairing code : (check the log lines above — may use a QR / OTK flow)"
-          fi
-          echo ""
-          echo "  Open the URL in your browser and enter the pairing code."
-          echo "  Remote desktop codec will negotiate: ${{ inputs.video_pipeline }}"
-          echo ""
-          echo "  Session will stay alive until this job times out"
-          echo "  (${{ inputs.timeout_minutes }} minutes from start)."
-          echo "============================================================"
-
-          # ----------------------------------------------------------------
-          # Enable auto-approve so devices don't get stuck in pending state
-          # Give the agent a moment to fully initialize before hitting the API
-          # ----------------------------------------------------------------
-          echo ""
-          echo "Enabling auto-approve..."
-          sleep 5
-          echo "--- curl response from /api/agent/settings ---"
-          curl -v -X POST http://127.0.0.1:8787/api/agent/settings \
-            -H "Content-Type: application/json" \
-            -d '{"auto_approve": true}'
-          echo ""
-          echo "--- end curl response ---"
-
-          # Also approve any devices already sitting in pending state
-          echo "Checking for pending devices..."
-          curl -v http://127.0.0.1:8787/api/agent/devices/pending
-          echo ""
-
-          # ----------------------------------------------------------------
-          # Keep the job alive until GitHub kills it at timeout
-          # ----------------------------------------------------------------
-          wait $AGENT_PID
+          npx oxiremote --auto
