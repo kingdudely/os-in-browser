@@ -61,7 +61,7 @@ jobs:
           OXI_SECURE_COOKIES: ""
           OXI_VIDEO_PIPELINE: "auto"
         run: |
-          npx oxiremote --auto > /dev/null 2>&1 &
+          npx oxiremote --auto > /tmp/oxiremote.log 2>&1 &
           until curl -f http://127.0.0.1:8787/api/health; do
             if ! kill -0 $! 2>/dev/null; then
               echo "=== oxiremote crashed ===" && cat /tmp/oxiremote.log && exit 1
