@@ -23,4 +23,4 @@ jobs:
           sqlite3 ~/.oxiremote/oxiremote.sqlite \
             "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT); \
             INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_approve', 'true');"
-          npx oxiremote --auto &
+          npx oxiremote --auto
