@@ -30,6 +30,7 @@ jobs:
 
           PAIRING_CODE=$(sqlite3 ~/.oxiremote/oxiremote.sqlite \
             "SELECT code FROM pairing_codes WHERE used_at IS NULL AND expires_at > strftime('%s','now') ORDER BY expires_at DESC LIMIT 1;")
-          echo "URL: https://remote.erai.dev/login?k=${PAIRING_CODE}"
+          echo "Pairing code: $PAIRING_CODE"
+          echo "Log in URL: https://remote.erai.dev/login"
 
           wait
