@@ -38,13 +38,11 @@ jobs:
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -activate
 
-      - name: Start novnc-webrtc
+      - name: Start novnc
         run: |
-          curl -L https://github.com/ngxson/novnc-webrtc/releases/latest/download/novnc-webrtc-macos-arm64 \
-            -o novnc-webrtc
-          chmod +x novnc-webrtc
-          ./novnc-webrtc --listen "0.0.0.0:6901" --upstream "127.0.0.1:5900" &
-          sleep 2
+          pip3 install websockify
+          git clone --depth 1 https://github.com/novnc/noVNC
+          ./noVNC/utils/novnc_proxy --vnc localhost:5900 --listen 6901 &
 
       - name: Establish tunnel
         id: tunnel
@@ -53,10 +51,9 @@ jobs:
           protocol: http
           port: 6901
 
-      - name: Print access details
+      - name: URL
         run: |
-          echo "Open: https://${{ steps.tunnel.outputs.server }}"
-          echo "Password: your VNC password"
+          echo "::notice title=Remote Desktop URL::https://${{ steps.tunnel.outputs.server }}"
 
       - name: Keep alive
         run: sleep 21600
