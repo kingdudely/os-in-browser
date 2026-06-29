@@ -28,13 +28,13 @@ jobs:
 
       - name: Install MacOS packages
         if: runner.os == 'macOS'
-        run: brew install libvpx aom wget sqlite
+        run: brew install libvpx aom curl sqlite
 
       - name: Install Linux packages
         if: runner.os == 'Linux'
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
-          packages: "xvfb lxqt openbox dbus-x11 libvpx-dev libaom-dev curl wget sqlite3"
+          packages: "xvfb lxqt openbox dbus-x11 libvpx-dev libaom-dev curl curl sqlite3"
           version: "1.0"
 
       - name: Setup Linux desktop
@@ -46,7 +46,7 @@ jobs:
 
       - name: Install Windows packages
         if: runner.os == 'Windows'
-        run: choco install wget sqlite -y
+        run: choco install curl sqlite -y
 
       - name: Enable auto-approve
         run: |
@@ -62,7 +62,12 @@ jobs:
           OXI_VIDEO_PIPELINE: "auto"
         run: |
           npx oxiremote --auto > /dev/null 2>&1 &
-          wget -q --spider --retry-connrefused --waitretry=1 --timeout=5 -t 0 http://127.0.0.1:8787/api/health
+          until curl -f http://127.0.0.1:8787/api/health; do
+            if ! kill -0 $! 2>/dev/null; then
+              echo "=== oxiremote crashed ===" && cat /tmp/oxiremote.log && exit 1
+            fi
+            sleep 1
+          done
 
           PAIRING_CODE=$(sqlite3 ~/.oxiremote/oxiremote.sqlite \
             "SELECT code FROM pairing_codes WHERE used_at IS NULL AND expires_at > strftime('%s','now') ORDER BY expires_at DESC LIMIT 1;")
