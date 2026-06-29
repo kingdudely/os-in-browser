@@ -52,9 +52,13 @@ jobs:
         run: |
           npx oxiremote --auto > /tmp/oxiremote.log 2>&1 &
 
-          # Wait for HTTP server
+          # Wait for HTTP server (up to 60 s)
           echo "Waiting for agent..."
-          until curl -sf http://127.0.0.1:8787/api/health > /dev/null; do sleep 2; done
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8787/api/health > /dev/null 2>&1 && break
+            [ $i -eq 30 ] && { echo "Agent failed to start. Log:"; cat /tmp/oxiremote.log; exit 1; }
+            sleep 2
+          done
 
           # Enable auto-approve
           curl -sf -X POST http://127.0.0.1:8787/api/agent/settings \
