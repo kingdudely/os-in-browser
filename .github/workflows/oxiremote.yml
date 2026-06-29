@@ -16,6 +16,8 @@ jobs:
   remote-session:
     runs-on: ${{ github.event.inputs.os }}
     timeout-minutes: 360
+    env:
+      DISPLAY: ":67"
     defaults:
       run:
         shell: bash
@@ -40,8 +42,7 @@ jobs:
       - name: Setup Linux desktop
         if: runner.os == 'Linux'
         run: |
-          Xvfb :67 -screen 0 1920x1080x24 &
-          echo "DISPLAY=:67" >> $GITHUB_ENV
+          Xvfb "${DISPLAY}" -screen 0 1920x1080x24 &
           startlxqt &
 
       - name: Install Windows packages
