@@ -34,7 +34,7 @@ jobs:
         if: runner.os == 'Linux'
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
-          packages: "xvfb lxqt openbox dbus-x11 libvpx-dev libaom-dev curl curl sqlite3"
+          packages: "xvfb lxqt openbox dbus-x11 libvpx-dev libaom-dev curl sqlite3 libxdo3"
           version: "1.0"
 
       - name: Setup Linux desktop
@@ -61,11 +61,8 @@ jobs:
           OXI_SECURE_COOKIES: ""
           OXI_VIDEO_PIPELINE: "auto"
         run: |
-          npx oxiremote --auto > /tmp/oxiremote.log 2>&1 &
+          npx oxiremote --auto & # > /tmp/oxiremote.log 2>&1
           until curl -f http://127.0.0.1:8787/api/health; do
-            if ! kill -0 $! 2>/dev/null; then
-              echo "=== oxiremote crashed ===" && cat /tmp/oxiremote.log && exit 1
-            fi
             sleep 1
           done
 
