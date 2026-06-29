@@ -49,7 +49,9 @@ jobs:
             -activate
 
       - name: Set up Docker
-        uses: docker/setup-docker-action@v4
+        uses: docker/setup-docker-action@master
+        env:
+          LIMA_START_ARGS: "--vm-type=vz"
 
       - name: Start Guacamole
         run: |
