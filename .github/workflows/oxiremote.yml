@@ -33,7 +33,7 @@ jobs:
             LOG=$(sed 's/\x1b\[[0-9;]*m//g' ~/.oxiremote/logs/agent.log)
 
             PAIRING_CODE=$(echo "${LOG}" | grep -oE 'pairing_code=[A-Z0-9]+' | head -1 | cut -d= -f2)
-            TUNNEL_URL=$(sed 's/\x1b\[[0-9;]*m//g' /tmp/oxiremote.log | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | head -1)
+            TUNNEL_URL=$(echo "${LOG}" | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | head -1)
             if [ -n "$TUNNEL_URL" ] && [ -n "$PAIRING_CODE" ]; then
               echo "Tunnel URL: $TUNNEL_URL"
               echo "Pairing code: $PAIRING_CODE"
