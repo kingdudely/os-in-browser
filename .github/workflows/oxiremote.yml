@@ -20,6 +20,7 @@ jobs:
              INSERT INTO settings(key, value) VALUES ('auto_approve', 'true');"
 
       - name: Start OxiRemote
+        id: oxiremote
         env:
           OXI_HEADLESS: "1"
           OXI_SECURE_COOKIES: ""
@@ -29,15 +30,11 @@ jobs:
 
           wget -q --spider --retry-connrefused --waitretry=1 --timeout=5 -t 0 http://127.0.0.1:8787/api/health
 
-          TUNNEL_URL=$(grep -oP 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/oxiremote.log | head -1)
+          TUNNEL_URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/oxiremote.log | head -1)
 
-          PAIRING_CODE=$(curl -s http://127.0.0.1:8787/api/pairing/code 2>/dev/null | grep -oP '"code"\s*:\s*"\K[^"]+' || true)
-          
-          # Fallback to log parsing if API doesn't have that endpoint
-          if [ -z "$PAIRING_CODE" ]; then
-            PAIRING_CODE=$(cat /tmp/oxiremote.log | tr -d '\000-\010\013\014\016-\037' | grep -oP 'pairing_code=\K[A-Z0-9]+' | head -1)
-          fi
+          PAIRING_CODE=$(grep -oE 'pairing_code=[A-Z0-9]+' /tmp/oxiremote.log | head -1 | cut -d= -f2)
 
+          echo "TUNNEL_URL=$TUNNEL_URL" >> $GITHUB_OUTPUT
+          echo "PAIRING_CODE=$PAIRING_CODE" >> $GITHUB_OUTPUT
           echo "Tunnel URL: $TUNNEL_URL"
           echo "Pairing code: $PAIRING_CODE"
-          wait
