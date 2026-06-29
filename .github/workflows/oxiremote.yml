@@ -52,15 +52,11 @@ jobs:
 
       - name: Fix Windows tar
         if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          mkdir -p "$HOME/bin"
-          cat > "$HOME/bin/tar" << 'EOF'
-          #!/bin/bash
-          exec /c/Windows/System32/tar.exe --force-local "$@"
-          EOF
-          chmod +x "$HOME/bin/tar"
-          echo "$HOME/bin" >> $GITHUB_PATH
-
+          # msys2 GNU tar handles Windows drive letters correctly
+          echo "C:\msys64\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      
       - name: Enable auto-approve
         run: |
           mkdir -p ~/.oxiremote
