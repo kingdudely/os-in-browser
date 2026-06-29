@@ -2,15 +2,36 @@ name: OxiRemote Session
 
 on:
   workflow_dispatch:
+    inputs:
+      os:
+        description: Runner OS
+        type: choice
+        options:
+          - macos-latest
+          - ubuntu-latest
+          - windows-latest
+        default: macos-latest
 
 jobs:
   remote-session:
-    runs-on: macos-latest
+    runs-on: ${{ inputs.os }}
     timeout-minutes: 360
 
     steps:
-      - name: Install codec deps
-        run: brew install libvpx aom openh264
+      - name: Setup MacOS
+        if: runner.os == 'macOS'
+        run: brew install libvpx aom
+
+      - name: Setup Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && \
+          sudo apt install --no-install-recommends \
+            ubuntu-desktop-minimal \
+            lightdm \
+            libvpx-dev \
+            libaom-dev && \
+          sudo systemctl start lightdm
 
       - name: Pre-seed database
         run: |
@@ -26,7 +47,7 @@ jobs:
           OXI_VIDEO_PIPELINE: "auto"
         run: |
           npx oxiremote --auto > /dev/null 2>&1 &
-          wget -q --spider --retry-connrefused --waitretry=1 --timeout=5 -t 0 http://127.0.0.1:8787/api/health
+          until curl -sf http://127.0.0.1:8787/api/health > /dev/null; do sleep 0.5; done
 
           PAIRING_CODE=$(sqlite3 ~/.oxiremote/oxiremote.sqlite \
             "SELECT code FROM pairing_codes WHERE used_at IS NULL AND expires_at > strftime('%s','now') ORDER BY expires_at DESC LIMIT 1;")
