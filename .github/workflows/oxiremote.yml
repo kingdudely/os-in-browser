@@ -70,7 +70,7 @@ jobs:
           OXI_VIDEO_PIPELINE: "auto"
         run: |
           npm install -g oxiremote
-          oxiremote --auto & # > /tmp/oxiremote.log 2>&1
+          oxiremote --auto > /dev/null 2>&1 &
           until curl -f http://127.0.0.1:8787/api/health; do
             sleep 1
           done
