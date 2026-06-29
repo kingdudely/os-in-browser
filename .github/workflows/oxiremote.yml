@@ -20,7 +20,6 @@ jobs:
              INSERT INTO settings(key, value) VALUES ('auto_approve', 'true');"
 
       - name: Start OxiRemote
-        id: oxiremote
         env:
           OXI_HEADLESS: "1"
           OXI_SECURE_COOKIES: ""
@@ -34,7 +33,5 @@ jobs:
 
           PAIRING_CODE=$(grep -oE 'pairing_code=[A-Z0-9]+' /tmp/oxiremote.log | head -1 | cut -d= -f2)
 
-          echo "TUNNEL_URL=$TUNNEL_URL" >> $GITHUB_OUTPUT
-          echo "PAIRING_CODE=$PAIRING_CODE" >> $GITHUB_OUTPUT
           echo "Tunnel URL: $TUNNEL_URL"
           echo "Pairing code: $PAIRING_CODE"
