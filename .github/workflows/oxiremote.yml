@@ -53,8 +53,13 @@ jobs:
       - name: Fix Windows tar
         if: runner.os == 'Windows'
         run: |
-          GIT_USR_BIN="$(dirname "$(which git)")/../usr/bin"
-          echo "$(realpath "$GIT_USR_BIN")" >> $GITHUB_PATH
+          mkdir -p "$HOME/bin"
+          cat > "$HOME/bin/tar" << 'EOF'
+          #!/bin/bash
+          exec /c/Windows/System32/tar.exe --force-local "$@"
+          EOF
+          chmod +x "$HOME/bin/tar"
+          echo "$HOME/bin" >> $GITHUB_PATH
 
       - name: Enable auto-approve
         run: |
