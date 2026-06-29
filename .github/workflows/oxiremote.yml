@@ -26,7 +26,7 @@ jobs:
           OXI_SECURE_COOKIES: ""
           OXI_VIDEO_PIPELINE: "auto"
         run: |
-          npx oxiremote --auto > /tmp/oxiremote.log 2>&1 &
+          npx oxiremote --auto > /tmp/oxiremote.log &
           
           while true; do
             TUNNEL_URL=$(grep -o "https://[a-z0-9-]*\.trycloudflare\.com" /tmp/oxiremote.log | head -1)
