@@ -33,7 +33,7 @@ jobs:
 
             # PAIRING_CODE=$(echo "${LOG}" | grep -oE 'pairing_code=[A-Z0-9]+' | head -1 | cut -d= -f2)
             TUNNEL_URL=$(echo "${LOG}" | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | head -1)
-            if [ -n "$TUNNEL_URL" ] && [ -n "$PAIRING_CODE" ]; then
+            if [ -n "$TUNNEL_URL" ]; then # && [ -n "$PAIRING_CODE" ]; 
               OTK=$(curl -s -X POST http://127.0.0.1:8787/api/agent/keys/one-time | grep -oE '"token":"[^"]+' | cut -d'"' -f4)
               echo "Login URL: $TUNNEL_URL/login?k=$OTK"
 
