@@ -16,6 +16,9 @@ jobs:
   remote-session:
     runs-on: ${{ inputs.os }}
     timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Setup MacOS
