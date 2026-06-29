@@ -83,10 +83,7 @@ jobs:
             guacamole/guacamole
 
           echo "Waiting for Guacamole..."
-          for i in {1..30}; do
-            curl -fsS http://127.0.0.1:8080/guacamole/ &>/dev/null && echo "Ready" && break
-            sleep 3
-          done
+          wget --retry-connrefused --tries=0 --waitretry=3 --spider -q http://127.0.0.1:8080/guacamole/
 
       - name: Establish tunnel
         id: tunnel
