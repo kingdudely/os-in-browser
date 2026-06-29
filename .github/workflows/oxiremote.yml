@@ -93,7 +93,6 @@ jobs:
           OXI_HEADLESS: "1"
           OXI_SECURE_COOKIES: "1"
           OXI_VIDEO_PIPELINE: ${{ inputs.video_pipeline }}
-          # OXI_WORKSPACE: ${{ github.workspace }}
         run: |
           LOG=/tmp/oxiremote.log
           oxiremote --auto >"$LOG" 2>&1 &
@@ -101,28 +100,41 @@ jobs:
           echo "Agent PID: $AGENT_PID"
 
           echo "Waiting for agent to be ready..."
-          for i in $(seq 1 30); do
-            curl -sf http://127.0.0.1:8787/api/health >/dev/null 2>&1 && break
+          READY=0
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8787/api/health >/dev/null 2>&1; then
+              READY=1
+              echo "Agent ready after ~$((i * 2))s"
+              break
+            fi
+            [ $((i % 10)) -eq 0 ] && echo "  ($i/60) still waiting..."
             sleep 2
           done
+
+          if [ "$READY" = "0" ]; then
+            echo "ERROR: Agent never became ready. Log:"
+            cat "$LOG"
+            exit 1
+          fi
 
           echo "Enabling auto-approve..."
           curl -sf -X POST http://127.0.0.1:8787/api/agent/settings \
             -H 'Content-Type: application/json' \
             -d '{"auto_approve": true}' \
             && echo "auto_approve enabled" \
-            || echo "WARNING: Could not set auto_approve — devices may need manual approval"
+            || echo "WARNING: Could not set auto_approve"
 
           echo "Waiting for tunnel URL..."
           TUNNEL_URL=""
           for i in $(seq 1 60); do
             TUNNEL_URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG" | head -1)
             [ -n "$TUNNEL_URL" ] && break
+            [ $((i % 10)) -eq 0 ] && echo "  ($i/60) still waiting..."
             sleep 2
           done
 
           if [ -z "$TUNNEL_URL" ]; then
-            echo "ERROR: Tunnel URL not found after 120 s. Dumping agent log:"
+            echo "ERROR: Tunnel URL not found. Log:"
             cat "$LOG"
             exit 1
           fi
@@ -140,7 +152,6 @@ jobs:
           echo "============================================================"
           echo "  SESSION READY"
           echo "============================================================"
-          echo ""
           echo "  OS           : $RUNNER_OS"
           echo "  Tunnel URL   : $TUNNEL_URL"
           if [ -n "$PAIRING_CODE" ]; then
@@ -148,11 +159,8 @@ jobs:
           else
             echo "  Pairing code : (check log above — may use QR / OTK flow)"
           fi
-          echo ""
-          echo "  Open the URL in your browser and enter the pairing code."
           echo "  Devices are auto-approved — no host confirmation needed."
           echo "  Remote desktop codec: ${{ inputs.video_pipeline }}"
-          echo ""
           echo "  Session alive until timeout (${{ inputs.timeout_minutes }} min)."
           echo "============================================================"
 
