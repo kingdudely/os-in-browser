@@ -15,6 +15,10 @@ jobs:
     steps:
       - name: Enable Apple VNC
         run: |
+          sudo sysadminctl -addUser vncuser \
+            -fullName "VNC User" \
+            -password "${{ inputs.vnc_password }}" \
+            -admin
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -configure -allowAccessFor -allUsers -privs -all
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
