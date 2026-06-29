@@ -14,7 +14,7 @@ on:
 
 jobs:
   remote-session:
-    runs-on: ${{ inputs.os }}
+    runs-on: ${{ github.event.inputs.os }}
     timeout-minutes: 360
     defaults:
       run:
