@@ -15,7 +15,7 @@ on:
       timeout_minutes:
         description: "How long to keep the session alive (minutes)"
         required: false
-        default: "360"
+        default: "60"
       video_pipeline:
         description: "Video pipeline (auto | h264 | vp9 | av1 | jpeg)"
         required: false
@@ -130,7 +130,29 @@ jobs:
           echo "Agent PID: $AGENT_PID"
           echo ""
 
+          # ----------------------------------------------------------------
+          # Wait for the agent's local HTTP server to be ready
+          # ----------------------------------------------------------------
+          echo "Waiting for agent to be ready..."
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8787/api/health > /dev/null 2>&1 && break
+            sleep 2
+          done
+
+          # ----------------------------------------------------------------
+          # Enable auto-approve so connecting devices don't need host approval
+          # This hits the localhost-only operator control plane (/api/agent/*)
+          # ----------------------------------------------------------------
+          echo "Enabling auto-approve..."
+          curl -sf -X POST http://127.0.0.1:8787/api/agent/settings \
+            -H 'Content-Type: application/json' \
+            -d '{"auto_approve": true}' \
+            && echo "auto_approve enabled" \
+            || echo "WARNING: Could not set auto_approve — devices may need manual approval"
+
+          # ----------------------------------------------------------------
           # Wait for tunnel URL
+          # ----------------------------------------------------------------
           echo "Waiting for tunnel URL..."
           TUNNEL_URL=""
           for i in $(seq 1 60); do
@@ -145,7 +167,9 @@ jobs:
             exit 1
           fi
 
+          # ----------------------------------------------------------------
           # Wait for pairing code
+          # ----------------------------------------------------------------
           echo "Waiting for pairing code..."
           PAIRING_CODE=""
           for i in $(seq 1 30); do
@@ -169,6 +193,7 @@ jobs:
           fi
           echo ""
           echo "  Open the URL in your browser and enter the pairing code."
+          echo "  Devices are auto-approved — no host confirmation needed."
           echo "  Remote desktop codec: ${{ inputs.video_pipeline }}"
           echo ""
           echo "  Session alive until timeout (${{ inputs.timeout_minutes }} min)."
@@ -204,8 +229,30 @@ jobs:
             Get-Content $err -Wait | Add-Content $log
           } -ArgumentList "$env:TEMP\oxiremote-err.log", $logFile | Out-Null
 
+          # Wait for agent local HTTP server to be ready
+          Write-Host "Waiting for agent to be ready..."
+          for ($i = 0; $i -lt 30; $i++) {
+            try {
+              Invoke-WebRequest -Uri "http://127.0.0.1:8787/api/health" -UseBasicParsing -ErrorAction Stop | Out-Null
+              break
+            } catch { Start-Sleep -Seconds 2 }
+          }
+
+          # Enable auto-approve via localhost operator API
+          Write-Host "Enabling auto-approve..."
+          try {
+            Invoke-WebRequest -Uri "http://127.0.0.1:8787/api/agent/settings" `
+              -Method POST `
+              -ContentType "application/json" `
+              -Body '{"auto_approve": true}' `
+              -UseBasicParsing -ErrorAction Stop | Out-Null
+            Write-Host "auto_approve enabled"
+          } catch {
+            Write-Host "WARNING: Could not set auto_approve — devices may need manual approval"
+          }
+
           # Wait for tunnel URL
-          Write-Host "Waiting for tunnel URL..."
+          Write-Host "Waiting for tunnel URL..." 
           $tunnelUrl = ""
           for ($i = 0; $i -lt 60; $i++) {
             if (Test-Path $logFile) {
@@ -254,6 +301,7 @@ jobs:
           }
           Write-Host ""
           Write-Host "  Open the URL in your browser and enter the pairing code."
+          Write-Host "  Devices are auto-approved — no host confirmation needed."
           Write-Host "  Remote desktop codec: ${{ inputs.video_pipeline }}"
           Write-Host ""
           Write-Host "  Session alive until timeout (${{ inputs.timeout_minutes }} min)."
