@@ -34,8 +34,8 @@ jobs:
         if: runner.os == 'Linux'
         uses: awalsh128/cache-apt-pkgs-action@master
         with:
-          packages: xvfb lxqt openbox dbus-x11 libvpx-dev libaom-dev curl wget sqlite3
-          version: 1.0
+          packages: "xvfb lxqt openbox dbus-x11 libvpx-dev libaom-dev curl wget sqlite3"
+          version: "1.0"
 
       - name: Setup Linux desktop
         if: runner.os == 'Linux'
