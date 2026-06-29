@@ -48,6 +48,12 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install curl sqlite -y
 
+      - name: Fix Windows tar
+        if: runner.os == 'Windows'
+        run: |
+          GIT_USR_BIN="$(dirname "$(which git)")/../usr/bin"
+          echo "$(realpath "$GIT_USR_BIN")" >> $GITHUB_PATH
+
       - name: Enable auto-approve
         run: |
           mkdir -p ~/.oxiremote
