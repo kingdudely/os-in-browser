@@ -16,6 +16,6 @@ jobs:
         env:
           OXI_HEADLESS: "1"
           OXI_SECURE_COOKIES: "1"
-          OXI_VIDEO_PIPELINE: "autp"
+          OXI_VIDEO_PIPELINE: "auto"
         run: |
           npx oxiremote --auto
