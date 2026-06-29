@@ -33,6 +33,7 @@ jobs:
           OTK=$(curl -s -X POST http://127.0.0.1:8787/api/agent/keys/one-time | grep -oE '"token":"[^"]+' | cut -d'"' -f4)
 
           # Tunnel URL from agent state
+          curl -s http://127.0.0.1:8787/api/agent/state
           TUNNEL_URL=$(curl -s http://127.0.0.1:8787/api/agent/state | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | head -1)
 
           echo "Tunnel URL: $TUNNEL_URL"
