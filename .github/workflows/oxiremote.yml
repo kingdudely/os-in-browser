@@ -10,7 +10,7 @@ jobs:
 
     steps:
       - name: Install codec deps
-        run: brew install libvpx aom
+        run: brew install libvpx aom openh264
 
       - name: Pre-seed database
         run: |
