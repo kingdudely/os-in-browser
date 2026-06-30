@@ -27,9 +27,7 @@ jobs:
           FINGERPRINT=$(openssl x509 -in workflow_cert.pem -noout -fingerprint -sha256 | sed 's/.*=//')
           jq --arg fp "$FINGERPRINT" '.workflowFingerprint = $fp' public/constants.json > public/constants.json.tmp
           mv public/constants.json.tmp public/constants.json
-          
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           git add workflow_cert.pem workflow_key.pem public/constants.json
           git commit -m "Update WebRTC DTLS Fingerprint and Certificates" || true
           git push
