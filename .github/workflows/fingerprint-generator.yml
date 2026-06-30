@@ -9,12 +9,16 @@ permissions:
   id-token: write
 
 jobs:
-  generate:
+  generate-and-deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      
+      - uses: actions/checkout@main
+
       - name: Generate certificate and fingerprint
+        shell: bash
         run: |
           set -e
           openssl req -x509 -newkey rsa:2048 -keyout workflow_key.pem -out workflow_cert.pem \
@@ -23,38 +27,18 @@ jobs:
           FINGERPRINT=$(openssl x509 -in workflow_cert.pem -noout -fingerprint -sha256 | sed 's/.*=//')
           jq --arg fp "$FINGERPRINT" '.workflowFingerprint = $fp' public/constants.json > public/constants.json.tmp
           mv public/constants.json.tmp public/constants.json
-
-  commit:
-    needs: generate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Commit and push
-        run: |
+          
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add workflow_cert.pem workflow_key.pem public/constants.json
           git commit -m "Update WebRTC DTLS Fingerprint and Certificates" || true
           git push
 
-  deploy:
-    needs: commit
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v4
-      
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@main
         with:
           path: ./public
 
       - name: Deploy
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@main
