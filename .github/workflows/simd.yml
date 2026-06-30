@@ -64,15 +64,42 @@ jobs:
           Write-Host "=== CPU name ==="
           Get-CimInstance Win32_Processor | Select-Object Name, Manufacturer, Architecture | Format-List
 
-          Write-Host "=== Downloading coreinfo (Sysinternals) for SIMD flag detection ==="
-          $coreinfoUrl = "https://download.sysinternals.com/files/Coreinfo.zip"
-          $zipPath = "$env:TEMP\coreinfo.zip"
-          $extractPath = "$env:TEMP\coreinfo"
-          Invoke-WebRequest -Uri $coreinfoUrl -OutFile $zipPath
-          Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
+          Write-Host "=== CPUID-based SIMD feature check (self-contained, no download) ==="
 
-          Write-Host "=== Running coreinfo (instruction set flags) ==="
-          & "$extractPath\Coreinfo64.exe" -accepteula -f 2>$null | Select-String -Pattern "SSE|AVX|FMA"
+          $cs = @"
+          using System;
+          using System.Runtime.InteropServices;
+
+          public static class CpuId
+          {
+              [DllImport("kernel32.dll")]
+              static extern bool IsProcessorFeaturePresent(uint ProcessorFeature);
+
+              public static void Main()
+              {
+                  // PF_* constants from winnt.h relevant to SIMD
+                  PrintFeature("SSE3 (PF_SSE3_INSTRUCTIONS_AVAILABLE)", 13);
+                  PrintFeature("AVX2 (PF_AVX2_INSTRUCTIONS_AVAILABLE)", 40);
+                  PrintFeature("AVX512F (PF_AVX512F_INSTRUCTIONS_AVAILABLE)", 41);
+              }
+
+              static void PrintFeature(string name, uint id)
+              {
+                  bool present = IsProcessorFeaturePresent(id);
+                  Console.WriteLine(name + ": " + (present ? "YES" : "no"));
+              }
+          }
+          "@
+
+          Add-Type -TypeDefinition $cs -Language CSharp
+          [CpuId]::Main()
+
+          Write-Host ""
+          Write-Host "=== Fallback: raw CPU identifier ==="
+          Get-CimInstance Win32_Processor | Select-Object -ExpandProperty Caption
+          $env:PROCESSOR_IDENTIFIER
+          Write-Host ""
+          Write-Host "Note: Win32 IsProcessorFeaturePresent only exposes a curated subset of flags (no AVX512 sub-features like BW/VL/DQ)."
 
       - name: Summary line
         run: echo "Done checking SIMD support for ${{ matrix.os }}"
