@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@main
+        uses: actions/checkout@v7
 
       - name: Generate certificate and fingerprint
         shell: bash
@@ -27,7 +27,7 @@ jobs:
           mv public/constants.json.tmp public/constants.json
 
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@main
+        uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ github.token }}
           publish_dir: ./public
