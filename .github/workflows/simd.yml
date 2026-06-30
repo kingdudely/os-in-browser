@@ -1,0 +1,78 @@
+name: Check SIMD Capabilities
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check-simd:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: CPU info (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          echo "=== CPU model ==="
+          lscpu | grep -i "model name"
+          echo ""
+          echo "=== Flags relevant to SIMD ==="
+          lscpu | grep -i flags | tr ' ' '\n' | grep -E '^(sse|avx|fma|neon)' || true
+          echo ""
+          echo "=== Raw /proc/cpuinfo flags line (first core) ==="
+          grep -m1 flags /proc/cpuinfo
+          echo ""
+          echo "=== Quick summary ==="
+          for feat in sse sse2 sse3 ssse3 sse4_1 sse4_2 avx avx2 avx512f avx512bw avx512vl avx512dq avx512cd avx512vnni; do
+            if grep -m1 flags /proc/cpuinfo | grep -qw "$feat"; then
+              echo "$feat: YES"
+            else
+              echo "$feat: no"
+            fi
+          done
+
+      - name: CPU info (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          echo "=== CPU brand ==="
+          sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "N/A (likely Apple Silicon)"
+          echo ""
+          echo "=== Architecture ==="
+          uname -m
+          echo ""
+          echo "=== If Intel: feature flags ==="
+          sysctl machdep.cpu.features 2>/dev/null || echo "no machdep.cpu.features (Apple Silicon)"
+          sysctl machdep.cpu.leaf7_features 2>/dev/null || echo "no leaf7_features (Apple Silicon)"
+          echo ""
+          echo "=== If Apple Silicon: NEON/AMX hints via sysctl ==="
+          sysctl -a 2>/dev/null | grep -i -E "hw.optional.(neon|arm.FEAT|amx)" || echo "none found / not applicable"
+          echo ""
+          echo "=== Summary ==="
+          if [[ "$(uname -m)" == "arm64" ]]; then
+            echo "Apple Silicon detected: NEON is baseline (always available)."
+            echo "No AVX/AVX-512 on this architecture (x86-only extensions)."
+            echo "AMX exists but is undocumented/private, accessed only via Accelerate framework."
+          else
+            echo "Intel Mac detected — see feature flags above for AVX/AVX2/AVX512 support."
+          fi
+
+      - name: CPU info (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Host "=== CPU name ==="
+          Get-CimInstance Win32_Processor | Select-Object Name, Manufacturer, Architecture | Format-List
+
+          Write-Host "=== Downloading coreinfo (Sysinternals) for SIMD flag detection ==="
+          $coreinfoUrl = "https://download.sysinternals.com/files/Coreinfo.zip"
+          $zipPath = "$env:TEMP\coreinfo.zip"
+          $extractPath = "$env:TEMP\coreinfo"
+          Invoke-WebRequest -Uri $coreinfoUrl -OutFile $zipPath
+          Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
+
+          Write-Host "=== Running coreinfo (instruction set flags) ==="
+          & "$extractPath\Coreinfo64.exe" -accepteula -f 2>$null | Select-String -Pattern "SSE|AVX|FMA"
+
+      - name: Summary line
+        run: echo "Done checking SIMD support for ${{ matrix.os }}"
