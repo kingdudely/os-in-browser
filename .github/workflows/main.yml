@@ -28,27 +28,17 @@ jobs:
 
     env:
       OFFER: ${{ github.event.inputs.offer }}
-      DISPLAY: ":0"
 
     steps:
-      - name: Copy repository into PC
+      - name: Copy repository into runner
         uses: actions/checkout@main
-        
-      - name: Ubuntu setup
+
+      - name: Install Linux packages
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends xorg xfce4 xvfb dbus-x11
-
-          Xvfb "${DISPLAY}" -screen 0 1920x1080x24 &
-
-          echo "Waiting for display to initialize..."
-          until xset -q &>/dev/null; do
-              sleep 0.67
-          done
-          echo "Display is ready!"
-
-          setsid startxfce4 &
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: "lxqt openbox dbus-x11"
+          version: "1.0"
 
       - name: Start server
         run: |
@@ -58,7 +48,7 @@ jobs:
               ;;
 
             Linux)
-              ./dist/linux
+              xvfb-run -as "-screen 0 1920x1080x24" bash -c "dbus-launch --exit-with-session startlxqt & exec ./dist/linux"
               ;;
 
             Windows)
