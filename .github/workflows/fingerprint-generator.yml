@@ -27,7 +27,7 @@ jobs:
           mv public/constants.json.tmp public/constants.json
 
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@latest
+        uses: peaceiris/actions-gh-pages@main
         with:
           github_token: ${{ github.token }}
           publish_dir: ./public
