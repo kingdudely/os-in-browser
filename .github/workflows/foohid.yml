@@ -5,35 +5,34 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-latest
     
     steps:
       - name: Checkout VirtHID-macOS
+        uses: actions/checkout@v4
+        with:
+          repository: kotleni/VirtHID-macOS
+      
+      - name: Build VirtHID
         run: |
-          git clone https://github.com/kotleni/VirtHID-macOS.git
-          
-      - name: Build VirtHID with xcodebuild
+          xcodebuild \
+            -scheme VirtHID \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            | tail -100
+      
+      - name: Find and load kext
         run: |
-          cd VirtHID-macOS
-          xcodebuild -scheme VirtHID -configuration Release CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO 2>&1 | tail -100
-          
-      - name: Check build output
-        run: |
-          cd VirtHID-macOS
-          find . -name "*.kext" -o -name "*.app" | head -20
-          
-      - name: Load the kext
-        run: |
-          KEXT=$(find ~/Library/Developer/Xcode/DerivedData -name "VirtHID.kext" 2>/dev/null | head -1)
-          if [ -n "$KEXT" ]; then
-            echo "Found kext: $KEXT"
-            sudo chown -R root:wheel "$KEXT"
-            sudo kextload "$KEXT"
-          else
-            echo "No kext found!"
+          KEXT=$(find build -name "VirtHID.kext" -type d)
+          if [ -z "$KEXT" ]; then
+            echo "::error::No kext found"
             exit 1
           fi
           
-      - name: Verify kext loaded
-        run: |
-          sudo kextstat | grep -i virthid && echo "✓ VirtHID kext loaded" || echo "✗ VirtHID kext not loaded"
+          echo "Loading $KEXT"
+          sudo kextload "$KEXT"
+      
+      - name: Verify loaded
+        run: sudo kextstat | grep -i virthid
