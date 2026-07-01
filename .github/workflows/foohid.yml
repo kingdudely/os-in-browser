@@ -1,28 +1,41 @@
-name: Test Karabiner-DriverKit-VirtualHIDDevice
+name: Test VirtHID-macOS
 
 on:
   workflow_dispatch:
 
 jobs:
-  test:
+  build:
     runs-on: macos-latest
     
     steps:
-      - name: Download Karabiner-DriverKit-VirtualHIDDevice package
+      - name: Checkout VirtHID-macOS
         run: |
-          curl -L -o karabiner-vhid.pkg https://github.com/pqrs-org/Karabiner-DriverKit-VirtualHIDDevice/releases/download/v7.3.0/Karabiner-DriverKit-VirtualHIDDevice-7.3.0.pkg
-          ls -lh karabiner-vhid.pkg
+          git clone https://github.com/kotleni/VirtHID-macOS.git
           
-      - name: Install package
+      - name: Build VirtHID with xcodebuild
         run: |
-          sudo installer -pkg karabiner-vhid.pkg -target /
+          cd VirtHID-macOS
+          xcodebuild -scheme VirtHID -configuration Release CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO 2>&1 | tail -100
           
-      - name: Verify installation
+      - name: Check build output
         run: |
-          ls -la /Library/DriverKit/ || echo "DriverKit dir not found"
-          kextstat | grep -i karabiner || echo "Karabiner kext not loaded (expected on macos-latest)"
+          cd VirtHID-macOS
+          find . -name "*.kext" -o -name "*.app" | head -20
           
-      - name: Check for virtual HID device service
+      - name: Load the kext
         run: |
-          which virtual-hid-device-service-client || echo "Client not in PATH"
-          find /Library -name "*virtual-hid*" 2>/dev/null | head -10
+          cd VirtHID-macOS
+          KEXT=$(find . -name "*.kext" | head -1)
+          if [ -n "$KEXT" ]; then
+            echo "Found kext: $KEXT"
+            sudo chown -R root:wheel "$KEXT"
+            sudo kextload "$KEXT"
+          else
+            echo "No kext found!"
+            exit 1
+          fi
+          
+      - name: Verify kext loaded
+        run: |
+          kextstat | grep -i virthid || echo "VirtHID kext not in kextstat"
+          sudo kextstat | grep -i virthid || echo "VirtHID kext not loaded"
