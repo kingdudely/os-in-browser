@@ -8,127 +8,94 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - name: Locate SDK and private header
-        id: sdk
-        run: |
-          SDK_PATH=$(xcrun --sdk macosx --show-sdk-path)
-          echo "sdk_path=$SDK_PATH" >> $GITHUB_OUTPUT
-          echo "SDK: $SDK_PATH"
-          find "$SDK_PATH" -name "IOHIDUserDevice.h"
-
-      - name: Create module map for private IOHIDUserDevice API
-        run: |
-          mkdir -p CIOHIDUserDevice/include
-          
-          SDK_PATH=$(xcrun --sdk macosx --show-sdk-path)
-          HEADER_PATH="$SDK_PATH/System/Library/Frameworks/IOKit.framework/Headers/hid/IOHIDUserDevice.h"
-          
-          if [ ! -f "$HEADER_PATH" ]; then
-            echo "Header not found at expected path, searching..."
-            HEADER_PATH=$(find "$SDK_PATH" -name "IOHIDUserDevice.h" | head -1)
-          fi
-          
-          echo "Using header: $HEADER_PATH"
-          
-          cat > CIOHIDUserDevice/include/module.modulemap << EOF
-          module CIOHIDUserDevice {
-              header "$HEADER_PATH"
-              export *
-          }
-          EOF
-          
-          cat CIOHIDUserDevice/include/module.modulemap
-
       - name: Write test program
         run: |
-          cat > main.swift << 'EOF'
-          import IOKit
-          import IOKit.hid
-          import CIOHIDUserDevice
-          import Foundation
+          cat > main.mm << 'EOF'
+          #import <Foundation/Foundation.h>
+          #import <IOKit/IOKitLib.h>
+          #import <IOKit/hid/IOHIDManager.h>
+          #import <IOKit/hid/IOHIDUserDevice.h>
 
-          print("Testing IOHIDUserDevice virtual HID creation...")
+          int main(int argc, const char * argv[]) {
+              @autoreleasepool {
+                  printf("Testing IOHIDUserDevice virtual HID creation...\n");
 
-          let reportDescriptor: [UInt8] = [
-              0x05, 0x01,
-              0x09, 0x02,
-              0xA1, 0x01,
-              0x09, 0x01,
-              0xA1, 0x00,
-              0x05, 0x09,
-              0x19, 0x01,
-              0x29, 0x03,
-              0x15, 0x00,
-              0x25, 0x01,
-              0x95, 0x03,
-              0x75, 0x01,
-              0x81, 0x02,
-              0x95, 0x01,
-              0x75, 0x05,
-              0x81, 0x03,
-              0x05, 0x01,
-              0x09, 0x30,
-              0x09, 0x31,
-              0x15, 0x81,
-              0x25, 0x7F,
-              0x75, 0x08,
-              0x95, 0x02,
-              0x81, 0x06,
-              0xC0,
-              0xC0
-          ]
+                  uint8_t reportDescriptor[] = {
+                      0x05, 0x01,
+                      0x09, 0x02,
+                      0xA1, 0x01,
+                      0x09, 0x01,
+                      0xA1, 0x00,
+                      0x05, 0x09,
+                      0x19, 0x01,
+                      0x29, 0x03,
+                      0x15, 0x00,
+                      0x25, 0x01,
+                      0x95, 0x03,
+                      0x75, 0x01,
+                      0x81, 0x02,
+                      0x95, 0x01,
+                      0x75, 0x05,
+                      0x81, 0x03,
+                      0x05, 0x01,
+                      0x09, 0x30,
+                      0x09, 0x31,
+                      0x15, 0x81,
+                      0x25, 0x7F,
+                      0x75, 0x08,
+                      0x95, 0x02,
+                      0x81, 0x06,
+                      0xC0,
+                      0xC0
+                  };
 
-          let descriptorData = Data(reportDescriptor)
+                  CFDataRef descriptorData = CFDataCreate(kCFAllocatorDefault, reportDescriptor, sizeof(reportDescriptor));
 
-          guard let descriptorCFData = descriptorData.withUnsafeBytes({ bytes -> CFData? in
-              CFDataCreate(kCFAllocatorDefault, bytes.bindMemory(to: UInt8.self).baseAddress, descriptorData.count)
-          }) else {
-              print("FAILED: could not create CFData for descriptor")
-              exit(1)
+                  NSDictionary *properties = @{
+                      (NSString *)CFSTR(kIOHIDReportDescriptorKey): (__bridge NSData *)descriptorData,
+                      (NSString *)CFSTR(kIOHIDVendorIDKey): @(0x1234),
+                      (NSString *)CFSTR(kIOHIDProductIDKey): @(0x5678),
+                      (NSString *)CFSTR(kIOHIDProductKey): @"OxiRemote Virtual Mouse",
+                      (NSString *)CFSTR(kIOHIDPhysicalDeviceUniqueIDKey): @"oxiremote-test-mouse-001"
+                  };
+
+                  IOHIDUserDeviceRef device = IOHIDUserDeviceCreate(kCFAllocatorDefault, (__bridge CFDictionaryRef)properties);
+
+                  if (device == NULL) {
+                      printf("FAILED: IOHIDUserDeviceCreate returned NULL\n");
+                      printf("This likely means entitlements or permissions are missing.\n");
+                      CFRelease(descriptorData);
+                      return 1;
+                  }
+
+                  printf("SUCCESS: IOHIDUserDevice created: %p\n", (void *)device);
+
+                  uint8_t report[3] = {0x00, 0x05, 0x00}; // no buttons, x+5, y=0
+                  IOReturn result = IOHIDUserDeviceHandleReport(device, report, sizeof(report));
+
+                  if (result == kIOReturnSuccess) {
+                      printf("SUCCESS: report sent, IOReturn = 0x%x\n", result);
+                  } else {
+                      printf("WARNING: report send failed, IOReturn = 0x%x\n", result);
+                  }
+
+                  printf("Sleeping 2s to let device register...\n");
+                  [NSThread sleepForTimeInterval:2.0];
+
+                  CFRelease(device);
+                  CFRelease(descriptorData);
+
+                  printf("Done.\n");
+                  return 0;
+              }
           }
-
-          let properties: [String: Any] = [
-              kIOHIDReportDescriptorKey as String: descriptorCFData,
-              kIOHIDVendorIDKey as String: 0x1234,
-              kIOHIDProductIDKey as String: 0x5678,
-              kIOHIDProductKey as String: "OxiRemote Virtual Mouse",
-              kIOHIDPhysicalDeviceUniqueIDKey as String: "oxiremote-test-mouse-001"
-          ]
-
-          guard let device = IOHIDUserDeviceCreate(kCFAllocatorDefault, properties as CFDictionary) else {
-              print("FAILED: IOHIDUserDeviceCreate returned nil")
-              print("This likely means entitlements or permissions are missing.")
-              exit(1)
-          }
-
-          print("SUCCESS: IOHIDUserDevice created")
-          print("Device: \(device)")
-
-          var report: [UInt8] = [0x00, 0x05, 0x00]
-          let result = report.withUnsafeMutableBytes { ptr -> IOReturn in
-              IOHIDUserDeviceHandleReport(device, ptr.bindMemory(to: UInt8.self).baseAddress!, report.count)
-          }
-
-          if result == kIOReturnSuccess {
-              print("SUCCESS: report sent, IOReturn = \(result)")
-          } else {
-              print("WARNING: report send failed, IOReturn = \(String(format: "0x%x", result))")
-          }
-
-          print("Sleeping 2s to let device register...")
-          Thread.sleep(forTimeInterval: 2.0)
-
-          print("Done.")
-          exit(0)
           EOF
 
       - name: Compile
         run: |
-          swiftc -O main.swift -o hidtest \
-            -framework IOKit \
+          clang++ -O2 -std=c++17 -fobjc-arc main.mm -o hidtest \
             -framework Foundation \
-            -Xcc -fmodule-map-file=CIOHIDUserDevice/include/module.modulemap \
-            -I CIOHIDUserDevice/include
+            -framework IOKit
 
       - name: Run test (no sudo)
         id: no_sudo
