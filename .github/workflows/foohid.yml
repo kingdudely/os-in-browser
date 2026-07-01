@@ -23,14 +23,23 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             | tail -100
       
-      - name: Find and load kext
+      - name: Fix kext version in plist
         run: |
           KEXT=$(find build -name "VirtHID.kext" -type d)
-          if [ -z "$KEXT" ]; then
-            echo "::error::No kext found"
-            exit 1
-          fi
+          PLIST="$KEXT/Contents/Info.plist"
           
+          # Extract version and strip pre-release tags
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$PLIST")
+          CLEAN_VERSION=$(echo "$VERSION" | sed 's/-.*$//')
+          
+          echo "Original version: $VERSION"
+          echo "Cleaned version: $CLEAN_VERSION"
+          
+          /usr/libexec/PlistBuddy -c "Set CFBundleVersion $CLEAN_VERSION" "$PLIST"
+      
+      - name: Load kext
+        run: |
+          KEXT=$(find build -name "VirtHID.kext" -type d)
           echo "Loading $KEXT"
           sudo kextload "$KEXT"
       
