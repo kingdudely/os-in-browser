@@ -1,24 +1,28 @@
-name: Test VirtHID-macOS
+name: Test Karabiner-DriverKit-VirtualHIDDevice
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
+  test:
     runs-on: macos-latest
     
     steps:
-      - name: Checkout VirtHID-macOS
+      - name: Download Karabiner-DriverKit-VirtualHIDDevice package
         run: |
-          git clone https://github.com/kotleni/VirtHID-macOS.git
-          cd VirtHID-macOS
+          curl -L -o karabiner-vhid.pkg https://github.com/pqrs-org/Karabiner-DriverKit-VirtualHIDDevice/releases/download/v7.3.0/Karabiner-DriverKit-VirtualHIDDevice-7.3.0.pkg
+          ls -lh karabiner-vhid.pkg
           
-      - name: Build VirtHID with xcodebuild
+      - name: Install package
         run: |
-          cd VirtHID-macOS
-          xcodebuild -scheme VirtHID -configuration Release 2>&1 | head -50
+          sudo installer -pkg karabiner-vhid.pkg -target /
           
-      - name: Check build output
+      - name: Verify installation
         run: |
-          cd VirtHID-macOS
-          find . -name "*.kext" -o -name "*.app" | head -20
+          ls -la /Library/DriverKit/ || echo "DriverKit dir not found"
+          kextstat | grep -i karabiner || echo "Karabiner kext not loaded (expected on macos-latest)"
+          
+      - name: Check for virtual HID device service
+        run: |
+          which virtual-hid-device-service-client || echo "Client not in PATH"
+          find /Library -name "*virtual-hid*" 2>/dev/null | head -10
