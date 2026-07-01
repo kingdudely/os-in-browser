@@ -1,55 +1,112 @@
-name: Test foohid
+name: Test IOHIDUserDevice
 
 on:
   push:
 
 jobs:
-  build:
+  test:
     runs-on: macos-latest
-    
+
     steps:
-      - name: Checkout foohid
-        uses: actions/checkout@v4
-        with:
-          repository: unbit/foohid
-      
-      - name: Build foohid kext
+      - name: Write test program
         run: |
-          xcodebuild \
-            -project foohid.xcodeproj \
-            -scheme foohid \
-            -configuration Release \
-            -derivedDataPath build \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            | tail -100
-      
-      - name: Find and load kext
-        run: |
-          KEXT=$(find build -name "foohid.kext" -type d)
-          if [ -z "$KEXT" ]; then
-            echo "::error::No kext found"
-            exit 1
-          fi
-          
-          echo "Fixing ownership for $KEXT"
-          sudo chown -R root:wheel "$KEXT"
-          
-          # Bypass notarization check with disable-modules flag
-          echo "Loading $KEXT"
-          sudo kmutil load -p "$KEXT" --bypass-signatures
-      
-      - name: Verify loaded
-        run: |
-          sudo kextstat | grep -i foohid || {
-            echo "::error::foohid kext not loaded"
-            exit 1
+          cat > main.swift << 'EOF'
+          import IOKit.hid
+          import Foundation
+
+          print("Testing IOHIDUserDevice virtual HID creation...")
+
+          // Simple HID report descriptor for a mouse:
+          // 3 buttons, X/Y relative movement
+          let reportDescriptor: [UInt8] = [
+              0x05, 0x01,        // Usage Page (Generic Desktop)
+              0x09, 0x02,        // Usage (Mouse)
+              0xA1, 0x01,        // Collection (Application)
+              0x09, 0x01,        //   Usage (Pointer)
+              0xA1, 0x00,        //   Collection (Physical)
+              0x05, 0x09,        //     Usage Page (Buttons)
+              0x19, 0x01,        //     Usage Minimum (1)
+              0x29, 0x03,        //     Usage Maximum (3)
+              0x15, 0x00,        //     Logical Minimum (0)
+              0x25, 0x01,        //     Logical Maximum (1)
+              0x95, 0x03,        //     Report Count (3)
+              0x75, 0x01,        //     Report Size (1)
+              0x81, 0x02,        //     Input (Data, Variable, Absolute)
+              0x95, 0x01,        //     Report Count (1)
+              0x75, 0x05,        //     Report Size (5)
+              0x81, 0x03,        //     Input (Constant)
+              0x05, 0x01,        //     Usage Page (Generic Desktop)
+              0x09, 0x30,        //     Usage (X)
+              0x09, 0x31,        //     Usage (Y)
+              0x15, 0x81,        //     Logical Minimum (-127)
+              0x25, 0x7F,        //     Logical Maximum (127)
+              0x75, 0x08,        //     Report Size (8)
+              0x95, 0x02,        //     Report Count (2)
+              0x81, 0x06,        //     Input (Data, Variable, Relative)
+              0xC0,              //   End Collection
+              0xC0               // End Collection
+          ]
+
+          let descriptorData = Data(reportDescriptor)
+
+          guard let descriptorCFData = descriptorData.withUnsafeBytes({ bytes -> CFData? in
+              CFDataCreate(kCFAllocatorDefault, bytes.bindMemory(to: UInt8.self).baseAddress, descriptorData.count)
+          }) else {
+              print("FAILED: could not create CFData for descriptor")
+              exit(1)
           }
-      
-      - name: Test virtual mouse
+
+          let properties: [String: Any] = [
+              kIOHIDReportDescriptorKey as String: descriptorCFData,
+              kIOHIDVendorIDKey as String: 0x1234,
+              kIOHIDProductIDKey as String: 0x5678,
+              kIOHIDProductKey as String: "OxiRemote Virtual Mouse",
+              kIOHIDPhysicalDeviceUniqueIDKey as String: "oxiremote-test-mouse-001"
+          ]
+
+          guard let device = IOHIDUserDeviceCreate(kCFAllocatorDefault, properties as CFDictionary) else {
+              print("FAILED: IOHIDUserDeviceCreate returned nil")
+              print("This likely means entitlements or permissions are missing.")
+              exit(1)
+          }
+
+          print("SUCCESS: IOHIDUserDevice created")
+          print("Device: \(device)")
+
+          // Try sending a simple report to verify it's actually functional
+          var report: [UInt8] = [0x00, 0x05, 0x00] // no buttons, x+5, y=0
+          let result = report.withUnsafeMutableBytes { ptr -> IOReturn in
+              IOHIDUserDeviceHandleReport(device, ptr.bindMemory(to: UInt8.self).baseAddress!, report.count)
+          }
+
+          if result == kIOReturnSuccess {
+              print("SUCCESS: report sent, IOReturn = \(result)")
+          } else {
+              print("WARNING: report send failed, IOReturn = \(result)")
+          }
+
+          print("Sleeping 2s to let device register...")
+          Thread.sleep(forTimeInterval: 2.0)
+
+          print("Done.")
+          exit(0)
+          EOF
+
+      - name: Compile
         run: |
-          git clone https://github.com/unbit/foohid-py.git
-          cd foohid-py
-          pip3 install -e .
-          # Just import to verify driver is accessible
-          python3 -c "import foohid; print('foohid Python module imported successfully')"
+          swiftc -O main.swift -o hidtest \
+            -framework IOKit \
+            -framework Foundation
+
+      - name: Run test (no sudo)
+        id: no_sudo
+        continue-on-error: true
+        run: ./hidtest
+
+      - name: Run test (with sudo)
+        if: steps.no_sudo.outcome == 'failure'
+        run: sudo ./hidtest
+
+      - name: Check for virtual device in IORegistry
+        run: |
+          ioreg -p IOService -c IOHIDUserDevice -l | grep -A 5 "OxiRemote" || echo "Device not found in IORegistry"
