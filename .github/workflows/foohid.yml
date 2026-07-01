@@ -24,8 +24,7 @@ jobs:
           
       - name: Load the kext
         run: |
-          cd VirtHID-macOS
-          KEXT=$(find . -name "*.kext" | head -1)
+          KEXT=$(find ~/Library/Developer/Xcode/DerivedData -name "VirtHID.kext" 2>/dev/null | head -1)
           if [ -n "$KEXT" ]; then
             echo "Found kext: $KEXT"
             sudo chown -R root:wheel "$KEXT"
