@@ -1,0 +1,36 @@
+name: Test foohid
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Install foohid
+        run: pip install foohid
+      
+      - name: Test foohid
+        run: python -c "
+import sys
+try:
+    import foohid
+    print('✓ foohid imported successfully')
+    print(f'  foohid module: {foohid.__file__}')
+except ImportError as e:
+    print(f'✗ Failed to import foohid: {e}')
+    sys.exit(1)
+
+print('✓ foohid module loaded and available')
+attrs = dir(foohid)
+print(f'✓ Available attributes: {len(attrs)} items')
+
+if hasattr(foohid, '__version__'):
+    print(f'✓ foohid version: {foohid.__version__}')
+
+print('✓ All tests passed!')
+"

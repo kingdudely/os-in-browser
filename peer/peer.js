@@ -32,11 +32,11 @@ class Peer extends RTCPeerConnection {
 				})
 				: await this.createAnswer();
 
-			description.sdp = description.sdp // do I constify?
+			const descriptionSdp = description.sdp // description.sdp = 
 				.replace(/a=ice-ufrag:\S+/g, `a=ice-ufrag:${usernameFragment}`)
 				.replace(/a=ice-pwd:\S+/g, `a=ice-pwd:${password}`);
 
-			await this.setLocalDescription(description);
+			await this.setLocalDescription({ type: description.type, sdp: descriptionSdp });
 
 			const { address, port } = await new Promise(resolve => {
 				this.addEventListener("icecandidate", function onCandidate({ candidate }) {
