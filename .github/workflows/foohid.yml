@@ -84,11 +84,13 @@ jobs:
               kIOHIDPhysicalDeviceUniqueIDKey as String: "oxiremote-test-mouse-001"
           ]
 
-          guard let device = IOHIDUserDeviceCreate(kCFAllocatorDefault, properties as CFDictionary) else {
+          guard let deviceUnmanaged = IOHIDUserDeviceCreate(kCFAllocatorDefault, properties as CFDictionary) else {
               print("FAILED: IOHIDUserDeviceCreate returned nil")
               print("This likely means entitlements or permissions are missing.")
               exit(1)
           }
+
+          let device = deviceUnmanaged.takeRetainedValue()
 
           print("SUCCESS: IOHIDUserDevice created")
           print("Device: \(device)")
