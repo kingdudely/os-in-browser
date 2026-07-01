@@ -1,28 +1,24 @@
-name: Test foohid
+name: Test VirtHID-macOS
 
 on:
   workflow_dispatch:
 
 jobs:
-  test:
+  build:
     runs-on: macos-latest
     
     steps:
-      - name: Install foohid kernel extension
+      - name: Checkout VirtHID-macOS
         run: |
-          brew install unbit/foohid/foohid
-      
-      - name: Check if foohid kernel extension is loaded
-        run: |
-          echo "Checking for foohid kernel extension..."
-          kextstat | grep -i foohid || echo "foohid not loaded"
+          git clone https://github.com/kotleni/VirtHID-macOS.git
+          cd VirtHID-macOS
           
-      - name: Check /Library/Extensions for foohid
+      - name: Build VirtHID with xcodebuild
         run: |
-          echo "Checking /Library/Extensions..."
-          ls -la /Library/Extensions/ | grep -i foohid || echo "foohid not found in /Library/Extensions"
+          cd VirtHID-macOS
+          xcodebuild -scheme VirtHID -configuration Release 2>&1 | head -50
           
-      - name: Check /System/Library/Extensions for foohid
+      - name: Check build output
         run: |
-          echo "Checking /System/Library/Extensions..."
-          ls -la /System/Library/Extensions/ 2>/dev/null | grep -i foohid || echo "foohid not found in /System/Library/Extensions"
+          cd VirtHID-macOS
+          find . -name "*.kext" -o -name "*.app" | head -20
