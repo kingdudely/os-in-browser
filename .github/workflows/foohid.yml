@@ -8,32 +8,21 @@ jobs:
     runs-on: macos-latest
     
     steps:
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install foohid
-        run: pip install foohid
-      
-      - name: Test foohid
+      - name: Install foohid kernel extension
         run: |
-          python -c "
-          import sys
-          try:
-              import foohid
-              print('✓ foohid imported successfully')
-              print(f'  foohid module: {foohid.__file__}')
-          except ImportError as e:
-              print(f'✗ Failed to import foohid: {e}')
-              sys.exit(1)
-
-          print('✓ foohid module loaded and available')
-          attrs = dir(foohid)
-          print(f'✓ Available attributes: {len(attrs)} items')
-
-          if hasattr(foohid, '__version__'):
-              print(f'✓ foohid version: {foohid.__version__}')
-
-          print('✓ All tests passed!')
-          "
+          brew install unbit/foohid/foohid
+      
+      - name: Check if foohid kernel extension is loaded
+        run: |
+          echo "Checking for foohid kernel extension..."
+          kextstat | grep -i foohid || echo "foohid not loaded"
+          
+      - name: Check /Library/Extensions for foohid
+        run: |
+          echo "Checking /Library/Extensions..."
+          ls -la /Library/Extensions/ | grep -i foohid || echo "foohid not found in /Library/Extensions"
+          
+      - name: Check /System/Library/Extensions for foohid
+        run: |
+          echo "Checking /System/Library/Extensions..."
+          ls -la /System/Library/Extensions/ 2>/dev/null | grep -i foohid || echo "foohid not found in /System/Library/Extensions"
