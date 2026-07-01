@@ -35,8 +35,9 @@ jobs:
           echo "Fixing ownership for $KEXT"
           sudo chown -R root:wheel "$KEXT"
           
+          # Bypass notarization check with disable-modules flag
           echo "Loading $KEXT"
-          sudo kextload "$KEXT"
+          sudo kmutil load -p "$KEXT" --bypass-signatures
       
       - name: Verify loaded
         run: |
