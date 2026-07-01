@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-14
     
     steps:
       - name: Checkout VirtHID-macOS
@@ -36,5 +36,4 @@ jobs:
           
       - name: Verify kext loaded
         run: |
-          kextstat | grep -i virthid || echo "VirtHID kext not in kextstat"
-          sudo kextstat | grep -i virthid || echo "VirtHID kext not loaded"
+          sudo kextstat | grep -i virthid && echo "✓ VirtHID kext loaded" || echo "✗ VirtHID kext not loaded"
