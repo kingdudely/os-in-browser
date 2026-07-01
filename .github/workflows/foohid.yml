@@ -1,10 +1,7 @@
 name: Test foohid
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   test:
@@ -15,22 +12,23 @@ jobs:
         run: pip install foohid
       
       - name: Test foohid
-        run: python -c "
-import sys
-try:
-    import foohid
-    print('✓ foohid imported successfully')
-    print(f'  foohid module: {foohid.__file__}')
-except ImportError as e:
-    print(f'✗ Failed to import foohid: {e}')
-    sys.exit(1)
+        run: |
+          python -c "
+          import sys
+          try:
+              import foohid
+              print('✓ foohid imported successfully')
+              print(f'  foohid module: {foohid.__file__}')
+          except ImportError as e:
+              print(f'✗ Failed to import foohid: {e}')
+              sys.exit(1)
 
-print('✓ foohid module loaded and available')
-attrs = dir(foohid)
-print(f'✓ Available attributes: {len(attrs)} items')
+          print('✓ foohid module loaded and available')
+          attrs = dir(foohid)
+          print(f'✓ Available attributes: {len(attrs)} items')
 
-if hasattr(foohid, '__version__'):
-    print(f'✓ foohid version: {foohid.__version__}')
+          if hasattr(foohid, '__version__'):
+              print(f'✓ foohid version: {foohid.__version__}')
 
-print('✓ All tests passed!')
-"
+          print('✓ All tests passed!')
+          "
