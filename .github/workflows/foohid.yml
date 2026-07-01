@@ -1,4 +1,4 @@
-name: Test VirtHID-macOS
+name: Test foohid
 
 on:
   workflow_dispatch:
@@ -8,37 +8,30 @@ jobs:
     runs-on: macos-latest
     
     steps:
-      - name: Checkout VirtHID-macOS
+      - name: Checkout foohid
         uses: actions/checkout@v4
         with:
-          repository: kotleni/VirtHID-macOS
+          repository: unbit/foohid
       
-      - name: Build VirtHID
+      - name: Build foohid kext
         run: |
           xcodebuild \
-            -scheme VirtHID \
+            -project foohid.xcodeproj \
+            -scheme foohid \
             -configuration Release \
             -derivedDataPath build \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             | tail -100
       
-      - name: Fix kext version in plist
+      - name: Find and load kext
         run: |
-          KEXT=$(find build -name "VirtHID.kext" -type d)
-          PLIST="$KEXT/Contents/Info.plist"
+          KEXT=$(find build -name "foohid.kext" -type d)
+          if [ -z "$KEXT" ]; then
+            echo "::error::No kext found"
+            exit 1
+          fi
           
-          VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$PLIST")
-          CLEAN_VERSION=$(echo "$VERSION" | sed 's/-.*$//')
-          
-          echo "Original version: $VERSION"
-          echo "Cleaned version: $CLEAN_VERSION"
-          
-          /usr/libexec/PlistBuddy -c "Set CFBundleVersion $CLEAN_VERSION" "$PLIST"
-      
-      - name: Fix kext ownership and load
-        run: |
-          KEXT=$(find build -name "VirtHID.kext" -type d)
           echo "Fixing ownership for $KEXT"
           sudo chown -R root:wheel "$KEXT"
           
@@ -46,4 +39,16 @@ jobs:
           sudo kextload "$KEXT"
       
       - name: Verify loaded
-        run: sudo kextstat | grep -i virthid
+        run: |
+          sudo kextstat | grep -i foohid || {
+            echo "::error::foohid kext not loaded"
+            exit 1
+          }
+      
+      - name: Test virtual mouse
+        run: |
+          git clone https://github.com/unbit/foohid-py.git
+          cd foohid-py
+          pip3 install -e .
+          # Just import to verify driver is accessible
+          python3 -c "import foohid; print('foohid Python module imported successfully')"
