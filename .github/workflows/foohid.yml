@@ -28,7 +28,6 @@ jobs:
           KEXT=$(find build -name "VirtHID.kext" -type d)
           PLIST="$KEXT/Contents/Info.plist"
           
-          # Extract version and strip pre-release tags
           VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$PLIST")
           CLEAN_VERSION=$(echo "$VERSION" | sed 's/-.*$//')
           
@@ -37,9 +36,12 @@ jobs:
           
           /usr/libexec/PlistBuddy -c "Set CFBundleVersion $CLEAN_VERSION" "$PLIST"
       
-      - name: Load kext
+      - name: Fix kext ownership and load
         run: |
           KEXT=$(find build -name "VirtHID.kext" -type d)
+          echo "Fixing ownership for $KEXT"
+          sudo chown -R root:wheel "$KEXT"
+          
           echo "Loading $KEXT"
           sudo kextload "$KEXT"
       
