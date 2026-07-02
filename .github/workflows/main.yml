@@ -30,15 +30,6 @@ jobs:
         shell: bash
 
     steps:
-      - name: Hide sensitive workflow inputs
-        run: |
-          USERNAME=$(jq -r '.inputs.username' "$GITHUB_EVENT_PATH")
-          PASSWORD=$(jq -r '.inputs.password' "$GITHUB_EVENT_PATH")
-          echo "::add-mask::${USERNAME}"
-          echo "::add-mask::${PASSWORD}"
-          echo "USERNAME=$USERNAME" >> "$GITHUB_ENV"
-          echo "PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
-
       - name: Copy repository into PC
         uses: actions/checkout@main
 
@@ -69,4 +60,9 @@ jobs:
 
       - name: Start server
         run: |
+          USERNAME=$(jq -r '.inputs.username' "$GITHUB_EVENT_PATH")
+          PASSWORD=$(jq -r '.inputs.password' "$GITHUB_EVENT_PATH")
+          echo "::add-mask::${USERNAME}"
+          echo "::add-mask::${PASSWORD}"
+
           python3 -u main.py --username="${USERNAME}" --password="${PASSWORD}"
