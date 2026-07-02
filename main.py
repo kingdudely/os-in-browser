@@ -62,12 +62,12 @@ async def start_browser(app):
         channel="chrome",
         headless=True, # shell
         args=[
-            # "--no-sandbox",
-            # "--disable-gpu",
+            "--no-sandbox",
+            "--disable-gpu",
             "--allow-http-screen-capture",
             "--use-fake-ui-for-media-stream",
             "--auto-select-desktop-capture-source=Entire screen",
-            # "--start-maximized",
+            "--start-maximized",
             f"--unsafely-treat-insecure-origin-as-secure={peer_url}",
             "--enable-usermedia-screen-capturing",
             "--allow-running-insecure-content",
