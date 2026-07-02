@@ -8,11 +8,25 @@ from argparse import ArgumentParser
 
 def main():
 	argument_parser = ArgumentParser(description="Remote desktop session")
-	argument_parser.add_argument('--username', type=str, required=True, help='Session username')
-	argument_parser.add_argument('--password', type=str, required=True, help='Session password')
+	argument_parser.add_argument('--username', type=str, default="", required=False, help='Session username')
+	argument_parser.add_argument('--password', type=str, default="", required=False, help='Session password')
 	arguments = argument_parser.parse_args()
 
-	app = web.Application(middlewares=[IndexMiddleware(), BasicAuthMiddleware(username=arguments.username, password=arguments.password)])
+	username = arguments.username
+	password = arguments.password
+
+	middlewares = [IndexMiddleware()]
+
+	if username and password:
+		basic_auth_middleware = BasicAuthMiddleware(
+			username=username, 
+			password=password
+		)
+		middlewares.append(basic_auth_middleware)
+	else:
+		print("Credentials were not provided. This is insecure, please consider adding some next time.")
+
+	app = web.Application(middlewares=middlewares)
 	routes = web.RouteTableDef()
 
 	routes.static('/', './public')
