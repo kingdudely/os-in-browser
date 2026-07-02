@@ -62,7 +62,6 @@ async def start_browser(app):
         channel="chrome",
         headless=True, # shell
         args=[
-            "--headless=shell",
             "--no-sandbox",
             "--disable-gpu",
             "--allow-http-screen-capture",
