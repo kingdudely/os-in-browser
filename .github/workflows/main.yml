@@ -60,7 +60,7 @@ jobs:
         run: |
           USERNAME=$(jq -r '.inputs.username' "$GITHUB_EVENT_PATH")
           PASSWORD=$(jq -r '.inputs.password' "$GITHUB_EVENT_PATH")
-          echo "::add-mask::${USERNAME}"
-          echo "::add-mask::${PASSWORD}"
+          # echo "::add-mask::${USERNAME}"
+          # echo "::add-mask::${PASSWORD}"
 
           python3 -u main.py --username="${USERNAME}" --password="${PASSWORD}"
