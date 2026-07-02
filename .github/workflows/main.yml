@@ -12,15 +12,22 @@ on:
           - windows-latest
           - ubuntu-latest
           - macos-latest
-
-defaults:
-  run:
-    shell: bash
+      username:
+        description: "Username"
+        type: string
+        required: false
+      password:
+        description: "Password"
+        type: string
+        required: false
 
 jobs:
   remote:
     runs-on: ${{ github.event.inputs.os }}
     timeout-minutes: 360
+    defaults:
+    run:
+      shell: bash
     env:
       DISPLAY: ":0"
 
@@ -35,22 +42,25 @@ jobs:
           cache: 'pip'
           cache-dependency-path: '**/requirements.txt'
 
-      - name: Setup Ubuntu desktop GUI
+      - name: Install Linux packages
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends xorg xfce4 xvfb # x11-utils
-
-          Xvfb ${DISPLAY} -screen 0 1920x1080x24 &
-          setsid startxfce4 &
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: "lxqt openbox dbus-x11"
+          version: "1.0"
 
       - name: Install server dependencies
-        run: |
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
       - name: Start server
-        env:
-          USERNAME: ${{ secrets.USERNAME }}
-          PASSWORD: ${{ secrets.PASSWORD }}
         run: |
-          python3 -u main.py
+          USERNAME=$(jq -r '.inputs.username' "$GITHUB_EVENT_PATH")
+          PASSWORD=$(jq -r '.inputs.password' "$GITHUB_EVENT_PATH")
+          echo "::add-mask::${USERNAME}"
+          echo "::add-mask::${PASSWORD}"
+
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -as "-screen 0 1920x1080x24" bash -c "dbus-launch --exit-with-session startlxqt & python3 -u main.py --username=${USERNAME} --password=${PASSWORD}"
+          else
+            python3 -u main.py --username="${USERNAME}" --password="${PASSWORD}"
+          fi

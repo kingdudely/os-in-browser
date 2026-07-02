@@ -26,10 +26,6 @@ match platform:
 def get_screenshare(**options):
 	return MediaPlayer(DISPLAY, format=media_format, options=options)
 
-def get_screen_size():
-	monitor = get_monitors()[0]
-	return monitor.width, monitor.height
-
 def import_json(path):
 	with open(path, "r", encoding="utf-8") as f:
 		return load(f)
@@ -43,14 +39,11 @@ BUTTON_MAP = {
 mouse = MouseController()
 keyboard = KeyboardController()
 
-async def get_answer(offer):
+async def create_answer(offer):
 	screenshare = get_screenshare(framerate="30")
 
 	peer = RTCPeerConnection()
 	peer.addTrack(screenshare.video)
-
-	screen_width, screen_height = get_screen_size()
-	stream_width, stream_height = screen_width, screen_height
 
 	pointer_movement_channel = peer.createDataChannel("pointer-movement", ordered=False, maxRetransmits=0, negotiated=True, id=0)
 	@pointer_movement_channel.on("message")
