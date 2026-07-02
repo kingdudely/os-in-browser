@@ -15,7 +15,11 @@ from pynput.mouse import Button, Controller as MouseController
 keyboard = KeyboardController()
 mouse = MouseController()
 
-BUTTON_MAP = {0: Button.left, 1: Button.middle, 2: Button.right, 3: Button.x1, 4: Button.x2}
+BUTTON_MAP = {
+    0: Button.left,
+    1: Button.middle,
+    2: Button.right
+}
 
 CODE_MAP = {
     "AltLeft": Key.alt_l, "AltRight": Key.alt_r,
