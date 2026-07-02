@@ -60,7 +60,7 @@ async def start_browser(app):
     context = await playwright.chromium.launch_persistent_context(
         user_data_dir,
         channel="chrome",
-        headless=False, # shell, True
+        headless=True, # shell
         args=[
             # "--no-sandbox",
             # "--disable-gpu",

@@ -3,13 +3,6 @@
 	<head>
 		<script type="module">
 import code_keys from "./code_keys.json" with { type: "json" };
-
-const stream = await navigator.mediaDevices.getDisplayMedia({
-	video: true,
-	audio: false
-});
-const tracks = stream.getTracks();
-
 /*
 let layoutMap = await navigator.keyboard.getLayoutMap();
 navigator.keyboard.addEventListener("layoutchange", async () => {
@@ -31,7 +24,12 @@ window.createAnswer = async (offerSdp) => {
 		}
 	});
 
-	tracks.forEach((track) => peer.addTrack(track, stream));
+	const stream = await navigator.mediaDevices.getDisplayMedia({
+		video: true,
+		audio: false
+	});
+
+	stream.getTracks().forEach((track) => peer.addTrack(track, stream));
 
 	const pointerMovementChannel = peer.createDataChannel("pointer-movement", { ordered: false, maxRetransmits: 0, negotiated: true, id: 0 });
 	pointerMovementChannel.addEventListener("message", (event) => {
