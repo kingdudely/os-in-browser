@@ -49,7 +49,7 @@ async def create_answer(offer):
 	@pointer_movement_channel.on("message")
 	def on_pointer_movement(data):
 		is_relative = len(data) == 4
-		print(len(data))
+
 		if is_relative:
 			movement_x, movement_y = unpack("<hh", data)
 			mouse.move(movement_x, movement_y)
