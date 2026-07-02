@@ -12,6 +12,14 @@ on:
           - windows-latest
           - ubuntu-latest
           - macos-latest
+      username:
+        description: "Username"
+        type: string
+        required: false
+      password:
+        description: "Password"
+        type: string
+        required: false
 
 jobs:
   remote:
@@ -25,14 +33,36 @@ jobs:
       - name: Copy repository into PC
         uses: actions/checkout@main
 
-      - name: Setup Ubuntu desktop GUI
+      - name: Install Python
+        uses: actions/setup-python@main
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: '**/requirements.txt'
+
+      - name: Linux setup
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update && \
-          sudo apt-get install -y ubuntu-desktop-minimal && \
-          sudo systemctl enable gdm3 && \
-          sudo systemctl start gdm3
+          sudo apt-get update
+          sudo apt-get install -y xvfb xterm
+
+          read -r DISPLAY_NUMBER < <(exec Xvfb -displayfd 1)
+
+          export DISPLAY=":$DISPLAY_NUMBER"
+          echo "DISPLAY=$DISPLAY" >> "$GITHUB_ENV"
+
+          xterm -maximized & # -fullscreen
+
+      - name: Install server dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: pip install -r requirements.txt
 
       - name: Start server
         run: |
-          ./start.sh
+          USERNAME=$(jq -r '.inputs.username // ""' "$GITHUB_EVENT_PATH")
+          PASSWORD=$(jq -r '.inputs.password // ""' "$GITHUB_EVENT_PATH")
+          echo "::add-mask::${USERNAME}"
+          echo "::add-mask::${PASSWORD}"
+
+          python3 -u main.py --username="${USERNAME}" --password="${PASSWORD}"

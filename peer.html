@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<script>
+import code_keys from "./code_keys.json" with { type: "json" };
+
+const stream = await navigator.mediaDevices.getDisplayMedia({
+	video: true,
+	audio: false
+});
+const tracks = stream.getTracks();
+
+/*
+let layoutMap = await navigator.keyboard.getLayoutMap();
+navigator.keyboard.addEventListener("layoutchange", async () => {
+	layoutMap = await navigator.keyboard.getLayoutMap();
+});
+*/
+
+window.createAnswer = async (offerSdp) => {
+	const peer = new RTCPeerConnection({
+		iceServers: [
+			{ urls: "stun:stun.l.google.com:19302" },
+			{ urls: "stun:stun.cloudflare.com:3478" }
+		]
+	});
+
+	peer.addEventListener("connectionstatechange", () => {
+		if (["disconnected", "failed", "closed"].includes(peer.connectionState)) {
+			peer.close();
+		}
+	});
+
+	tracks.forEach((track) => peer.addTrack(track, stream));
+
+	const pointerMovementChannel = peer.createDataChannel("pointer-movement", { ordered: false, maxRetransmits: 0, negotiated: true, id: 0 });
+	pointerMovementChannel.addEventListener("message", (event) => {
+		const view = new DataView(event.data);
+		const isRelativeMovement = view.byteLength === 4;
+
+		if (isRelativeMovement) {
+			const movementX = view.getInt16(0, true);
+			const movementY = view.getInt16(2, true);
+			window.moveMouse(movementX, movementY);
+		} else {
+			const x = view.getUint32(0, true);
+			const y = view.getUint32(4, true);
+			window.setMousePosition(x, y);
+		}
+	});
+
+	const pointerClickChannel = peer.createDataChannel("pointer-click", { ordered: true, negotiated: true, id: 1 });
+	pointerClickChannel.addEventListener("message", (event) => {
+		const view = new DataView(event.data);
+		const isDown = view.getUint8(0) === 1;
+		const button = view.getUint8(1);
+
+		if (isDown) {
+			window.pressMouseButton(button);
+		} else {
+			window.releaseMouseButton(button);
+		}
+	});
+
+	const keyboardChannel = peer.createDataChannel("keyboard-type", { ordered: true, negotiated: true, id: 2 });
+	keyboardChannel.addEventListener("message", async (event) => {
+		const view = new DataView(event.data);
+		const isDown = view.getUint8(0) === 1;
+		const code_index = view.getUint8(1);
+		const code = code_keys[code_index];
+		const layoutMap = await navigator.keyboard.getLayoutMap();
+		const key = layoutMap.get(code);
+
+		if (isDown) {
+			window.pressKeyboardKeyOrCode(key || code);
+		} else {
+			window.releaseKeyboardKeyOrCode(key || code);
+		}
+	});
+
+	const screenResizeChannel = peer.createDataChannel("screen-resize", { ordered: false, negotiated: true, id: 3 });
+
+	const pointerScrollChannel = peer.createDataChannel("pointer-scroll", { ordered: false, maxRetransmits: 0, negotiated: true, id: 4 });
+	pointerScrollChannel.addEventListener("message", (event) => {
+		const view = new DataView(event.data);
+		const deltaX = view.getFloat32(0, true);
+		const deltaY = view.getFloat32(4, true);
+		window.scrollMouse(deltaX, deltaY); // z not supported by pynput
+	});
+
+	await peer.setRemoteDescription({ type: "offer", sdp: offerSdp });
+	await peer.setLocalDescription();
+	await new Promise((resolve) => { // wait for ice gathering
+		if (peer.iceGatheringState === "complete") {
+			resolve();
+		} else {
+			peer.addEventListener("icegatheringstatechange", function onStateChange() {
+				if (peer.iceGatheringState === "complete") {
+					peer.removeEventListener("icegatheringstatechange", onStateChange);
+					resolve();
+				}
+			});
+		}
+	});
+
+	return peer.localDescription.sdp;
+}
+		</script>
+	</head>
+
+	<body></body>
+</html>

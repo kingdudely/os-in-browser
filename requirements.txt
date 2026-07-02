@@ -1,0 +1,6 @@
+playwright
+aiohttp
+aiohttp-index
+aiohttp-basicauth
+with-cloudflared
+pynput
