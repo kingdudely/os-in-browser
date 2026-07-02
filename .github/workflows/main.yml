@@ -30,23 +30,43 @@ jobs:
         shell: bash
 
     steps:
+      - name: Hide sensitive workflow inputs
+        run: |
+          USERNAME=$(jq -r '.inputs.username' "$GITHUB_EVENT_PATH")
+          PASSWORD=$(jq -r '.inputs.password' "$GITHUB_EVENT_PATH")
+          echo "::add-mask::${USERNAME}"
+          echo "::add-mask::${PASSWORD}"
+          echo "USERNAME=$USERNAME" >> "$GITHUB_ENV"
+          echo "PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
+
       - name: Copy repository into PC
         uses: actions/checkout@main
+
+      - name: Install Python
+        uses: actions/setup-python@main
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: '**/requirements.txt'
+
+      - name: Linux setup
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xterm
+
+          exec 3< <(exec Xvfb -displayfd 3)
+          read -u 3 DISPLAY_NUMBER
+          exec 3<&-
+
+          export DISPLAY=":$DISPLAY_NUMBER"
+          echo "DISPLAY=$DISPLAY" >> "$GITHUB_ENV"
+
+          xterm &
 
       - name: Install server dependencies
         run: pip install -r requirements.txt
 
       - name: Start server
         run: |
-          USERNAME=$(jq -r '.inputs.username' "$GITHUB_EVENT_PATH")
-          PASSWORD=$(jq -r '.inputs.password' "$GITHUB_EVENT_PATH")
-          echo "::add-mask::${USERNAME}"
-          echo "::add-mask::${PASSWORD}"
-
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            sudo apt-get update
-            sudo apt-get install lxqt openbox dbus-x11 xvfb
-            xvfb-run -as "-screen 0 1920x1080x24" bash -c "dbus-launch --exit-with-session startlxqt & python3 -u main.py --username=${USERNAME} --password=${PASSWORD}"
-          else
-            python3 -u main.py --username="${USERNAME}" --password="${PASSWORD}"
-          fi
+          python3 -u main.py --username="${USERNAME}" --password="${PASSWORD}"
