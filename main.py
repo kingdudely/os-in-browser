@@ -115,6 +115,8 @@ def main():
     app = web.Application(middlewares=middlewares)
     routes = web.RouteTableDef()
 
+    routes.static('/', '.')
+
     @routes.post("/whip")
     async def whip(request):
         offer = await request.text()
@@ -123,18 +125,24 @@ def main():
 
     app.add_routes(routes)
 
-    # index.html, peer.html, and code_keys.json all served from the current directory
-    routes.static('/', '.')
-
     port = 8080
     app["port"] = port
 
-    app.on_startup.append(start_browser)
     app.on_cleanup.append(stop_browser)
 
-    with cloudflared(port=port) as cloudflared_address:
-        print(f"Click on this to access your desktop: {cloudflared_address}")
-        web.run_app(app, port=port)
+    async def run():
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, port=port)
+        await site.start()  # server is now actually listening
+
+        await start_browser(app)  # safe to page.goto now
+
+        with cloudflared(port=port) as cloudflared_address:
+            print(f"Click on this to access your desktop: {cloudflared_address}")
+            await asyncio.Event().wait()
+
+    asyncio.run(run())
 
 if __name__ == "__main__":
     main()
