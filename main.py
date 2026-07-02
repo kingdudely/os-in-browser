@@ -88,11 +88,9 @@ async def start_browser(app):
     app["browser_context"] = context
     app["peer_page"] = page
 
-
 async def stop_browser(app):
     await app["browser_context"].close()
     await app["playwright"].stop()
-
 
 def main():
     argument_parser = ArgumentParser(description="Remote desktop session")
@@ -134,7 +132,6 @@ def main():
     with cloudflared(port=port) as cloudflared_address:
         print(f"Click on this to access your desktop: {cloudflared_address}")
         web.run_app(app, port=port)
-
 
 if __name__ == "__main__":
     main()
