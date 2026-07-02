@@ -26,10 +26,8 @@ jobs:
     runs-on: ${{ github.event.inputs.os }}
     timeout-minutes: 360
     defaults:
-    run:
-      shell: bash
-    env:
-      DISPLAY: ":0"
+      run:
+        shell: bash
 
     steps:
       - name: Copy repository into PC
