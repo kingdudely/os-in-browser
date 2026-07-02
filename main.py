@@ -16,8 +16,7 @@ def main():
 	password = arguments.password
 
 	middlewares = [IndexMiddleware()]
-	print(f"USERNAME: {username}")
-	print(f"PASSWORD: {password}")
+
 	if username and password:
 		basic_auth_middleware = BasicAuthMiddleware(
 			username=username, 
