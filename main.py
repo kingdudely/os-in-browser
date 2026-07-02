@@ -76,6 +76,13 @@ async def start_browser(app):
 
     page = await context.new_page()
 
+    page.on("console", lambda msg: print(f"[console:{msg.type}] {msg.text}"))
+    page.on("pageerror", lambda exc: print(f"[pageerror] {exc}"))
+    page.on("requestfailed", lambda req: print(f"[requestfailed] {req.url} - {req.failure}"))
+
+    response = await page.goto(peer_url)
+    print(f"[goto] status={response.status if response else None} url={peer_url}")
+
     await page.expose_function("pressKeyboardKeyOrCode", lambda key_or_code: fire_keyboard_key_or_code(key_or_code, True))
     await page.expose_function("releaseKeyboardKeyOrCode", lambda key_or_code: fire_keyboard_key_or_code(key_or_code, False))
     await page.expose_function("pressMouseButton", lambda button: fire_mouse_button(button, True))
