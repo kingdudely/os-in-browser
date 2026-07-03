@@ -54,7 +54,8 @@ jobs:
           const VIEW_HTML = `<!doctype html><html><body>
           <video id="v" autoplay playsinline controls style="width:100%"></video>
           <script>
-          const ws = new WebSocket('ws://' + location.host);
+          const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+          const ws = new WebSocket(proto + location.host);
           let pc;
           ws.onopen = () => ws.send(JSON.stringify({role:'viewer', type:'viewer-ready'}));
           ws.onmessage = async (ev) => {
