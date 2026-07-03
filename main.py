@@ -52,55 +52,7 @@ def fire_mouse_button(button: int, is_down: bool):
 def set_mouse_position(x: int, y: int):
     mouse.position = (x, y)
 
-async def start_browser(app):
-    peer_url = f"http://localhost:{app['port']}/peer.html"
-    user_data_dir = mkdtemp()
-
-    playwright = await async_playwright().start()
-    context = await playwright.chromium.launch_persistent_context(
-        user_data_dir,
-        channel="chrome",
-        headless=True, # shell
-        args=[
-            "--no-sandbox",
-            "--disable-gpu",
-            "--allow-http-screen-capture",
-            "--use-fake-ui-for-media-stream",
-            "--auto-select-desktop-capture-source=Entire screen",
-            "--start-maximized",
-            f"--unsafely-treat-insecure-origin-as-secure={peer_url}",
-            "--enable-usermedia-screen-capturing",
-            "--allow-running-insecure-content",
-        ],
-    )
-
-    page = await context.new_page()
-
-    page.on("console", lambda msg: print(f"[console:{msg.type}] {msg.text}"))
-    page.on("pageerror", lambda exc: print(f"[pageerror] {exc}"))
-    page.on("requestfailed", lambda req: print(f"[requestfailed] {req.url} - {req.failure}"))
-    page.on("response", lambda res: print(f"[response] {res.status} {res.url}") if res.status >= 400 else None)
-
-    await page.expose_function("pressKeyboardKeyOrCode", lambda key_or_code: fire_keyboard_key_or_code(key_or_code, True))
-    await page.expose_function("releaseKeyboardKeyOrCode", lambda key_or_code: fire_keyboard_key_or_code(key_or_code, False))
-    await page.expose_function("pressMouseButton", lambda button: fire_mouse_button(button, True))
-    await page.expose_function("releaseMouseButton", lambda button: fire_mouse_button(button, False))
-    await page.expose_function("setMousePosition", set_mouse_position)
-    await page.expose_function("moveMouse", mouse.move)
-    await page.expose_function("scrollMouse", mouse.scroll)
-
-    await page.goto(peer_url)
-    await page.wait_for_function("() => typeof(window.createAnswer) === 'function'")
-
-    app["playwright"] = playwright
-    app["browser_context"] = context
-    app["peer_page"] = page
-
-async def stop_browser(app):
-    await app["browser_context"].close()
-    await app["playwright"].stop()
-
-def main():
+async def main():
     argument_parser = ArgumentParser(description="Remote desktop session")
     argument_parser.add_argument('--username', type=str, default="", required=False, help='Session username')
     argument_parser.add_argument('--password', type=str, default="", required=False, help='Session password')
@@ -115,39 +67,75 @@ def main():
         basic_auth_middleware = BasicAuthMiddleware(username=username, password=password)
         middlewares.append(basic_auth_middleware)
     else:
-        print("Credentials were not provided. This is insecure, please consider adding some next time.")
-
-    app = web.Application(middlewares=middlewares)
-    routes = web.RouteTableDef()
-
-    routes.static('/', '.')
-
-    @routes.post("/whip")
-    async def whip(request):
-        offer = await request.text()
-        answer = await app["peer_page"].evaluate("(offer) => window.createAnswer(offer)", offer)
-        return web.Response(text=answer, content_type="application/sdp", status=201)
-
-    app.add_routes(routes)
+        print("Username and/or password were not provided. This is insecure, please consider adding both next time.")
 
     port = 8080
-    app["port"] = port
+    peer_url = f"http://localhost:{port}/peer.html"
+    user_data_dir = mkdtemp()
 
-    app.on_cleanup.append(stop_browser)
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch_persistent_context(
+            user_data_dir,
+            channel="chrome",
+            headless=True, # shell
+            args=[
+                "--no-sandbox",
+                "--disable-gpu",
+                "--allow-http-screen-capture",
+                "--use-fake-ui-for-media-stream",
+                "--auto-select-desktop-capture-source=Entire screen",
+                "--start-maximized",
+                f"--unsafely-treat-insecure-origin-as-secure={peer_url}",
+                "--enable-usermedia-screen-capturing",
+                "--allow-running-insecure-content",
+            ],
+        )
 
-    async def run():
+        page = await browser.new_page()
+
+        page.on("console", lambda msg: print(f"[console:{msg.type}] {msg.text}"))
+        page.on("pageerror", lambda exc: print(f"[pageerror] {exc}"))
+        page.on("requestfailed", lambda req: print(f"[requestfailed] {req.url} - {req.failure}"))
+        page.on("response", lambda res: print(f"[response] {res.status} {res.url}") if res.status >= 400 else None)
+
+        await page.expose_function("pressKeyboardKeyOrCode", lambda key_or_code: fire_keyboard_key_or_code(key_or_code, True))
+        await page.expose_function("releaseKeyboardKeyOrCode", lambda key_or_code: fire_keyboard_key_or_code(key_or_code, False))
+        await page.expose_function("pressMouseButton", lambda button: fire_mouse_button(button, True))
+        await page.expose_function("releaseMouseButton", lambda button: fire_mouse_button(button, False))
+        await page.expose_function("setMousePosition", set_mouse_position)
+        await page.expose_function("moveMouse", mouse.move)
+        await page.expose_function("scrollMouse", mouse.scroll)
+
+        app = web.Application(middlewares=middlewares)
+        routes = web.RouteTableDef()
+
+        routes.static('/', '.')
+
+        @routes.post("/whip")
+        async def whip(request):
+            offer = await request.text()
+            answer = await page.evaluate("window.createAnswer", offer)
+            return web.Response(text=answer, content_type="application/sdp", status=201)
+
+        app.add_routes(routes)
+
+        async def close_browser(app):
+            await browser.close()
+
+        app.on_cleanup.append(close_browser)
+
+        # Wait for HTTP server
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, port=port)
         await site.start()  # server is now actually listening
 
-        await start_browser(app)  # safe to page.goto now
+        await page.goto(peer_url)
+        await page.wait_for_function("() => typeof(window.createAnswer) === 'function'")
 
         with cloudflared(port=port) as cloudflared_address:
             print(f"Click on this to access your desktop: {cloudflared_address}")
             await asyncio.Event().wait()
 
-    asyncio.run(run())
-
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
