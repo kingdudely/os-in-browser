@@ -1,270 +1,154 @@
-name: Verify macOS getDisplayMedia (real vs fake)
+name: chrome-webrtc-screen
 
 on:
   workflow_dispatch:
 
 jobs:
-  verify:
+  stream:
     runs-on: macos-latest
-    timeout-minutes: 30
-
+    timeout-minutes: 60
     steps:
       - name: Install cloudflared
         run: brew install cloudflared
 
-      - name: Install Chrome
-        uses: browser-actions/setup-chrome@v1
-        id: setup-chrome
-        with:
-          chrome-version: stable
-
-      - name: Write files
-        run: |
-          mkdir -p site
-          cd site
-
-          # --- code_keys.json (minimal, not used for this test but keeps peer.html happy if it imports it) ---
-          cat > code_keys.json << 'EOF'
-          []
-          EOF
-
-          # --- peer.html: the "host" page that calls real getDisplayMedia and answers WHIP offers ---
-          cat > peer.html << 'HTMLEOF'
-          <!DOCTYPE html>
-          <html>
-          <head><title>peer</title></head>
-          <body>
-          <script type="module">
-            const log = (msg) => {
-              console.log(msg);
-              document.title = msg;
-            };
-
-            (async () => {
-              try {
-                const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-                window.__stream = stream;
-                const track = stream.getVideoTracks()[0];
-                log('CAPTURE:' + track.label + ':' + JSON.stringify(track.getSettings()));
-
-                window.createAnswer = async (offerSdp) => {
-                  const peer = new RTCPeerConnection({
-                    iceServers: [
-                      { urls: "stun:stun.l.google.com:19302" },
-                      { urls: "stun:stun.cloudflare.com:3478" }
-                    ]
-                  });
-                  stream.getTracks().forEach((t) => peer.addTrack(t, stream));
-                  await peer.setRemoteDescription({ type: "offer", sdp: offerSdp });
-                  await peer.setLocalDescription();
-                  await new Promise((resolve) => {
-                    if (peer.iceGatheringState === "complete") return resolve();
-                    peer.addEventListener("icegatheringstatechange", function onChange() {
-                      if (peer.iceGatheringState === "complete") {
-                        peer.removeEventListener("icegatheringstatechange", onChange);
-                        resolve();
-                      }
-                    });
-                  });
-                  return peer.localDescription.sdp;
-                };
-
-                window.__ready = true;
-              } catch (err) {
-                log('FAIL:' + err.name + ':' + err.message);
-              }
-            })();
-          </script>
-          </body>
-          </html>
-          HTMLEOF
-
-          # --- viewer.html: what YOU open in your own browser to visually inspect the stream ---
-          cat > viewer.html << 'HTMLEOF'
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>Viewer</title>
-            <style>
-              body { margin: 0; background: #111; }
-              video { width: 100vw; height: 100vh; object-fit: contain; background: #000; }
-              #status { position: fixed; top: 8px; left: 8px; color: #0f0; font: 14px monospace; background: #000a; padding: 4px 8px; }
-            </style>
-          </head>
-          <body>
-          <div id="status">connecting...</div>
-          <video id="v" autoplay playsinline muted></video>
-          <script>
-            const statusEl = document.getElementById('status');
-            const video = document.getElementById('v');
-
-            const peer = new RTCPeerConnection({
-              iceServers: [
-                { urls: "stun:stun.l.google.com:19302" },
-                { urls: "stun:stun.cloudflare.com:3478" }
-              ]
-            });
-
-            peer.addEventListener('track', (event) => {
-              video.srcObject = event.streams[0];
-              video.play().catch(() => {});
-              statusEl.textContent = 'track received: ' + event.track.kind;
-            });
-
-            peer.addTransceiver('video', { direction: 'recvonly' });
-
-            (async () => {
-              await peer.setLocalDescription();
-              await new Promise((resolve) => {
-                if (peer.iceGatheringState === "complete") return resolve();
-                peer.addEventListener("icegatheringstatechange", function onChange() {
-                  if (peer.iceGatheringState === "complete") {
-                    peer.removeEventListener("icegatheringstatechange", onChange);
-                    resolve();
-                  }
-                });
-              });
-
-              const res = await fetch('/whip', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/sdp' },
-                body: peer.localDescription.sdp
-              });
-
-              if (!res.ok) {
-                statusEl.textContent = 'WHIP failed: ' + res.status;
-                return;
-              }
-
-              const answerSdp = await res.text();
-              await peer.setRemoteDescription({ type: 'answer', sdp: answerSdp });
-              statusEl.textContent = 'negotiated, waiting for track...';
-            })().catch((err) => {
-              statusEl.textContent = 'error: ' + err.message;
-            });
-          </script>
-          </body>
-          </html>
-          HTMLEOF
-
-      - name: Write server
+      - name: Write signaling + viewer server
         run: |
           cat > server.py << 'PYEOF'
-          import asyncio
-          from tempfile import mkdtemp
-
+          import asyncio, json, uuid
           from aiohttp import web
-          from playwright.async_api import async_playwright
 
-          PORT = 8080
+          pending = {}   # id -> offer sdp
+          answers = {}   # id -> answer sdp
 
-          async def start_browser(app):
-              peer_url = f"http://localhost:{PORT}/peer.html"
-              user_data_dir = mkdtemp()
+          async def offer(request):
+              data = await request.json()
+              sid = str(uuid.uuid4())
+              pending[sid] = data["sdp"]
+              return web.json_response({"id": sid})
 
-              playwright = await async_playwright().start()
-              context = await playwright.chromium.launch_persistent_context(
-                  user_data_dir,
-                  channel="chrome",
-                  headless=False,
-                  args=[
-                      "--no-sandbox",
-                      "--disable-gpu",
-                      "--allow-http-screen-capture",
-                      "--use-fake-ui-for-media-stream",
-                      "--auto-select-desktop-capture-source=Entire screen",
-                      "--start-maximized",
-                      f"--unsafely-treat-insecure-origin-as-secure={peer_url}",
-                      "--enable-usermedia-screen-capturing",
-                      "--allow-running-insecure-content",
-                  ],
-              )
+          async def get_offer(request):
+              sid = request.query.get("id")
+              if sid not in pending:
+                  return web.json_response({}, status=404)
+              return web.json_response({"sdp": pending[sid]})
 
-              page = await context.new_page()
-              page.on("console", lambda msg: print(f"[peer console:{msg.type}] {msg.text}"))
-              page.on("pageerror", lambda exc: print(f"[peer pageerror] {exc}"))
+          async def answer(request):
+              data = await request.json()
+              sid = data["id"]
+              answers[sid] = data["sdp"]
+              return web.json_response({"ok": True})
 
-              response = await page.goto(peer_url)
-              print(f"[goto] status={response.status if response else None} url={peer_url}")
+          async def get_answer(request):
+              sid = request.query.get("id")
+              if sid not in answers:
+                  return web.json_response({}, status=404)
+              return web.json_response({"sdp": answers[sid]})
 
-              await page.wait_for_function("window.__ready === true || document.title.startsWith('FAIL:')", timeout=20000)
-              title = await page.title()
-              print(f"[peer title] {title}")
+          async def viewer(request):
+              return web.Response(text=VIEWER_HTML, content_type="text/html")
 
-              if title.startswith("FAIL:"):
-                  raise RuntimeError(f"getDisplayMedia failed: {title}")
+          async def sender(request):
+              return web.Response(text=SENDER_HTML, content_type="text/html")
 
-              await page.wait_for_function("window.createAnswer !== undefined")
+          VIEWER_HTML = """
+          <!doctype html><html><body style="margin:0;background:#111">
+          <video id=v autoplay playsinline style="width:100vw;height:100vh;object-fit:contain"></video>
+          <script>
+          const params = new URLSearchParams(location.search);
+          const id = params.get('id');
+          const pc = new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
+          pc.ontrack = e => { document.getElementById('v').srcObject = e.streams[0]; };
+          async function run() {
+            let offerData;
+            while (true) {
+              const r = await fetch('/get_offer?id=' + id);
+              if (r.status === 200) { offerData = await r.json(); break; }
+              await new Promise(r => setTimeout(r, 1000));
+            }
+            await pc.setRemoteDescription({type:'offer', sdp: offerData.sdp});
+            const ans = await pc.createAnswer();
+            await pc.setLocalDescription(ans);
+            await fetch('/answer', {method:'POST', headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({id, sdp: pc.localDescription.sdp})});
+          }
+          run();
+          </script>
+          </body></html>
+          """
 
-              app["playwright"] = playwright
-              app["browser_context"] = context
-              app["peer_page"] = page
+          SENDER_HTML = """
+          <!doctype html><html><body>
+          <script>
+          async function run() {
+            const stream = await navigator.mediaDevices.getDisplayMedia({video:true, audio:false});
+            const pc = new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
+            stream.getTracks().forEach(t => pc.addTrack(t, stream));
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            await new Promise(r => setTimeout(r, 1500)); // let ICE gather
+            const resp = await fetch('/offer', {method:'POST', headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({sdp: pc.localDescription.sdp})});
+            const {id} = await resp.json();
+            document.title = 'SESSION_ID:' + id;
+            while (true) {
+              const r = await fetch('/get_answer?id=' + id);
+              if (r.status === 200) {
+                const {sdp} = await r.json();
+                await pc.setRemoteDescription({type:'answer', sdp});
+                break;
+              }
+              await new Promise(r => setTimeout(r, 1000));
+            }
+          }
+          run();
+          </script>
+          </body></html>
+          """
 
-          async def stop_browser(app):
-              await app["browser_context"].close()
-              await app["playwright"].stop()
+          app = web.Application()
+          app.router.add_post('/offer', offer)
+          app.router.add_get('/get_offer', get_offer)
+          app.router.add_post('/answer', answer)
+          app.router.add_get('/get_answer', get_answer)
+          app.router.add_get('/viewer', viewer)
+          app.router.add_get('/', sender)
 
-          def main():
-              app = web.Application()
-              routes = web.RouteTableDef()
-              routes.static('/', 'site')
-
-              @routes.post("/whip")
-              async def whip(request):
-                  offer = await request.text()
-                  answer = await app["peer_page"].evaluate("(offer) => window.createAnswer(offer)", offer)
-                  return web.Response(text=answer, content_type="application/sdp", status=201)
-
-              app.add_routes(routes)
-              app.on_cleanup.append(stop_browser)
-
-              async def run():
-                  runner = web.AppRunner(app)
-                  await runner.setup()
-                  site = web.TCPSite(runner, port=PORT)
-                  await site.start()
-
-                  await start_browser(app)
-
-                  print("Server ready, waiting for cloudflared to expose it...")
-                  await asyncio.Event().wait()
-
-              asyncio.run(run())
-
-          if __name__ == "__main__":
-              main()
+          web.run_app(app, host='127.0.0.1', port=8080)
           PYEOF
 
-      - name: Install Python deps
+      - name: Start signaling server
         run: |
-          python3 -m pip install --break-system-packages aiohttp playwright
-          # Chrome is provided by setup-chrome, we don't need Playwright's own browser download
+          python3 -m pip install aiohttp --break-system-packages --quiet
+          nohup python3 server.py > server.log 2>&1 &
+          sleep 2
 
-      - name: Run server + tunnel
+      - name: Start cloudflared tunnel
         run: |
-          export CHROME_PATH="${{ steps.setup-chrome.outputs.chrome-path }}"
-          echo "Using Chrome at: $CHROME_PATH"
-
-          python3 -u server.py &
-          SERVER_PID=$!
-
-          # give the server + browser a moment to come up before tunneling
-          sleep 8
-
-          cloudflared tunnel --url http://localhost:8080 2>&1 | tee cloudflared.log &
-          TUNNEL_PID=$!
-
-          # poll for the public URL cloudflared prints
+          nohup cloudflared tunnel --url http://127.0.0.1:8080 --no-autoupdate > cloudflared.log 2>&1 &
           for i in $(seq 1 30); do
-            URL=$(grep -o 'https://[a-zA-Z0-9.-]*\.trycloudflare\.com' cloudflared.log | head -n1)
-            if [ -n "$URL" ]; then
-              echo "=================================================="
-              echo "PEER PAGE (host, do not need to open):  $URL/peer.html"
-              echo "VIEWER PAGE (open this to see the stream): $URL/viewer.html"
-              echo "=================================================="
-              break
-            fi
-            sleep 2
+            URL=$(grep -o 'https://[a-zA-Z0-9-]*\.trycloudflare\.com' cloudflared.log | head -n1)
+            if [ -n "$URL" ]; then break; fi
+            sleep 1
           done
+          echo "TUNNEL_URL=$URL" >> $GITHUB_ENV
+          echo "Tunnel URL: $URL"
 
-          wait $SERVER_PID
+      - name: Launch Chrome with getDisplayMedia
+        run: |
+          open -a "Google Chrome" --args \
+            --auto-select-desktop-capture-source="Entire screen" \
+            --use-fake-ui-for-media-stream \
+            --autoplay-policy=no-user-gesture-required \
+            --disable-features=IsolateOrigins,site-per-process \
+            "$TUNNEL_URL/"
+          sleep 5
+
+      - name: Print viewer link
+        run: |
+          echo "Open this to view the screen:"
+          echo "$TUNNEL_URL/viewer?id=<check chrome tab title for SESSION_ID>"
+          echo "---- cloudflared log ----"
+          cat cloudflared.log
+
+      - name: Keep session alive
+        run: sleep 3000
