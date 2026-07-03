@@ -1,0 +1,39 @@
+name: concurrency-test
+
+# Trigger manually, N times in a row, as fast as you can (see trigger script below).
+# Each run just records its own start time, sleeps, then records end time.
+# After firing off a batch, look at the Actions tab / API to see how many
+# runs have overlapping start/end windows = how many ran truly concurrently.
+
+on:
+  workflow_dispatch:
+    inputs:
+      batch_id:
+        description: 'Arbitrary id to tag this run (e.g. batch-1-job-7)'
+        required: false
+        default: 'manual'
+      sleep_seconds:
+        description: 'How long each job sleeps, in seconds'
+        required: false
+        default: '60'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Record start + identity
+        run: |
+          echo "batch_id=${{ inputs.batch_id }}"
+          echo "run_id=${{ github.run_id }}"
+          echo "run_attempt=${{ github.run_attempt }}"
+          echo "runner_name=$RUNNER_NAME"
+          echo "start_epoch=$(date -u +%s)"
+          echo "start_iso=$(date -u -Iseconds)"
+
+      - name: Sleep to hold the runner
+        run: sleep "${{ inputs.sleep_seconds }}"
+
+      - name: Record end
+        run: |
+          echo "end_epoch=$(date -u +%s)"
+          echo "end_iso=$(date -u -Iseconds)"
