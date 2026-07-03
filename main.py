@@ -81,9 +81,6 @@ async def start_browser(app):
     page.on("requestfailed", lambda req: print(f"[requestfailed] {req.url} - {req.failure}"))
     page.on("response", lambda res: print(f"[response] {res.status} {res.url}") if res.status >= 400 else None)
 
-    response = await page.goto(peer_url)
-    print(f"[goto] status={response.status if response else None} url={peer_url}")
-
     await page.expose_function("pressKeyboardKeyOrCode", lambda key_or_code: fire_keyboard_key_or_code(key_or_code, True))
     await page.expose_function("releaseKeyboardKeyOrCode", lambda key_or_code: fire_keyboard_key_or_code(key_or_code, False))
     await page.expose_function("pressMouseButton", lambda button: fire_mouse_button(button, True))
@@ -93,7 +90,7 @@ async def start_browser(app):
     await page.expose_function("scrollMouse", mouse.scroll)
 
     await page.goto(peer_url)
-    await page.wait_for_function("window.createAnswer")
+    await page.wait_for_function("() => typeof(window.createAnswer) === 'function'")
 
     app["playwright"] = playwright
     app["browser_context"] = context
@@ -128,7 +125,7 @@ def main():
     @routes.post("/whip")
     async def whip(request):
         offer = await request.text()
-        answer = await app["peer_page"].evaluate("(offer) => window.getAnswer(offer)", offer)
+        answer = await app["peer_page"].evaluate("(offer) => window.createAnswer(offer)", offer)
         return web.Response(text=answer, content_type="application/sdp", status=201)
 
     app.add_routes(routes)
