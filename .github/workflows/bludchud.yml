@@ -49,32 +49,6 @@ jobs:
           </html>
           EOF
 
-      - name: Run Chrome with getDisplayMedia flags
-        run: |
-          CHROME_BIN=$(which google-chrome || which chrome || which chromium-browser || which chromium || echo "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
-          echo "Using Chrome at: $CHROME_BIN"
-
-          "$CHROME_BIN" \
-            --headless=new \
-            --no-sandbox \
-            --disable-dev-shm-usage \
-            --disable-gpu \
-            --use-fake-ui-for-media-stream \
-            --use-fake-device-for-media-stream \
-            --auto-select-desktop-capture-source="Entire screen" \
-            --enable-usermedia-screen-capturing \
-            --allow-http-screen-capture \
-            --auto-accept-this-tab-capture \
-            --disable-features=IsolateOrigins,site-per-process \
-            --window-size=1920,1080 \
-            --dump-dom \
-            "file://$(pwd)/test.html" > output.html 2>chrome_stderr.log || true
-
-          echo "----- Chrome stdout/dump-dom -----"
-          cat output.html || true
-          echo "----- Chrome stderr -----"
-          cat chrome_stderr.log || true
-
       - name: Run via Puppeteer for reliable result capture
         run: |
           npm init -y > /dev/null 2>&1
@@ -88,6 +62,8 @@ jobs:
             const chromePath = process.env.CHROME_PATH || require('child_process')
               .execSync('which google-chrome || which chromium-browser || which chromium || echo "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"')
               .toString().trim();
+
+            console.log('Using Chrome at:', chromePath);
 
             const browser = await puppeteer.launch({
               executablePath: chromePath,
@@ -112,7 +88,7 @@ jobs:
 
             await page.goto('file://' + path.resolve('test.html'));
 
-            // Wait for the title to be set to a RESULT: string
+            // Wait for the title to be set to a RESULT: string, with a hard timeout
             await page.waitForFunction(
               () => document.title.startsWith('RESULT:'),
               { timeout: 15000 }
@@ -126,7 +102,7 @@ jobs:
             if (title.includes('FAIL')) {
               process.exit(1);
             }
-          })().catch((err) => {
+          })().catch(async (err) => {
             console.error('Script error:', err);
             process.exit(1);
           });
