@@ -79,6 +79,7 @@ async def start_browser(app):
     page.on("console", lambda msg: print(f"[console:{msg.type}] {msg.text}"))
     page.on("pageerror", lambda exc: print(f"[pageerror] {exc}"))
     page.on("requestfailed", lambda req: print(f"[requestfailed] {req.url} - {req.failure}"))
+    page.on("response", lambda res: print(f"[response] {res.status} {res.url}") if res.status >= 400 else None)
 
     response = await page.goto(peer_url)
     print(f"[goto] status={response.status if response else None} url={peer_url}")
