@@ -7,15 +7,10 @@ name: concurrency-test
 
 on:
   workflow_dispatch:
-    inputs:
-      batch_id:
-        description: 'Arbitrary id to tag this run (e.g. batch-1-job-7)'
-        required: false
-        default: 'manual'
-      sleep_seconds:
-        description: 'How long each job sleeps, in seconds'
-        required: false
-        default: '60'
+
+env:
+  BATCH_ID: run1
+  SLEEP_SECONDS: 90
 
 jobs:
   probe:
@@ -23,7 +18,7 @@ jobs:
     steps:
       - name: Record start + identity
         run: |
-          echo "batch_id=${{ inputs.batch_id }}"
+          echo "batch_id=$BATCH_ID"
           echo "run_id=${{ github.run_id }}"
           echo "run_attempt=${{ github.run_attempt }}"
           echo "runner_name=$RUNNER_NAME"
@@ -31,7 +26,7 @@ jobs:
           echo "start_iso=$(date -u -Iseconds)"
 
       - name: Sleep to hold the runner
-        run: sleep "${{ inputs.sleep_seconds }}"
+        run: sleep "$SLEEP_SECONDS"
 
       - name: Record end
         run: |
