@@ -1,7 +1,7 @@
 name: Test getDisplayMedia
 
 on:
-  push:
+  workflow_dispatch:
 
 jobs:
   test:
@@ -16,7 +16,7 @@ jobs:
 
       - name: Install Playwright
         run: |
-          pip install playwright
+          pip install playwright aiohttp
           playwright install --with-deps chromium
 
       - name: Attempt TCC pre-authorization for Screen Recording
@@ -25,8 +25,8 @@ jobs:
           echo "SIP status:"
           csrutil status || true
 
-          CHROME_PATH=$(playwright install --dry-run chromium 2>/dev/null | grep -o '/.*chromium[^ ]*' | head -1 || true)
-          echo "Resolved chrome path (best effort): $CHROME_PATH"
+          CHROME_PATH=$(find "$HOME/Library/Caches/ms-playwright" -maxdepth 2 -type d -name "chromium-*" | head -1)
+          echo "Resolved chrome path: $CHROME_PATH"
 
           sqlite3 "$TCC_DB" "
             INSERT OR REPLACE INTO access
@@ -40,6 +40,7 @@ jobs:
           cat > test_display_media.py << 'PYEOF'
           import asyncio
           from tempfile import mkdtemp
+          from aiohttp import web
           from playwright.async_api import async_playwright
 
           HTML = """
@@ -59,7 +60,19 @@ jobs:
           """
 
           async def main():
+              app = web.Application()
+              async def handler(request):
+                  return web.Response(text=HTML, content_type="text/html")
+              app.router.add_get("/", handler)
+
+              runner = web.AppRunner(app)
+              await runner.setup()
+              site = web.TCPSite(runner, port=8080)
+              await site.start()
+
+              url = "http://localhost:8080/"
               user_data_dir = mkdtemp()
+
               async with async_playwright() as p:
                   context = await p.chromium.launch_persistent_context(
                       user_data_dir,
@@ -70,13 +83,14 @@ jobs:
                           "--use-fake-ui-for-media-stream",
                           "--auto-select-desktop-capture-source=Entire screen",
                           "--enable-usermedia-screen-capturing",
+                          f"--unsafely-treat-insecure-origin-as-secure={url}",
                       ],
                   )
                   page = await context.new_page()
                   page.on("console", lambda msg: print(f"[console:{msg.type}] {msg.text}"))
                   page.on("pageerror", lambda exc: print(f"[pageerror] {exc}"))
 
-                  await page.set_content(HTML)
+                  await page.goto(url)
 
                   for _ in range(30):
                       result = await page.evaluate("window.testResult")
