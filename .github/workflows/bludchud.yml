@@ -1,112 +1,146 @@
-name: Test getDisplayMedia
+name: Chrome getDisplayMedia Test
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
 
 jobs:
-  test:
-    runs-on: macos-latest
-    timeout-minutes: 6
+  test-getdisplaymedia:
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Install Python
-        uses: actions/setup-python@main
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
         with:
-          python-version: '3.12'
+          chrome-version: stable
 
-      - name: Install Playwright
+      - name: Install a virtual display (Xvfb)
         run: |
-          pip install playwright aiohttp
-          playwright install --with-deps chromium
+          sudo apt-get update
+          sudo apt-get install -y xvfb
 
-      - name: Attempt TCC pre-authorization for Screen Recording
+      - name: Create test HTML page
         run: |
-          TCC_DB="$HOME/Library/Application Support/com.apple.TCC/TCC.db"
-          echo "SIP status:"
-          csrutil status || true
-
-          CHROME_PATH=$(find "$HOME/Library/Caches/ms-playwright" -maxdepth 2 -type d -name "chromium-*" | head -1)
-          echo "Resolved chrome path: $CHROME_PATH"
-
-          sqlite3 "$TCC_DB" "
-            INSERT OR REPLACE INTO access
-            (service, client, client_type, auth_value, auth_reason, auth_version, indirect_object_identifier, flags, last_modified)
-            VALUES
-            ('kTCCServiceScreenCapture', '/usr/bin/python3', 1, 2, 2, 1, 'UNUSED', 0, strftime('%s','now'));
-          " || echo "TCC insert failed (expected if TCC.db is still protected despite SIP disable)"
-
-      - name: Run test script
-        run: |
-          cat > test_display_media.py << 'PYEOF'
-          import asyncio
-          from tempfile import mkdtemp
-          from aiohttp import web
-          from playwright.async_api import async_playwright
-
-          HTML = """
+          cat > test.html << 'EOF'
           <!DOCTYPE html>
-          <html><body>
-          <script type="module">
-          window.testResult = "pending";
-          navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
-            .then((stream) => {
-              window.testResult = "success:" + stream.getVideoTracks().length;
-            })
-            .catch((err) => {
-              window.testResult = "error:" + err.name + ":" + err.message;
-            });
+          <html>
+          <head><title>getDisplayMedia Test</title></head>
+          <body>
+          <script>
+            (async () => {
+              const log = (msg) => {
+                console.log(msg);
+                document.title = msg; // used so we can poll via CDP/title if needed
+              };
+              try {
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+                  log('RESULT:FAIL:getDisplayMedia not available');
+                  return;
+                }
+                const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                const tracks = stream.getVideoTracks();
+                log('RESULT:SUCCESS:' + tracks.length + ' track(s), label=' + (tracks[0] ? tracks[0].label : 'none'));
+                tracks.forEach(t => t.stop());
+              } catch (err) {
+                log('RESULT:FAIL:' + err.name + ':' + err.message);
+              }
+            })();
           </script>
-          </body></html>
-          """
+          </body>
+          </html>
+          EOF
 
-          async def main():
-              app = web.Application()
-              async def handler(request):
-                  return web.Response(text=HTML, content_type="text/html")
-              app.router.add_get("/", handler)
+      - name: Start Xvfb
+        run: |
+          Xvfb :99 -screen 0 1920x1080x24 &
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+          sleep 2
 
-              runner = web.AppRunner(app)
-              await runner.setup()
-              site = web.TCPSite(runner, port=8080)
-              await site.start()
+      - name: Run Chrome with getDisplayMedia flags
+        run: |
+          CHROME_BIN=$(which google-chrome || which chrome || which chromium-browser || which chromium)
+          echo "Using Chrome at: $CHROME_BIN"
 
-              url = "http://localhost:8080/"
-              user_data_dir = mkdtemp()
+          "$CHROME_BIN" \
+            --headless=new \
+            --no-sandbox \
+            --disable-dev-shm-usage \
+            --disable-gpu \
+            --use-fake-ui-for-media-stream \
+            --use-fake-device-for-media-stream \
+            --auto-select-desktop-capture-source="Entire screen" \
+            --enable-usermedia-screen-capturing \
+            --allow-http-screen-capture \
+            --auto-accept-this-tab-capture \
+            --disable-features=IsolateOrigins,site-per-process \
+            --window-size=1920,1080 \
+            --dump-dom \
+            "file://$(pwd)/test.html" > output.html 2>chrome_stderr.log || true
 
-              async with async_playwright() as p:
-                  context = await p.chromium.launch_persistent_context(
-                      user_data_dir,
-                      channel="chrome",
-                      headless=False,
-                      args=[
-                          "--allow-http-screen-capture",
-                          "--use-fake-ui-for-media-stream",
-                          "--auto-select-desktop-capture-source=Entire screen",
-                          "--enable-usermedia-screen-capturing",
-                          f"--unsafely-treat-insecure-origin-as-secure={url}",
-                      ],
-                  )
-                  page = await context.new_page()
-                  page.on("console", lambda msg: print(f"[console:{msg.type}] {msg.text}"))
-                  page.on("pageerror", lambda exc: print(f"[pageerror] {exc}"))
+          echo "----- Chrome stdout/dump-dom -----"
+          cat output.html || true
+          echo "----- Chrome stderr -----"
+          cat chrome_stderr.log || true
 
-                  await page.goto(url)
+      - name: Run via Puppeteer for reliable result capture
+        run: |
+          npm init -y > /dev/null 2>&1
+          npm install puppeteer-core > /dev/null 2>&1
 
-                  for _ in range(30):
-                      result = await page.evaluate("window.testResult")
-                      if result != "pending":
-                          break
-                      await asyncio.sleep(1)
-                  else:
-                      result = "timeout"
+          cat > run.js << 'EOF'
+          const puppeteer = require('puppeteer-core');
+          const path = require('path');
 
-                  print(f"RESULT: {result}")
-                  await context.close()
+          (async () => {
+            const chromePath = process.env.CHROME_PATH || require('child_process')
+              .execSync('which google-chrome || which chromium-browser || which chromium')
+              .toString().trim();
 
-                  if not result.startswith("success"):
-                      raise SystemExit(1)
+            const browser = await puppeteer.launch({
+              executablePath: chromePath,
+              headless: 'new',
+              args: [
+                '--no-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--use-fake-ui-for-media-stream',
+                '--use-fake-device-for-media-stream',
+                '--auto-select-desktop-capture-source=Entire screen',
+                '--enable-usermedia-screen-capturing',
+                '--allow-http-screen-capture',
+                '--auto-accept-this-tab-capture',
+                '--window-size=1920,1080',
+              ],
+            });
 
-          asyncio.run(main())
-          PYEOF
+            const page = await browser.newPage();
 
-          python3 test_display_media.py
+            page.on('console', (msg) => console.log('PAGE LOG:', msg.text()));
+
+            await page.goto('file://' + path.resolve('test.html'));
+
+            // Wait for the title to be set to a RESULT: string
+            await page.waitForFunction(
+              () => document.title.startsWith('RESULT:'),
+              { timeout: 15000 }
+            );
+
+            const title = await page.title();
+            console.log('FINAL RESULT:', title);
+
+            await browser.close();
+
+            if (title.includes('FAIL')) {
+              process.exit(1);
+            }
+          })().catch((err) => {
+            console.error('Script error:', err);
+            process.exit(1);
+          });
+          EOF
+
+          CHROME_PATH=$(which google-chrome || which chromium-browser || which chromium) node run.js
