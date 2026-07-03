@@ -1,0 +1,98 @@
+name: Test getDisplayMedia
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: macos-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Install Python
+        uses: actions/setup-python@main
+        with:
+          python-version: '3.12'
+
+      - name: Install Playwright
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+
+      - name: Attempt TCC pre-authorization for Screen Recording
+        run: |
+          TCC_DB="$HOME/Library/Application Support/com.apple.TCC/TCC.db"
+          echo "SIP status:"
+          csrutil status || true
+
+          CHROME_PATH=$(playwright install --dry-run chromium 2>/dev/null | grep -o '/.*chromium[^ ]*' | head -1 || true)
+          echo "Resolved chrome path (best effort): $CHROME_PATH"
+
+          sqlite3 "$TCC_DB" "
+            INSERT OR REPLACE INTO access
+            (service, client, client_type, auth_value, auth_reason, auth_version, indirect_object_identifier, flags, last_modified)
+            VALUES
+            ('kTCCServiceScreenCapture', '/usr/bin/python3', 1, 2, 2, 1, 'UNUSED', 0, strftime('%s','now'));
+          " || echo "TCC insert failed (expected if TCC.db is still protected despite SIP disable)"
+
+      - name: Run test script
+        run: |
+          cat > test_display_media.py << 'PYEOF'
+          import asyncio
+          from tempfile import mkdtemp
+          from playwright.async_api import async_playwright
+
+          HTML = """
+          <!DOCTYPE html>
+          <html><body>
+          <script type="module">
+          window.testResult = "pending";
+          navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+            .then((stream) => {
+              window.testResult = "success:" + stream.getVideoTracks().length;
+            })
+            .catch((err) => {
+              window.testResult = "error:" + err.name + ":" + err.message;
+            });
+          </script>
+          </body></html>
+          """
+
+          async def main():
+              user_data_dir = mkdtemp()
+              async with async_playwright() as p:
+                  context = await p.chromium.launch_persistent_context(
+                      user_data_dir,
+                      channel="chrome",
+                      headless=False,
+                      args=[
+                          "--allow-http-screen-capture",
+                          "--use-fake-ui-for-media-stream",
+                          "--auto-select-desktop-capture-source=Entire screen",
+                          "--enable-usermedia-screen-capturing",
+                      ],
+                  )
+                  page = await context.new_page()
+                  page.on("console", lambda msg: print(f"[console:{msg.type}] {msg.text}"))
+                  page.on("pageerror", lambda exc: print(f"[pageerror] {exc}"))
+
+                  await page.set_content(HTML)
+
+                  for _ in range(30):
+                      result = await page.evaluate("window.testResult")
+                      if result != "pending":
+                          break
+                      await asyncio.sleep(1)
+                  else:
+                      result = "timeout"
+
+                  print(f"RESULT: {result}")
+                  await context.close()
+
+                  if not result.startswith("success"):
+                      raise SystemExit(1)
+
+          asyncio.run(main())
+          PYEOF
+
+          python3 test_display_media.py
