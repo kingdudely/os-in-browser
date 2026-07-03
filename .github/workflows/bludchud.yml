@@ -7,7 +7,7 @@ on:
 
 jobs:
   test-getdisplaymedia:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
 
     steps:
       - name: Checkout repo
@@ -17,11 +17,6 @@ jobs:
         uses: browser-actions/setup-chrome@v1
         with:
           chrome-version: stable
-
-      - name: Install a virtual display (Xvfb)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb
 
       - name: Create test HTML page
         run: |
@@ -54,15 +49,9 @@ jobs:
           </html>
           EOF
 
-      - name: Start Xvfb
-        run: |
-          Xvfb :99 -screen 0 1920x1080x24 &
-          echo "DISPLAY=:99" >> $GITHUB_ENV
-          sleep 2
-
       - name: Run Chrome with getDisplayMedia flags
         run: |
-          CHROME_BIN=$(which google-chrome || which chrome || which chromium-browser || which chromium)
+          CHROME_BIN=$(which google-chrome || which chrome || which chromium-browser || which chromium || echo "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
           echo "Using Chrome at: $CHROME_BIN"
 
           "$CHROME_BIN" \
@@ -97,7 +86,7 @@ jobs:
 
           (async () => {
             const chromePath = process.env.CHROME_PATH || require('child_process')
-              .execSync('which google-chrome || which chromium-browser || which chromium')
+              .execSync('which google-chrome || which chromium-browser || which chromium || echo "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"')
               .toString().trim();
 
             const browser = await puppeteer.launch({
@@ -143,4 +132,4 @@ jobs:
           });
           EOF
 
-          CHROME_PATH=$(which google-chrome || which chromium-browser || which chromium) node run.js
+          CHROME_PATH=$(which google-chrome || which chromium-browser || which chromium || echo "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome") node run.js
