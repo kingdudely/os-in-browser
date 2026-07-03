@@ -48,7 +48,7 @@ jobs:
 
           <script>
           // ---- CONFIG: fill these in ----
-          const CLIENT_ID = "REPLACE_WITH_YOUR_GITHUB_APP_CLIENT_ID";
+          const CLIENT_ID = "Iv23liyBVjlZRV5r16UD";
           const REDIRECT_URI = window.location.origin + window.location.pathname;
           const TEMPLATE_OWNER = "kingdudely";
           const TEMPLATE_REPO = "os-in-browser";
