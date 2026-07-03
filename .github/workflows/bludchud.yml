@@ -1,111 +1,270 @@
-name: Chrome getDisplayMedia Test
+name: Verify macOS getDisplayMedia (real vs fake)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
 
 jobs:
-  test-getdisplaymedia:
+  verify:
     runs-on: macos-latest
+    timeout-minutes: 30
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - name: Install cloudflared
+        run: brew install cloudflared
 
       - name: Install Chrome
         uses: browser-actions/setup-chrome@v1
+        id: setup-chrome
         with:
           chrome-version: stable
 
-      - name: Create test HTML page
+      - name: Write files
         run: |
-          cat > test.html << 'EOF'
+          mkdir -p site
+          cd site
+
+          # --- code_keys.json (minimal, not used for this test but keeps peer.html happy if it imports it) ---
+          cat > code_keys.json << 'EOF'
+          []
+          EOF
+
+          # --- peer.html: the "host" page that calls real getDisplayMedia and answers WHIP offers ---
+          cat > peer.html << 'HTMLEOF'
           <!DOCTYPE html>
           <html>
-          <head><title>getDisplayMedia Test</title></head>
+          <head><title>peer</title></head>
           <body>
-          <script>
+          <script type="module">
+            const log = (msg) => {
+              console.log(msg);
+              document.title = msg;
+            };
+
             (async () => {
-              const log = (msg) => {
-                console.log(msg);
-                document.title = msg; // used so we can poll via CDP/title if needed
-              };
               try {
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-                  log('RESULT:FAIL:getDisplayMedia not available');
-                  return;
-                }
-                const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-                const tracks = stream.getVideoTracks();
-                log('RESULT:SUCCESS:' + tracks.length + ' track(s), label=' + (tracks[0] ? tracks[0].label : 'none'));
-                tracks.forEach(t => t.stop());
+                const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+                window.__stream = stream;
+                const track = stream.getVideoTracks()[0];
+                log('CAPTURE:' + track.label + ':' + JSON.stringify(track.getSettings()));
+
+                window.createAnswer = async (offerSdp) => {
+                  const peer = new RTCPeerConnection({
+                    iceServers: [
+                      { urls: "stun:stun.l.google.com:19302" },
+                      { urls: "stun:stun.cloudflare.com:3478" }
+                    ]
+                  });
+                  stream.getTracks().forEach((t) => peer.addTrack(t, stream));
+                  await peer.setRemoteDescription({ type: "offer", sdp: offerSdp });
+                  await peer.setLocalDescription();
+                  await new Promise((resolve) => {
+                    if (peer.iceGatheringState === "complete") return resolve();
+                    peer.addEventListener("icegatheringstatechange", function onChange() {
+                      if (peer.iceGatheringState === "complete") {
+                        peer.removeEventListener("icegatheringstatechange", onChange);
+                        resolve();
+                      }
+                    });
+                  });
+                  return peer.localDescription.sdp;
+                };
+
+                window.__ready = true;
               } catch (err) {
-                log('RESULT:FAIL:' + err.name + ':' + err.message);
+                log('FAIL:' + err.name + ':' + err.message);
               }
             })();
           </script>
           </body>
           </html>
-          EOF
+          HTMLEOF
 
-      - name: Run via Puppeteer for reliable result capture
-        run: |
-          npm init -y > /dev/null 2>&1
-          npm install puppeteer-core > /dev/null 2>&1
+          # --- viewer.html: what YOU open in your own browser to visually inspect the stream ---
+          cat > viewer.html << 'HTMLEOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Viewer</title>
+            <style>
+              body { margin: 0; background: #111; }
+              video { width: 100vw; height: 100vh; object-fit: contain; background: #000; }
+              #status { position: fixed; top: 8px; left: 8px; color: #0f0; font: 14px monospace; background: #000a; padding: 4px 8px; }
+            </style>
+          </head>
+          <body>
+          <div id="status">connecting...</div>
+          <video id="v" autoplay playsinline muted></video>
+          <script>
+            const statusEl = document.getElementById('status');
+            const video = document.getElementById('v');
 
-          cat > run.js << 'EOF'
-          const puppeteer = require('puppeteer-core');
-          const path = require('path');
-
-          (async () => {
-            const chromePath = process.env.CHROME_PATH || require('child_process')
-              .execSync('which google-chrome || which chromium-browser || which chromium || echo "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"')
-              .toString().trim();
-
-            console.log('Using Chrome at:', chromePath);
-
-            const browser = await puppeteer.launch({
-              executablePath: chromePath,
-              headless: 'new',
-              args: [
-                '--no-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--use-fake-ui-for-media-stream',
-                '--use-fake-device-for-media-stream',
-                '--auto-select-desktop-capture-source=Entire screen',
-                '--enable-usermedia-screen-capturing',
-                '--allow-http-screen-capture',
-                '--auto-accept-this-tab-capture',
-                '--window-size=1920,1080',
-              ],
+            const peer = new RTCPeerConnection({
+              iceServers: [
+                { urls: "stun:stun.l.google.com:19302" },
+                { urls: "stun:stun.cloudflare.com:3478" }
+              ]
             });
 
-            const page = await browser.newPage();
+            peer.addEventListener('track', (event) => {
+              video.srcObject = event.streams[0];
+              video.play().catch(() => {});
+              statusEl.textContent = 'track received: ' + event.track.kind;
+            });
 
-            page.on('console', (msg) => console.log('PAGE LOG:', msg.text()));
+            peer.addTransceiver('video', { direction: 'recvonly' });
 
-            await page.goto('file://' + path.resolve('test.html'));
+            (async () => {
+              await peer.setLocalDescription();
+              await new Promise((resolve) => {
+                if (peer.iceGatheringState === "complete") return resolve();
+                peer.addEventListener("icegatheringstatechange", function onChange() {
+                  if (peer.iceGatheringState === "complete") {
+                    peer.removeEventListener("icegatheringstatechange", onChange);
+                    resolve();
+                  }
+                });
+              });
 
-            // Wait for the title to be set to a RESULT: string, with a hard timeout
-            await page.waitForFunction(
-              () => document.title.startsWith('RESULT:'),
-              { timeout: 15000 }
-            );
+              const res = await fetch('/whip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/sdp' },
+                body: peer.localDescription.sdp
+              });
 
-            const title = await page.title();
-            console.log('FINAL RESULT:', title);
+              if (!res.ok) {
+                statusEl.textContent = 'WHIP failed: ' + res.status;
+                return;
+              }
 
-            await browser.close();
+              const answerSdp = await res.text();
+              await peer.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+              statusEl.textContent = 'negotiated, waiting for track...';
+            })().catch((err) => {
+              statusEl.textContent = 'error: ' + err.message;
+            });
+          </script>
+          </body>
+          </html>
+          HTMLEOF
 
-            if (title.includes('FAIL')) {
-              process.exit(1);
-            }
-          })().catch(async (err) => {
-            console.error('Script error:', err);
-            process.exit(1);
-          });
-          EOF
+      - name: Write server
+        run: |
+          cat > server.py << 'PYEOF'
+          import asyncio
+          from tempfile import mkdtemp
 
-          CHROME_PATH=$(which google-chrome || which chromium-browser || which chromium || echo "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome") node run.js
+          from aiohttp import web
+          from playwright.async_api import async_playwright
+
+          PORT = 8080
+
+          async def start_browser(app):
+              peer_url = f"http://localhost:{PORT}/peer.html"
+              user_data_dir = mkdtemp()
+
+              playwright = await async_playwright().start()
+              context = await playwright.chromium.launch_persistent_context(
+                  user_data_dir,
+                  channel="chrome",
+                  headless=False,
+                  args=[
+                      "--no-sandbox",
+                      "--disable-gpu",
+                      "--allow-http-screen-capture",
+                      "--use-fake-ui-for-media-stream",
+                      "--auto-select-desktop-capture-source=Entire screen",
+                      "--start-maximized",
+                      f"--unsafely-treat-insecure-origin-as-secure={peer_url}",
+                      "--enable-usermedia-screen-capturing",
+                      "--allow-running-insecure-content",
+                  ],
+              )
+
+              page = await context.new_page()
+              page.on("console", lambda msg: print(f"[peer console:{msg.type}] {msg.text}"))
+              page.on("pageerror", lambda exc: print(f"[peer pageerror] {exc}"))
+
+              response = await page.goto(peer_url)
+              print(f"[goto] status={response.status if response else None} url={peer_url}")
+
+              await page.wait_for_function("window.__ready === true || document.title.startsWith('FAIL:')", timeout=20000)
+              title = await page.title()
+              print(f"[peer title] {title}")
+
+              if title.startswith("FAIL:"):
+                  raise RuntimeError(f"getDisplayMedia failed: {title}")
+
+              await page.wait_for_function("window.createAnswer !== undefined")
+
+              app["playwright"] = playwright
+              app["browser_context"] = context
+              app["peer_page"] = page
+
+          async def stop_browser(app):
+              await app["browser_context"].close()
+              await app["playwright"].stop()
+
+          def main():
+              app = web.Application()
+              routes = web.RouteTableDef()
+              routes.static('/', 'site')
+
+              @routes.post("/whip")
+              async def whip(request):
+                  offer = await request.text()
+                  answer = await app["peer_page"].evaluate("(offer) => window.createAnswer(offer)", offer)
+                  return web.Response(text=answer, content_type="application/sdp", status=201)
+
+              app.add_routes(routes)
+              app.on_cleanup.append(stop_browser)
+
+              async def run():
+                  runner = web.AppRunner(app)
+                  await runner.setup()
+                  site = web.TCPSite(runner, port=PORT)
+                  await site.start()
+
+                  await start_browser(app)
+
+                  print("Server ready, waiting for cloudflared to expose it...")
+                  await asyncio.Event().wait()
+
+              asyncio.run(run())
+
+          if __name__ == "__main__":
+              main()
+          PYEOF
+
+      - name: Install Python deps
+        run: |
+          python3 -m pip install --break-system-packages aiohttp playwright
+          # Chrome is provided by setup-chrome, we don't need Playwright's own browser download
+
+      - name: Run server + tunnel
+        run: |
+          export CHROME_PATH="${{ steps.setup-chrome.outputs.chrome-path }}"
+          echo "Using Chrome at: $CHROME_PATH"
+
+          python3 -u server.py &
+          SERVER_PID=$!
+
+          # give the server + browser a moment to come up before tunneling
+          sleep 8
+
+          cloudflared tunnel --url http://localhost:8080 2>&1 | tee cloudflared.log &
+          TUNNEL_PID=$!
+
+          # poll for the public URL cloudflared prints
+          for i in $(seq 1 30); do
+            URL=$(grep -o 'https://[a-zA-Z0-9.-]*\.trycloudflare\.com' cloudflared.log | head -n1)
+            if [ -n "$URL" ]; then
+              echo "=================================================="
+              echo "PEER PAGE (host, do not need to open):  $URL/peer.html"
+              echo "VIEWER PAGE (open this to see the stream): $URL/viewer.html"
+              echo "=================================================="
+              break
+            fi
+            sleep 2
+          done
+
+          wait $SERVER_PID
