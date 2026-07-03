@@ -126,13 +126,15 @@ jobs:
 
       - name: Launch Chrome broadcaster tab
         run: |
-          open -na "Google Chrome" --args \
+          "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
             --auto-select-desktop-capture-source="Entire screen" \
             --use-fake-ui-for-media-stream \
             --auto-accept-this-tab-capture \
             --enable-usermedia-screen-capturing \
             --autoplay-policy=no-user-gesture-required \
-            --new-window "http://localhost:8085/broadcast"
+            --no-first-run \
+            --no-default-browser-check \
+            --new-window "http://localhost:8085/broadcast" &
           sleep 5
 
       - name: Print viewer link
