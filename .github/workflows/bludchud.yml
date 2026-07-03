@@ -1,154 +1,143 @@
-name: chrome-webrtc-screen
+name: chrome-getdisplaymedia-webrtc-cloudflared
 
 on:
   workflow_dispatch:
 
 jobs:
-  stream:
+  broadcast:
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - name: Install cloudflared
         run: brew install cloudflared
 
-      - name: Write signaling + viewer server
+      - name: Install deps
         run: |
-          cat > server.py << 'PYEOF'
-          import asyncio, json, uuid
-          from aiohttp import web
+          node -v || brew install node
+          npm init -y
+          npm install ws
 
-          pending = {}   # id -> offer sdp
-          answers = {}   # id -> answer sdp
+      - name: Write signaling/broadcast/view server
+        run: |
+          cat > server.js <<'EOF'
+          const http = require('http');
+          const WebSocket = require('ws');
 
-          async def offer(request):
-              data = await request.json()
-              sid = str(uuid.uuid4())
-              pending[sid] = data["sdp"]
-              return web.json_response({"id": sid})
+          const PORT = 8085;
 
-          async def get_offer(request):
-              sid = request.query.get("id")
-              if sid not in pending:
-                  return web.json_response({}, status=404)
-              return web.json_response({"sdp": pending[sid]})
-
-          async def answer(request):
-              data = await request.json()
-              sid = data["id"]
-              answers[sid] = data["sdp"]
-              return web.json_response({"ok": True})
-
-          async def get_answer(request):
-              sid = request.query.get("id")
-              if sid not in answers:
-                  return web.json_response({}, status=404)
-              return web.json_response({"sdp": answers[sid]})
-
-          async def viewer(request):
-              return web.Response(text=VIEWER_HTML, content_type="text/html")
-
-          async def sender(request):
-              return web.Response(text=SENDER_HTML, content_type="text/html")
-
-          VIEWER_HTML = """
-          <!doctype html><html><body style="margin:0;background:#111">
-          <video id=v autoplay playsinline style="width:100vw;height:100vh;object-fit:contain"></video>
+          const BROADCAST_HTML = `<!doctype html><html><body>
           <script>
-          const params = new URLSearchParams(location.search);
-          const id = params.get('id');
-          const pc = new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
-          pc.ontrack = e => { document.getElementById('v').srcObject = e.streams[0]; };
-          async function run() {
-            let offerData;
-            while (true) {
-              const r = await fetch('/get_offer?id=' + id);
-              if (r.status === 200) { offerData = await r.json(); break; }
-              await new Promise(r => setTimeout(r, 1000));
+          const ws = new WebSocket('ws://localhost:${PORT}');
+          let pc;
+          ws.onopen = () => ws.send(JSON.stringify({role:'broadcaster'}));
+          ws.onmessage = async (ev) => {
+            const msg = JSON.parse(ev.data);
+            if (msg.type === 'viewer-ready') {
+              pc = new RTCPeerConnection();
+              pc.onicecandidate = (e) => {
+                if (e.candidate) ws.send(JSON.stringify({type:'candidate', candidate:e.candidate, role:'broadcaster'}));
+              };
+              const stream = await navigator.mediaDevices.getDisplayMedia({video:true, audio:false});
+              stream.getTracks().forEach(t => pc.addTrack(t, stream));
+              const offer = await pc.createOffer();
+              await pc.setLocalDescription(offer);
+              ws.send(JSON.stringify({type:'offer', sdp: offer, role:'broadcaster'}));
+            } else if (msg.type === 'answer') {
+              await pc.setRemoteDescription(msg.sdp);
+            } else if (msg.type === 'candidate' && msg.role === 'viewer') {
+              await pc.addIceCandidate(msg.candidate);
             }
-            await pc.setRemoteDescription({type:'offer', sdp: offerData.sdp});
-            const ans = await pc.createAnswer();
-            await pc.setLocalDescription(ans);
-            await fetch('/answer', {method:'POST', headers:{'Content-Type':'application/json'},
-              body: JSON.stringify({id, sdp: pc.localDescription.sdp})});
-          }
-          run();
+          };
           </script>
-          </body></html>
-          """
+          </body></html>`;
 
-          SENDER_HTML = """
-          <!doctype html><html><body>
+          const VIEW_HTML = `<!doctype html><html><body>
+          <video id="v" autoplay playsinline controls style="width:100%"></video>
           <script>
-          async function run() {
-            const stream = await navigator.mediaDevices.getDisplayMedia({video:true, audio:false});
-            const pc = new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
-            stream.getTracks().forEach(t => pc.addTrack(t, stream));
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            await new Promise(r => setTimeout(r, 1500)); // let ICE gather
-            const resp = await fetch('/offer', {method:'POST', headers:{'Content-Type':'application/json'},
-              body: JSON.stringify({sdp: pc.localDescription.sdp})});
-            const {id} = await resp.json();
-            document.title = 'SESSION_ID:' + id;
-            while (true) {
-              const r = await fetch('/get_answer?id=' + id);
-              if (r.status === 200) {
-                const {sdp} = await r.json();
-                await pc.setRemoteDescription({type:'answer', sdp});
-                break;
+          const ws = new WebSocket('ws://' + location.host);
+          let pc;
+          ws.onopen = () => ws.send(JSON.stringify({role:'viewer', type:'viewer-ready'}));
+          ws.onmessage = async (ev) => {
+            const msg = JSON.parse(ev.data);
+            if (msg.type === 'offer') {
+              pc = new RTCPeerConnection();
+              pc.ontrack = (e) => { document.getElementById('v').srcObject = e.streams[0]; };
+              pc.onicecandidate = (e) => {
+                if (e.candidate) ws.send(JSON.stringify({type:'candidate', candidate:e.candidate, role:'viewer'}));
+              };
+              await pc.setRemoteDescription(msg.sdp);
+              const answer = await pc.createAnswer();
+              await pc.setLocalDescription(answer);
+              ws.send(JSON.stringify({type:'answer', sdp: answer, role:'viewer'}));
+            } else if (msg.type === 'candidate' && msg.role === 'broadcaster') {
+              await pc.addIceCandidate(msg.candidate);
+            }
+          };
+          </script>
+          </body></html>`;
+
+          const server = http.createServer((req, res) => {
+            if (req.url === '/broadcast') {
+              res.writeHead(200, {'Content-Type':'text/html'});
+              res.end(BROADCAST_HTML);
+            } else {
+              res.writeHead(200, {'Content-Type':'text/html'});
+              res.end(VIEW_HTML);
+            }
+          });
+
+          const wss = new WebSocket.Server({ server });
+          let broadcaster = null;
+          let viewer = null;
+
+          wss.on('connection', (ws) => {
+            ws.on('message', (data) => {
+              const msg = JSON.parse(data);
+              if (msg.role === 'broadcaster') broadcaster = ws;
+              if (msg.role === 'viewer') viewer = ws;
+
+              if (msg.type === 'viewer-ready' && broadcaster) {
+                broadcaster.send(JSON.stringify(msg));
+              } else if (msg.type === 'offer' && viewer) {
+                viewer.send(JSON.stringify(msg));
+              } else if (msg.type === 'answer' && broadcaster) {
+                broadcaster.send(JSON.stringify(msg));
+              } else if (msg.type === 'candidate') {
+                if (msg.role === 'broadcaster' && viewer) viewer.send(JSON.stringify(msg));
+                if (msg.role === 'viewer' && broadcaster) broadcaster.send(JSON.stringify(msg));
               }
-              await new Promise(r => setTimeout(r, 1000));
-            }
-          }
-          run();
-          </script>
-          </body></html>
-          """
+            });
+          });
 
-          app = web.Application()
-          app.router.add_post('/offer', offer)
-          app.router.add_get('/get_offer', get_offer)
-          app.router.add_post('/answer', answer)
-          app.router.add_get('/get_answer', get_answer)
-          app.router.add_get('/viewer', viewer)
-          app.router.add_get('/', sender)
-
-          web.run_app(app, host='127.0.0.1', port=8080)
-          PYEOF
+          server.listen(PORT, () => console.log('signaling server up on ' + PORT));
+          EOF
 
       - name: Start signaling server
-        run: |
-          python3 -m pip install aiohttp --break-system-packages --quiet
-          nohup python3 server.py > server.log 2>&1 &
-          sleep 2
+        run: node server.js &
 
       - name: Start cloudflared tunnel
         run: |
-          nohup cloudflared tunnel --url http://127.0.0.1:8080 --no-autoupdate > cloudflared.log 2>&1 &
-          for i in $(seq 1 30); do
-            URL=$(grep -o 'https://[a-zA-Z0-9-]*\.trycloudflare\.com' cloudflared.log | head -n1)
-            if [ -n "$URL" ]; then break; fi
-            sleep 1
-          done
-          echo "TUNNEL_URL=$URL" >> $GITHUB_ENV
-          echo "Tunnel URL: $URL"
+          cloudflared tunnel --url http://localhost:8085 --no-autoupdate > cloudflared.log 2>&1 &
+          sleep 8
+          cat cloudflared.log
+          grep -o 'https://[a-zA-Z0-9.-]*trycloudflare.com' cloudflared.log | head -n1 > tunnel_url.txt
+          echo "Public viewer URL: $(cat tunnel_url.txt)"
 
-      - name: Launch Chrome with getDisplayMedia
+      - name: Launch Chrome broadcaster tab
         run: |
-          open -a "Google Chrome" --args \
+          open -na "Google Chrome" --args \
             --auto-select-desktop-capture-source="Entire screen" \
             --use-fake-ui-for-media-stream \
+            --auto-accept-this-tab-capture \
+            --enable-usermedia-screen-capturing \
             --autoplay-policy=no-user-gesture-required \
-            --disable-features=IsolateOrigins,site-per-process \
-            "$TUNNEL_URL/"
+            --new-window "http://localhost:8085/broadcast"
           sleep 5
 
       - name: Print viewer link
         run: |
-          echo "Open this to view the screen:"
-          echo "$TUNNEL_URL/viewer?id=<check chrome tab title for SESSION_ID>"
-          echo "---- cloudflared log ----"
-          cat cloudflared.log
+          echo "Open this URL in a browser to watch the screen:"
+          cat tunnel_url.txt
 
-      - name: Keep session alive
-        run: sleep 3000
+      - name: Keep session alive for viewing
+        run: sleep 1500
