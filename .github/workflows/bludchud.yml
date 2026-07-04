@@ -1,155 +1,130 @@
-name: chrome-getdisplaymedia-webrtc-cloudflared
+name: Deploy SPA to GitHub Pages
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
 jobs:
-  broadcast:
-    runs-on: macos-latest
-    timeout-minutes: 30
+  build:
+    runs-on: ubuntu-latest
     steps:
-      - name: Install cloudflared
-        run: brew install cloudflared
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Install deps
+      - name: Build site
         run: |
-          node -v || brew install node
-          npm init -y
-          npm install ws
+          mkdir -p _site
+          cat > _site/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <title>GitHub App SPA Auth Test</title>
+          </head>
+          <body>
+            <h1>GitHub App SPA Auth Test</h1>
+            <p>Open the console to see output. Click below to start login.</p>
+            <button id="login">Log in with GitHub</button>
+            <pre id="output"></pre>
 
-      - name: Write signaling/broadcast/view server
-        run: |
-          cat > server.js <<'EOF'
-          const http = require('http');
-          const WebSocket = require('ws');
-
-          const PORT = 8085;
-
-          const BROADCAST_HTML = `<!doctype html><html><body>
-          <script>
-          const ws = new WebSocket('ws://localhost:${PORT}');
-          let pc;
-          ws.onopen = () => ws.send(JSON.stringify({role:'broadcaster'}));
-          ws.onmessage = async (ev) => {
-            const msg = JSON.parse(ev.data);
-            if (msg.type === 'viewer-ready') {
-              pc = new RTCPeerConnection();
-              pc.onicecandidate = (e) => {
-                if (e.candidate) ws.send(JSON.stringify({type:'candidate', candidate:e.candidate, role:'broadcaster'}));
-              };
-              const stream = await navigator.mediaDevices.getDisplayMedia({video:true, audio:false});
-              stream.getTracks().forEach(t => pc.addTrack(t, stream));
-              const offer = await pc.createOffer();
-              await pc.setLocalDescription(offer);
-              ws.send(JSON.stringify({type:'offer', sdp: offer, role:'broadcaster'}));
-            } else if (msg.type === 'answer') {
-              await pc.setRemoteDescription(msg.sdp);
-            } else if (msg.type === 'candidate' && msg.role === 'viewer') {
-              await pc.addIceCandidate(msg.candidate);
+            <script>
+            document.getElementById('login').addEventListener('click', run);
+            // Auto-run if we're coming back with a ?code= param
+            if (new URL(window.location.href).searchParams.get('code')) {
+              run();
             }
-          };
-          </script>
-          </body></html>`;
 
-          const VIEW_HTML = `<!doctype html><html><body>
-          <video id="v" autoplay playsinline controls style="width:100%"></video>
-          <script>
-          const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
-          const ws = new WebSocket(proto + location.host);
-          let pc;
-          ws.onopen = () => ws.send(JSON.stringify({role:'viewer', type:'viewer-ready'}));
-          ws.onmessage = async (ev) => {
-            const msg = JSON.parse(ev.data);
-            if (msg.type === 'offer') {
-              pc = new RTCPeerConnection();
-              pc.ontrack = (e) => { document.getElementById('v').srcObject = e.streams[0]; };
-              pc.onicecandidate = (e) => {
-                if (e.candidate) ws.send(JSON.stringify({type:'candidate', candidate:e.candidate, role:'viewer'}));
-              };
-              await pc.setRemoteDescription(msg.sdp);
-              const answer = await pc.createAnswer();
-              await pc.setLocalDescription(answer);
-              ws.send(JSON.stringify({type:'answer', sdp: answer, role:'viewer'}));
-            } else if (msg.type === 'candidate' && msg.role === 'broadcaster') {
-              await pc.addIceCandidate(msg.candidate);
-            }
-          };
-          </script>
-          </body></html>`;
+            async function run() {
+              const CLIENT_ID = 'Iv23liyBVjlZRV5r16UD';
+              const REDIRECT_URI = window.location.origin + window.location.pathname;
 
-          const server = http.createServer((req, res) => {
-            if (req.url === '/broadcast') {
-              res.writeHead(200, {'Content-Type':'text/html'});
-              res.end(BROADCAST_HTML);
-            } else {
-              res.writeHead(200, {'Content-Type':'text/html'});
-              res.end(VIEW_HTML);
-            }
-          });
+              const b64url = (buf) =>
+                btoa(String.fromCharCode(...new Uint8Array(buf)))
+                  .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-          const wss = new WebSocket.Server({ server });
-          let broadcaster = null;
-          let viewer = null;
+              const url = new URL(window.location.href);
+              const code = url.searchParams.get('code');
+              const state = url.searchParams.get('state');
 
-          wss.on('connection', (ws) => {
-            ws.on('message', (data) => {
-              const msg = JSON.parse(data);
-              if (msg.role === 'broadcaster') broadcaster = ws;
-              if (msg.role === 'viewer') viewer = ws;
+              if (!code) {
+                const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
+                const challengeBuf = await crypto.subtle.digest(
+                  'SHA-256', new TextEncoder().encode(verifier)
+                );
+                const challenge = b64url(challengeBuf);
+                const randState = b64url(crypto.getRandomValues(new Uint8Array(16)));
 
-              if (msg.type === 'viewer-ready' && broadcaster) {
-                broadcaster.send(JSON.stringify(msg));
-              } else if (msg.type === 'offer' && viewer) {
-                viewer.send(JSON.stringify(msg));
-              } else if (msg.type === 'answer' && broadcaster) {
-                broadcaster.send(JSON.stringify(msg));
-              } else if (msg.type === 'candidate') {
-                if (msg.role === 'broadcaster' && viewer) viewer.send(JSON.stringify(msg));
-                if (msg.role === 'viewer' && broadcaster) broadcaster.send(JSON.stringify(msg));
+                sessionStorage.setItem('pkce_verifier', verifier);
+                sessionStorage.setItem('pkce_state', randState);
+
+                const authUrl = new URL('https://github.com/login/oauth/authorize');
+                authUrl.searchParams.set('client_id', CLIENT_ID);
+                authUrl.searchParams.set('redirect_uri', REDIRECT_URI);
+                authUrl.searchParams.set('state', randState);
+                authUrl.searchParams.set('code_challenge', challenge);
+                authUrl.searchParams.set('code_challenge_method', 'S256');
+
+                console.log('Redirecting to GitHub for auth...');
+                window.location.href = authUrl.toString();
+                return;
               }
-            });
-          });
 
-          server.listen(PORT, () => console.log('signaling server up on ' + PORT));
+              const savedState = sessionStorage.getItem('pkce_state');
+              const verifier = sessionStorage.getItem('pkce_verifier');
+
+              if (state !== savedState) {
+                console.error('State mismatch! Possible CSRF, aborting.');
+                document.getElementById('output').textContent = 'State mismatch, aborting.';
+                return;
+              }
+
+              const res = await fetch('https://github.com/login/oauth/access_token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({
+                  client_id: CLIENT_ID,
+                  code,
+                  redirect_uri: REDIRECT_URI,
+                  code_verifier: verifier,
+                }),
+              });
+
+              const data = await res.json();
+              console.log('Token exchange response:', data);
+              document.getElementById('output').textContent = JSON.stringify(data, null, 2);
+
+              sessionStorage.removeItem('pkce_verifier');
+              sessionStorage.removeItem('pkce_state');
+
+              window.history.replaceState({}, document.title, REDIRECT_URI);
+            }
+            </script>
+          </body>
+          </html>
           EOF
 
-      - name: Start signaling server
-        run: node server.js &
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
 
-      - name: Start cloudflared tunnel
-        run: |
-          cloudflared tunnel --url http://localhost:8085 --no-autoupdate > cloudflared.log 2>&1 &
-          sleep 8
-          cat cloudflared.log
-          grep -o 'https://[a-zA-Z0-9.-]*trycloudflare.com' cloudflared.log | head -n1 > tunnel_url.txt
-          echo "Public viewer URL: $(cat tunnel_url.txt)"
-
-      - name: Launch Chrome broadcaster tab
-        run: |
-          "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-            --auto-select-desktop-capture-source="Entire screen" \
-            --use-fake-ui-for-media-stream \
-            --use-fake-device-for-media-stream \
-            --auto-accept-this-tab-capture \
-            --enable-usermedia-screen-capturing \
-            --autoplay-policy=no-user-gesture-required \
-            --no-first-run \
-            --no-default-browser-check \
-            --disable-sync \
-            --disable-background-networking \
-            --disable-features=OptimizationHints,MediaRouter,TranslateUI \
-            --disable-client-side-phishing-detection \
-            --disable-component-update \
-            --user-data-dir="$(mktemp -d)" \
-            --new-window "http://localhost:8085/broadcast" \
-            > chrome.log 2>&1 &
-          sleep 5
-          cat chrome.log
-
-      - name: Print viewer link
-        run: |
-          echo "Open this URL in a browser to watch the screen:"
-          cat tunnel_url.txt
-
-      - name: Keep session alive for viewing
-        run: sleep 1500
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
