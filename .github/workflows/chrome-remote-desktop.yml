@@ -3,14 +3,14 @@ on:
   workflow_dispatch:
     inputs:
       os:
-        description: "Operating system"
+        description: "OS"
         required: true
         type: choice
         options:
           - windows-latest
           - ubuntu-latest
       crd_command:
-        description: "Command/code"
+        description: "Code/command"
         required: true
         type: string
       pin:
@@ -24,50 +24,46 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Hide sensitive inputs
-        uses: levibostian/action-hide-sensitive-inputs@v1
+      - name: Get arguments
+        id: get-arguments
+        shell: bash
+        run: |
+          RAW_CODE='${{ inputs.crd_command }}'
+          CODE=$(echo "$RAW_CODE" | grep -oP '(?<=--code=")[^"]+')
+          if [ -z "$CODE" ]; then
+            CODE=$(echo "$RAW_CODE" | xargs)
+          fi
 
-      - name: Setup Windows
+          PIN=$(jq -r '.inputs.pin' $GITHUB_EVENT_PATH)
+          echo "::add-mask::${PIN}"
+
+          echo "arguments=--code=\"${CODE}\" --redirect-url=\"https://remotedesktop.google.com/_/oauthredirect\" --name=\"$(hostname)\" --pin=\"${PIN}\"" >> "$GITHUB_OUTPUT"
+
+      - name: Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          choco install chrome-remote-desktop-host -y --no-progress # "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" `
-          Add-Content -Path $Env:GITHUB_ENV -Value "CHROME_REMOTE_DESKTOP=${Env:PROGRAMFILES(X86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe"
+          choco install chrome-remote-desktop-host -y --no-progress
 
-      - name: Setup Ubuntu
+          & "${Env:PROGRAMFILES(X86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe" ${{ steps.get-arguments.outputs.arguments }}
+
+          Write-Output "Connected"
+          Wait-Event # Start-Sleep -Seconds ([int]::MaxValue)
+
+      - name: Ubuntu
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          # Install Chrome Remote Desktop
           curl -fsSL \
             "https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb" \
             -o /tmp/chrome-remote-desktop.deb
           sudo apt-get update
           sudo apt-get install -y xvfb xterm /tmp/chrome-remote-desktop.deb
 
-          read -r DISPLAY_NUMBER < <(exec Xvfb -displayfd 1)
-
-          export DISPLAY=":${DISPLAY_NUMBER}"
-          echo "DISPLAY=$DISPLAY" >> "${GITHUB_ENV}"
-          echo "CHROME_REMOTE_DESKTOP=/opt/google/chrome-remote-desktop/start-host" >> "${GITHUB_ENV}"
-
-          xterm &
-
-      - name: Start Chrome Remote Desktop
-        shell: bash
-        run: |
-          raw='${{ github.event.inputs.crd_command }}'
-          code=$(echo "$raw" | grep -oP '(?<=--code=")[^"]+')
-          if [ -z "$code" ]; then
-            code=$(echo "$raw" | xargs)
-          fi
-
-          "${CHROME_REMOTE_DESKTOP}" \
-            --code="$code" \
-            --redirect-url="https://remotedesktop.google.com/_/oauthredirect" \
-            --name="$(hostname)" \
-            --pin="${{ github.event.inputs.pin }}"
-
-          # Keep alive
           echo "Connect at: https://remotedesktop.google.com/access"
-          sleep infinity
+          xvfb-run -a bash -c ' # --auto-servernum
+            /opt/google/chrome-remote-desktop/start-host ${{ steps.get-arguments.outputs.arguments }} &
+            xterm -maximized &
+            sleep infinity
+          '
+
