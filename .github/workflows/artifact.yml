@@ -8,3 +8,6 @@ jobs:
         with:
           path: output.json
           archive: false
+      - run: |
+          echo "The build was deployed successfully to production." >> $GITHUB_STEP_SUMMARY
+          sleep infinity
