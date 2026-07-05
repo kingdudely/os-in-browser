@@ -1,0 +1,10 @@
+on: workflow_dispatch
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo '{"result":"hello world"}' > output.json
+      - uses: actions/upload-artifact@v7
+        with:
+          path: output.json
+          archive: false
