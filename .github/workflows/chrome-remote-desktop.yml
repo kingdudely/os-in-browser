@@ -59,8 +59,7 @@ jobs:
           raw='${{ github.event.inputs.crd_command }}'
           code=$(echo "$raw" | grep -oP '(?<=--code=")[^"]+')
           if [ -z "$code" ]; then
-            echo "Error: could not extract --code from the provided command."
-            exit 1
+            code=$(echo "$raw" | xargs)
           fi
 
           "${CHROME_REMOTE_DESKTOP}" \
