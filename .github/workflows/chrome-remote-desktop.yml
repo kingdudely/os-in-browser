@@ -10,11 +10,11 @@ on:
           - windows-latest
           - ubuntu-latest
       crd_command:
-        description: "Command from remotedesktop.google.com/headless (any format — code will be extracted)"
+        description: "Command/code"
         required: true
         type: string
       pin:
-        description: "PIN to access the session (minimum 6 digits)"
+        description: "PIN"
         required: true
         type: string
 
