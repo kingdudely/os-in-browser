@@ -65,5 +65,12 @@ jobs:
             /opt/google/chrome-remote-desktop/start-host ${{ steps.get-arguments.outputs.arguments }} &
             xterm -maximized &
             sleep infinity
-          '
+
+      - name: MacOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          sudo sysadminctl -addUser "admin" -fullName "Admin" -password "admin" -admin
+          brew install chrome-remote-desktop-host
+          caffeinate
 
