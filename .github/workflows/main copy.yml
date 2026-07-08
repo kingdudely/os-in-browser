@@ -30,4 +30,6 @@ jobs:
           echo "DISPLAY=:$DISPLAY_NUMBER" >> "$GITHUB_ENV"
           xterm &
 
-      - run: npx nw .
+      - run: |
+        git config core.autocrlf false
+        npx nw .
