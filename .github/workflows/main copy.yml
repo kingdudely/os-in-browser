@@ -1,0 +1,26 @@
+name: NW.js Mixed Context Runner Copy
+
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        description: "OS to run on"
+        required: true
+        default: "ubuntu-latest"
+        type: choice
+        options:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+
+env:
+  NWJS_VERSION: "0.113.0"
+  NWJS_FLAVOR: "normal" 
+
+jobs:
+  run-nwjs:
+    runs-on: ${{ github.event.inputs.os }}
+    steps:
+      - uses: actions/checkout@main
+      - run: npm install -Dg nwjs
+      - run: nw .
