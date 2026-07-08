@@ -36,5 +36,5 @@
 	"Numpad0","NumpadDecimal",null,
 	
 	"AudioMute","AudioVolumeDown","AudioVolumeUp","MediaPlayPause","MediaStop",null,
-	"MediaTrackPrevious","MediaTrackNext",null,null,null,null,
+	"MediaTrackPrevious","MediaTrackNext",null,null,null,null
 ]
