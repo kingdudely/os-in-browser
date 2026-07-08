@@ -1,5 +1,6 @@
 import { app, BrowserWindow, desktopCapturer, session } from 'electron';
 import { fileURLToPath } from 'node:url';
+console.log("A")
 
 await app.whenReady();
 session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
