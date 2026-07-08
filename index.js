@@ -1,32 +1,30 @@
-import express from 'express';
-import basicAuth from 'express-basic-auth';
-import { env } from 'node:process';
-import { spawn } from 'node:child_process';
-import { createAnswer } from "./whip.js";
+import { app, BrowserWindow, desktopCapturer, session } from 'electron';
+import { fileURLToPath } from 'node:url';
 
-const { USERNAME = "", PASSWORD = "" } = env;
+await app.whenReady();
+session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
+    const sources = await desktopCapturer.getSources({
+        types: ['screen']
+    });
 
-const app = express();
-const server = app.listen(0);
+    callback({
+        video: sources[0],
+        audio: 'loopback'
+    });
+}, { useSystemPicker: false });
 
-app.use(
-	basicAuth({
-		users: { [USERNAME]: PASSWORD },
-		challenge: true,
-	}),
-	express.static("public")
-);
+const win = new BrowserWindow({
+    // width: 1280,
+    // height: 800,
+    // autoHideMenuBar: true,
+    show: false,
+    webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false,
+        sandbox: false
+    }
+});
 
-app.post('/whip', express.text({ type: 'application/sdp' }), async (req, res) => {
-	const offer = req.body;
+win.loadFile(fileURLToPath(import.meta.resolve("./app/index.html")));
 
-	res.status(201)
-		.set('Content-Type', 'application/sdp')
-		.send(await createAnswer(offer)); 
-})
-
-spawn(
-	'cloudflared',
-	['tunnel', '--url', `http://localhost:${server.address().port}`],
-	{ stdio: 'inherit' }
-);
+app.on('window-all-closed', () => app.quit());

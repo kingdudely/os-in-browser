@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       os:
-        description: 'OS'
+        description: 'Operating system'
         type: choice
         required: true
         default: 'windows-latest'
@@ -12,33 +12,49 @@ on:
           - windows-latest
           - ubuntu-latest
           - macos-latest
-
-defaults:
-  run:
-    shell: bash
+      username:
+        description: "Username"
+        type: string
+        required: false
+      password:
+        description: "Password"
+        type: string
+        required: false
 
 jobs:
   remote:
     runs-on: ${{ github.event.inputs.os }}
     timeout-minutes: 360
-    env:
-      PORT: 8080
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Copy repository into PC
         uses: actions/checkout@main
-      
-      - name: Setup cloudflared
-        uses: AnimMouse/setup-cloudflared@main
+
+      - name: Linux setup
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xterm
+
+          read -r DISPLAY_NUMBER < <(exec Xvfb -displayfd 1)
+
+          export DISPLAY=":$DISPLAY_NUMBER"
+          echo "DISPLAY=$DISPLAY" >> "$GITHUB_ENV"
+
+          xterm -maximized &
 
       - name: Install server dependencies
-        run: |
-          npm install
+        run: npm install
 
       - name: Start server
         env:
-          USERNAME: ${{ secrets.USERNAME }}
-          PASSWORD: ${{ secrets.PASSWORD }}
           NODE_OPTIONS: --unhandled-rejections=strict
         run: |
-          npm start
+          USERNAME=$(jq -r '.inputs.username // ""' "$GITHUB_EVENT_PATH")
+          PASSWORD=$(jq -r '.inputs.password // ""' "$GITHUB_EVENT_PATH")
+          echo "::add-mask::${USERNAME}"
+          echo "::add-mask::${PASSWORD}"
+          npm start -- --username="${USERNAME}" --password="${PASSWORD}"

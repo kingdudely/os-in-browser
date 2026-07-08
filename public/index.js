@@ -28,7 +28,7 @@ function triggerImmersiveMode() {
 
 const screenshare = document.getElementById("screenshare");
 
-const sharedBytes = new Uint8Array(8);
+const sharedBytes = new Uint8Array(12);
 const sharedView = new DataView(sharedBytes.buffer);
 
 const peer = await ConnectToServerPeer();
@@ -127,7 +127,6 @@ window.addEventListener("keyup", (event) => {
 	keyboardTypeChannel.send(sharedBytes.subarray(0, 2));
 })
 
-/*
 const screenResizeChannel = peer.createDataChannel("screen-resize", {
     ordered: false,
     negotiated: true,
@@ -146,7 +145,6 @@ function fitToScreen() {
 
 screenResizeChannel.addEventListener("open", fitToScreen);
 new ResizeObserver(fitToScreen).observe(screenshare); // window.onresize
-*/
 
 const pointerScrollChannel = peer.createDataChannel("pointer-scroll", {
     ordered: false,
@@ -170,6 +168,6 @@ screenshare.addEventListener("wheel", (event) => {
 
 	sharedView.setFloat32(0, event.deltaX * multiplier, true);
 	sharedView.setFloat32(4, event.deltaY * multiplier, true);
-	// sharedView.setFloat32(8, event.deltaZ, true); // unsupported in pynput
-	pointerScrollChannel.send(sharedBytes.subarray(0, 8));
+	sharedView.setFloat32(8, event.deltaZ * multiplier, true); // unsupported in pynput
+	pointerScrollChannel.send(sharedBytes.subarray(0, 12));
 });
