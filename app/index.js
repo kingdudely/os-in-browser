@@ -61,7 +61,7 @@ app.use(...middleware);
 				absoluteY = view.getUint32(4, true);
 			}
 
-			await mouse.setPosition(new Point(x, y));
+			await mouse.setPosition(new Point(absoluteX, absoluteY));
 		});
 
 		const pointerClickChannel = peer.createDataChannel("pointer-click", {
