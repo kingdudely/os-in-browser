@@ -1,32 +1,30 @@
+console.log("Node.js loaded!")
 import { app, BrowserWindow, desktopCapturer, session } from 'electron';
 import { fileURLToPath } from 'node:url';
 
-console.log("A");
-
 app.whenReady().then(() => {
-  console.log("B");
+	console.log("App loaded!")
+	session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
+		const sources = await desktopCapturer.getSources({
+			types: ['screen']
+		});
 
-  session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
-    const sources = await desktopCapturer.getSources({
-      types: ['screen']
-    });
+		callback({
+			video: sources[0],
+			audio: 'loopback'
+		});
+	}, { useSystemPicker: false });
 
-    callback({
-      video: sources[0],
-      audio: 'loopback'
-    });
-  }, { useSystemPicker: false });
+	const win = new BrowserWindow({
+		show: false,
+		webPreferences: {
+			nodeIntegration: true,
+			contextIsolation: false,
+			sandbox: false
+		}
+	});
 
-  const win = new BrowserWindow({
-    show: false,
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-      sandbox: false
-    }
-  });
-
-  win.loadFile(fileURLToPath(import.meta.resolve("./app/index.html")));
+	win.loadFile(fileURLToPath(import.meta.resolve("./app/index.html")));
 });
 
 app.on('window-all-closed', () => app.quit());

@@ -1,3 +1,5 @@
+console.log("app/index.js loaded!");
+
 const express = require('express');
 const basicAuth = require('express-basic-auth');
 const { startTunnel } = require('untun');
