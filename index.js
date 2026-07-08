@@ -1,3 +1,4 @@
+// Use IPC instead, and use unjs/listhen
 console.log("Node.js loaded!")
 import { app, BrowserWindow, desktopCapturer, session } from 'electron';
 import { fileURLToPath } from 'node:url';
