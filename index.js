@@ -24,6 +24,9 @@ app.whenReady().then(() => {
 		}
 	});
 
+	win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+		console.log(`[renderer:${level}] ${message} (${sourceId}:${line})`);
+	});
 	win.loadFile(fileURLToPath(import.meta.resolve("./app/index.html")));
 });
 
