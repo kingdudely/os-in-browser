@@ -45,7 +45,7 @@ const pointerMovementChannel = peer.createDataChannel("pointer-movement", {
 });
 
 // pointerrawupdate
-screenshare.addEventListener("pointermove", (event) => {
+window.addEventListener("pointermove", (event) => { // can't use screenshare since document.body (child of window) is asking for pointer lock
 	event.preventDefault();
 	if (pointerMovementChannel.readyState !== "open") return;
 
@@ -96,6 +96,7 @@ const keyboardTypeChannel = peer.createDataChannel("keyboard-type", {
 	id: 2
 });
 
+// Could do tabindex=0 but then they can just press tab again - also, this is more reliable, and screenshare is basically the whole screen anyways.
 window.addEventListener("keydown", (event) => {
 	event.preventDefault();
 	if (keyboardTypeChannel.readyState !== "open" || event.repeat) return;
@@ -129,6 +130,7 @@ window.addEventListener("keyup", (event) => {
 	keyboardTypeChannel.send(sharedBytes.subarray(0, 2));
 })
 
+// Not implemented.
 const screenResizeChannel = peer.createDataChannel("screen-resize", {
     ordered: false,
     negotiated: true,
@@ -148,6 +150,7 @@ function fitToScreen() {
 screenResizeChannel.addEventListener("open", fitToScreen);
 new ResizeObserver(fitToScreen).observe(screenshare); // window.onresize
 
+// Not implemented.
 const pointerScrollChannel = peer.createDataChannel("pointer-scroll", {
     ordered: false,
     maxRetransmits: 0,
