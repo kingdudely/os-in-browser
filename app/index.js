@@ -7,6 +7,7 @@ const { mouse, keyboard, Point } = require('@nut-tree-fork/nut-js');
 const { parseArgs } = require('node:util');
 
 const { username, password } = parseArgs({
+	strict: false,
     options: {
         username: { type: 'string' },
         password: { type: 'string' },
