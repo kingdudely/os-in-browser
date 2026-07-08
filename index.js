@@ -1,31 +1,32 @@
 import { app, BrowserWindow, desktopCapturer, session } from 'electron';
 import { fileURLToPath } from 'node:url';
-console.log("A")
-await app.whenReady();
-console.log("B")
-session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
+
+console.log("A");
+
+app.whenReady().then(() => {
+  console.log("B");
+
+  session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
     const sources = await desktopCapturer.getSources({
-        types: ['screen']
+      types: ['screen']
     });
 
     callback({
-        video: sources[0],
-        audio: 'loopback'
+      video: sources[0],
+      audio: 'loopback'
     });
-}, { useSystemPicker: false });
+  }, { useSystemPicker: false });
 
-const win = new BrowserWindow({
-    // width: 1280,
-    // height: 800,
-    // autoHideMenuBar: true,
+  const win = new BrowserWindow({
     show: false,
     webPreferences: {
-        nodeIntegration: true,
-        contextIsolation: false,
-        sandbox: false
+      nodeIntegration: true,
+      contextIsolation: false,
+      sandbox: false
     }
-});
+  });
 
-win.loadFile(fileURLToPath(import.meta.resolve("./app/index.html")));
+  win.loadFile(fileURLToPath(import.meta.resolve("./app/index.html")));
+});
 
 app.on('window-all-closed', () => app.quit());
