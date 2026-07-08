@@ -3,6 +3,7 @@ console.log("app/index.js loaded!");
 const { USERNAME = "", PASSWORD = "" } = require("node:process").env;
 const express = require('express');
 const basicAuth = require('express-basic-auth');
+const { spawn } = require('node:child_process');
 const { mouse, keyboard, Point } = require('@nut-tree-fork/nut-js');
 
 const app = express();
