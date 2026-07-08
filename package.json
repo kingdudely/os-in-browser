@@ -1,18 +1,9 @@
 {
-  "name": "nwjs-mixed-context-demo",
+  "name": "nwjs-test",
   "version": "1.0.0",
-  "description": "NW.js app demonstrating mixed DOM/Node context",
   "main": "index.html",
-  "node-remote": "http://localhost",
-  "chromium-args": "--enable-logging --no-sandbox",
   "window": {
     "width": 800,
-    "height": 600,
-    "title": "Mixed Context Demo"
-  },
-  "scripts": {
-    "start": "nw ."
-  },
-  "dependencies": {},
-  "devDependencies": {}
+    "height": 600
+  }
 }
