@@ -1,4 +1,4 @@
-// Use IPC instead, use unjs/listhen, export the port to GITHUB_OUTPUT
+// Use IPC instead, export the port to GITHUB_OUTPUT ("use unjs/listhen" - no, its third party)
 console.log("Node.js loaded!")
 import { app, BrowserWindow, desktopCapturer, session } from 'electron';
 import { fileURLToPath } from 'node:url';
