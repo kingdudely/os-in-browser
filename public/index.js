@@ -54,10 +54,12 @@ screenshare.addEventListener("pointermove", (event) => {
 		sharedView.setInt16(0, event.movementX, true);
 		sharedView.setInt16(2, event.movementY, true);
 		packetSize = 4;
+		console.log("relative", event.movementX, event.movementY)
 	} else {
 		sharedView.setUint32(0, event.clientX, true);
 		sharedView.setUint32(4, event.clientY, true);
 		packetSize = 8;
+		console.log("absolute", event.clientX, event.clientY)
 	}
 	
 	pointerMovementChannel.send(sharedBytes.subarray(0, packetSize));
