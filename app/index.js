@@ -140,5 +140,5 @@ app.use(...middleware);
 		acceptCloudflareNotice: true
 	});
 
-	console.log(`Your URL: ${tunnel.url}`);
+	console.log(`Your URL: ${await tunnel.getURL()}`);
 })();
