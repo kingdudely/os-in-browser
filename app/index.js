@@ -1,27 +1,18 @@
 console.log("app/index.js loaded!");
 
+const { USERNAME = "", PASSWORD = "" } = require("node:process").env;
 const express = require('express');
 const basicAuth = require('express-basic-auth');
-const { startTunnel } = require('untun');
 const { mouse, keyboard, Point } = require('@nut-tree-fork/nut-js');
-const { parseArgs } = require('node:util');
-
-const { username, password } = parseArgs({
-	strict: false,
-    options: {
-        username: { type: 'string' },
-        password: { type: 'string' },
-    },
-}).values;
 
 const app = express();
 const server = app.listen(0);
 
 const middleware = [express.static("public")];
-if (username && password) {
+if (USERNAME && PASSWORD) {
     middleware.unshift(
         basicAuth({
-            users: { [username]: password },
+            users: { [USERNAME]: PASSWORD },
             challenge: true,
         })
     );
@@ -31,7 +22,7 @@ if (username && password) {
 
 app.use(...middleware);
 
-(async function main() {
+(async function createGetAnswerEndpoint() {
 	const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
 	const tracks = stream.getTracks();
 
@@ -134,11 +125,10 @@ app.use(...middleware);
 			.set('Content-Type', 'application/sdp')
 			.send(await createAnswer(offer));
 	});
-
-	const tunnel = await startTunnel({
-		port: server.address().port,
-		acceptCloudflareNotice: true
-	});
-
-	console.log(`Your URL: ${await tunnel.getURL()}`);
 })();
+
+spawn(
+	'cloudflared',
+	['tunnel', '--url', `http://localhost:${server.address().port}`],
+	{ stdio: 'inherit' }
+);
