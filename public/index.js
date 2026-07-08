@@ -1,3 +1,4 @@
+// Pointer lock makes events added to "screenshare" element not work since document.body is the one requesting for pointer lock - a child of "window".
 window.addEventListener("error", (event) => {
 	const errorMessage = event.message || "Unknown error occurred";
     window.alert(`Error:\n${errorMessage}`);
@@ -45,7 +46,7 @@ const pointerMovementChannel = peer.createDataChannel("pointer-movement", {
 });
 
 // pointerrawupdate
-window.addEventListener("pointermove", (event) => { // can't use screenshare since document.body (child of window) is asking for pointer lock
+window.addEventListener("pointermove", (event) => {
 	event.preventDefault();
 	if (pointerMovementChannel.readyState !== "open") return;
 
@@ -71,7 +72,7 @@ const pointerClickChannel = peer.createDataChannel("pointer-click", {
 	id: 1
 });
 
-screenshare.addEventListener("pointerdown", (event) => {
+window.addEventListener("pointerdown", (event) => {
 	event.preventDefault();
 	if (pointerClickChannel.readyState !== "open") return;
 	triggerImmersiveMode();
@@ -81,7 +82,7 @@ screenshare.addEventListener("pointerdown", (event) => {
 	pointerClickChannel.send(sharedBytes.subarray(0, 2));
 });
 
-screenshare.addEventListener("pointerup", (event) => {
+window.addEventListener("pointerup", (event) => {
 	event.preventDefault();
 	if (pointerClickChannel.readyState !== "open") return;
 
@@ -141,14 +142,13 @@ function fitToScreen() {
 	if (screenResizeChannel.readyState !== "open") return;
 	console.log("Sending screen resize packet...");
 
-	const { width, height } = screenshare.getBoundingClientRect();
-    sharedView.setUint32(0, width, true);
-    sharedView.setUint32(4, height, true);
+    sharedView.setUint32(0, window.innerWidth, true);
+    sharedView.setUint32(4, window.innerHeight, true);
     screenResizeChannel.send(sharedBytes.subarray(0, 8));
 }
 
-screenResizeChannel.addEventListener("open", fitToScreen);
-new ResizeObserver(fitToScreen).observe(screenshare); // window.onresize
+screenResizeChannel.addEventListener("open", fitToScreen); // So it automatically resizes in the beginning
+window.addEventListener("resize", fitToScreen); // ResizeObserver 
 
 // Not implemented.
 const pointerScrollChannel = peer.createDataChannel("pointer-scroll", {
@@ -158,7 +158,7 @@ const pointerScrollChannel = peer.createDataChannel("pointer-scroll", {
     id: 4
 });
 
-screenshare.addEventListener("wheel", (event) => {
+window.addEventListener("wheel", (event) => {
     event.preventDefault();
     if (pointerScrollChannel.readyState !== "open") return;
 
