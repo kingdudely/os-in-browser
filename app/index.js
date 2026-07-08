@@ -46,6 +46,8 @@ app.use(...middleware);
 
 		pointerMovementChannel.addEventListener("message", async (event) => {
 			const view = new DataView(event.data);
+			console.log(typeof(event.data))
+			console.log(view.byteLength)
 			const isRelative = view.byteLength === 4;
 			let absoluteX = 0;
 			let absoluteY = 0;
