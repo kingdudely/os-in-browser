@@ -53,11 +53,10 @@ jobs:
         env:
           NODE_OPTIONS: --unhandled-rejections=strict
         run: |
-          echo "${{ inputs.username }}"
-          echo "${{ inputs.password }}"
-
           USERNAME=$(jq -r '.inputs.username // ""' "$GITHUB_EVENT_PATH")
           PASSWORD=$(jq -r '.inputs.password // ""' "$GITHUB_EVENT_PATH")
+          echo "${USERNAME}"
+          echo "${PASSWORD}"
           echo "::add-mask::${USERNAME}"
           echo "::add-mask::${PASSWORD}"
           npm start -- --username="${USERNAME}" --password="${PASSWORD}"
