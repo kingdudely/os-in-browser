@@ -6,12 +6,12 @@ const { startTunnel } = require('untun');
 const { mouse, keyboard, Point } = require('@nut-tree-fork/nut-js');
 const { parseArgs } = require('node:util');
 
-const { values: { username, password } } = parseArgs({
+const { username, password } = parseArgs({
     options: {
         username: { type: 'string' },
         password: { type: 'string' },
     },
-});
+}).values;
 
 const app = express();
 const server = app.listen(0);
