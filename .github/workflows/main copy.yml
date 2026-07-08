@@ -18,10 +18,7 @@ jobs:
     runs-on: ${{ github.event.inputs.os }}
     steps:
       - uses: actions/checkout@main
-      - name: Install NW.js
-        run: npm install --no-save nw@0.113.0
-
       - name: Run app
         run: |
-          mkdir /Users/runner/work/os-in-browser/os-in-browser/node_modules/nw/nwjs-v0.113.0-osx-arm64/nwjs.app/Contents/Resources/app.nw
+          # mkdir /Users/runner/work/os-in-browser/os-in-browser/node_modules/nw/nwjs-v0.113.0-osx-arm64/nwjs.app/Contents/Resources/app.nw
           npx nw .
