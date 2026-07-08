@@ -1,4 +1,4 @@
-name: NW.js Mixed Context Runner Copy
+name: NW.js Mixed Context Runner
 
 on:
   workflow_dispatch:
@@ -16,9 +16,88 @@ on:
 jobs:
   run-nwjs:
     runs-on: ${{ github.event.inputs.os }}
+
     steps:
-      - uses: actions/checkout@main
-      - name: Run app
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
         run: |
-          # mkdir /Users/runner/work/os-in-browser/os-in-browser/node_modules/nw/nwjs-v0.113.0-osx-arm64/nwjs.app/Contents/Resources/app.nw
-          npx nw .
+          sudo apt-get update
+          sudo apt-get install -y xvfb xterm
+
+      - name: Download NW.js
+        shell: bash
+        run: |
+          mkdir -p nw-runtime
+
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            curl -L \
+              https://dl.nwjs.io/v0.113.0/nwjs-v0.113.0-linux-x64.tar.gz \
+              -o nw.tar.gz
+
+            tar -xzf nw.tar.gz -C nw-runtime --strip-components=1
+
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            curl -L \
+              https://dl.nwjs.io/v0.113.0/nwjs-v0.113.0-osx-arm64.zip \
+              -o nw.zip
+
+            unzip nw.zip -d nw-runtime
+
+          elif [ "$RUNNER_OS" = "Windows" ]; then
+            curl -L \
+              https://dl.nwjs.io/v0.113.0/nwjs-v0.113.0-win-x64.zip \
+              -o nw.zip
+
+            unzip nw.zip -d nw-runtime
+          fi
+
+      - name: Package app for NW.js
+        shell: bash
+        run: |
+          mkdir app
+
+          cp package.json app/
+
+          if [ -f index.html ]; then
+            cp index.html app/
+          fi
+
+          cp -r *.js app/ 2>/dev/null || true
+          cp -r assets app/ 2>/dev/null || true
+
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            mkdir -p nw-runtime/nwjs.app/Contents/Resources/app.nw
+            cp -r app/* nw-runtime/nwjs.app/Contents/Resources/app.nw/
+
+          else
+            cd app
+            zip -r ../app.nw .
+            cd ..
+
+            cp app.nw nw-runtime/
+          fi
+
+      - name: Setup virtual display
+        if: runner.os == 'Linux'
+        run: |
+          read -r DISPLAY_NUMBER < <(exec Xvfb -displayfd 1)
+          echo "DISPLAY=:$DISPLAY_NUMBER" >> "$GITHUB_ENV"
+          xterm &
+
+      - name: Run NW.js Linux
+        if: runner.os == 'Linux'
+        run: |
+          ./nw-runtime/nw .
+
+      - name: Run NW.js macOS
+        if: runner.os == 'macOS'
+        run: |
+          ./nw-runtime/nwjs.app/Contents/MacOS/nwjs
+
+      - name: Run NW.js Windows
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          .\nw-runtime\nw.exe
