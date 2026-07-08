@@ -1,19 +1,18 @@
 {
-	"name": "os-in-browser",
-	"version": "1.0.0",
-	"description": "Run an OS in the browser using GitHub actions!",
-	"main": "index.js",
-	"keywords": [],
-	"author": "kingdudely",
-	"license": "ISC",
-	"type": "module",
-	"scripts": {
-		"start": "node ."
-	},
-	"dependencies": {
-		"express": "^5.2.1",
-		"express-basic-auth": "^1.2.1",
-		"@nut-tree-fork/nut-js": "^4.2.6",
-		"puppeteer-core": "^25.1.0"
-	}
+  "name": "nwjs-mixed-context-demo",
+  "version": "1.0.0",
+  "description": "NW.js app demonstrating mixed DOM/Node context",
+  "main": "index.html",
+  "node-remote": "http://localhost",
+  "chromium-args": "--enable-logging --no-sandbox",
+  "window": {
+    "width": 800,
+    "height": 600,
+    "title": "Mixed Context Demo"
+  },
+  "scripts": {
+    "start": "nw ."
+  },
+  "dependencies": {},
+  "devDependencies": {}
 }
