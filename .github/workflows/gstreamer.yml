@@ -1,0 +1,44 @@
+name: webrtcsink-matrix
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  run:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GStreamer on Ubuntu
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gstreamer1.0-tools \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad \
+            gstreamer1.0-libav
+
+      - name: Install GStreamer on macOS
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew update
+          brew install gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly
+
+      - name: Install GStreamer on Windows
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          choco install gstreamer -y
+
+      - name: Start webrtcsink
+        run: |
+          gst-launch-1.0 videotestsrc ! videoconvert ! webrtcsink run-web-server=true enable-control-data-channel=true
