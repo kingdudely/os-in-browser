@@ -33,6 +33,9 @@ jobs:
       - name: Copy repository into PC
         uses: actions/checkout@main
 
+      - name: Setup cloudflared
+        uses: AnimMouse/setup-cloudflared@main
+
       - name: Linux setup
         if: runner.os == 'Linux'
         run: |
