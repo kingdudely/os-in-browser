@@ -17,6 +17,6 @@
 		"untun": "^0.1.3"
 	},
 	"devDependencies": {
-		"electron": "^32.0.0"
+		"electron": "^43.1.0"
 	}
 }
