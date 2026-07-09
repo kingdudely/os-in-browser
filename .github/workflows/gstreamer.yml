@@ -61,9 +61,13 @@ jobs:
             Windows)
               choco install -y gstreamer
 
-              "/c/Program Files/gstreamer/1.0/msvc_x86_64/bin/gst-launch-1.0.exe" \
-                d3d11screencapturesrc ! videoconvert ! queue ! \
-                webrtcsink enable-control-data-channel=true run-web-server=true run-signalling-server=true
+              "/c/Program Files/gstreamer/1.0/msvc_x86_64/bin/gst-inspect-1.0.exe" --types=Encoder
+
+              "/c/Program Files/gstreamer/1.0/msvc_x86_64/bin/gst-launch-1.0.exe" -e ^
+                d3d11screencapturesrc ! videoconvert ! queue ! ^
+                video/x-raw,format=I420 ! ^
+                x264enc tune=zerolatency speed-preset=veryfast ! h264parse ! ^
+                webrtcsink enable-control-data-channel=true run-signalling-server=true run-web-server=true
               ;;
             *)
               echo "Unsupported operating system: ${RUNNER_OS}"
