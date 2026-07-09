@@ -78,7 +78,7 @@ jobs:
               ;;
           esac
 
-      - name: Use tunnel
+      - name: Tunnel
         run: |
           cloudflared tunnel --url "http://localhost:${NOVNC_PORT}" 2>&1 | grep --line-buffered -o 'https://[^ ]*trycloudflare.com'
           sleep 21600
