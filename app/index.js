@@ -4,7 +4,8 @@ const { USERNAME = "", PASSWORD = "" } = require("node:process").env;
 const express = require('express');
 const basicAuth = require('express-basic-auth');
 const { spawn } = require('node:child_process');
-const { mouse, keyboard, Point } = require('@nut-tree-fork/nut-js');
+const { mouse, keyboard, Point, Key } = require('@nut-tree-fork/nut-js');
+console.log(Key.A, typeof(Key.A))
 
 const app = express();
 const server = app.listen(0);
