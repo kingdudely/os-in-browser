@@ -42,70 +42,8 @@ async function createAnswer(offer) {
 		]
 	});
 
-	/*
-	async function createAnswer(offer) {
-		const peer = new RTCPeerConnection({
-			iceServers: [
-				{ urls: "stun:stun.l.google.com:19302" },
-				{ urls: "stun:stun.cloudflare.com:3478" }
-			]
-		});
-
-		const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-		const videoTrack = stream.getVideoTracks()[0];
-		const audioTrack = stream.getAudioTracks()[0]; // may be undefined, see note below
-
-		videoTrack.contentHint = "motion";
-
-		const videoSender = peer.addTrack(videoTrack, stream);
-		if (audioTrack) peer.addTrack(audioTrack, stream);
-
-		// codec preference — only applies to video
-		const transceiver = peer.getTransceivers().find(t => t.sender === videoSender);
-		const caps = RTCRtpSender.getCapabilities("video");
-		const h264 = caps.codecs.filter(c => c.mimeType === "video/H264");
-		if (h264.length) transceiver.setCodecPreferences(h264);
-
-		// encoding params — only applies to video
-		const params = videoSender.getParameters();
-		if (!params.encodings) params.encodings = [{}];
-		params.encodings[0].maxBitrate = 8_000_000;
-		params.encodings[0].maxFramerate = 60;
-		params.degradationPreference = "maintain-framerate";
-		await videoSender.setParameters(params);
-
-		// ... data channels, setRemoteDescription, etc. unchanged
-	}
-	*/
-
 	const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-
-	// NEW: tell the encoder to prioritize motion smoothness over per-frame detail
-	const videoTrack = stream.getVideoTracks()[0];
-	videoTrack.contentHint = "motion";
-
-	stream.getTracks().forEach((track) => {
-		const sender = peer.addTrack(track, stream);
-
-		if (track.kind === "video") {
-			// NEW: force H.264 as the preferred codec (lower encode latency than VP9/AV1)
-			const transceiver = peer.getTransceivers().find(t => t.sender === sender);
-			const caps = RTCRtpSender.getCapabilities("video");
-			const h264 = caps.codecs.filter(c => c.mimeType === "video/H264");
-			if (h264.length) transceiver.setCodecPreferences(h264);
-		}
-	});
-
-	// NEW: after tracks are added, set encoding parameters on the video sender
-	const videoSender = peer.getSenders().find(s => s.track && s.track.kind === "video");
-	if (videoSender) {
-		const params = videoSender.getParameters();
-		if (!params.encodings) params.encodings = [{}];
-		params.encodings[0].maxBitrate = 8_000_000;   // tune down if your link can't sustain this
-		params.encodings[0].maxFramerate = 60;
-		params.degradationPreference = "maintain-framerate"; // don't sacrifice fps for resolution
-		await videoSender.setParameters(params);
-	}
+	stream.getTracks().forEach((track) => peer.addTrack(track, stream));
 
 	const pointerMovementChannel = peer.createDataChannel("pointer-movement", {
 		ordered: false,
