@@ -42,7 +42,7 @@ jobs:
                 gst-launch-1.0 \
                   ximagesrc use-damage=0 ! videoconvert ! queue ! \
                   webrtcsink enable-control-data-channel=true run-web-server=true run-signalling-server=true
-              ' &
+              '
               
               ;;
             macOS)
@@ -56,7 +56,7 @@ jobs:
 
               gst-launch-1.0 \
                 avfvideosrc capture-screen=true ! videoconvert ! queue ! \
-                webrtcsink enable-control-data-channel=true run-web-server=true run-signalling-server=true &
+                webrtcsink enable-control-data-channel=true run-web-server=true run-signalling-server=true
               ;;
             Windows)
               choco install -y gstreamer
