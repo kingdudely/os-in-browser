@@ -44,7 +44,7 @@ async function createAnswer(offer) {
 		const stats = await peer.getStats();
 		stats.forEach(report => {
 			if (report.type === "outbound-rtp" && report.kind === "video") {
-				console.log({
+				console.log(JSON.stringify({
 					framesEncoded: report.framesEncoded,
 					framesSent: report.framesSent,
 					frameWidth: report.frameWidth,
@@ -54,7 +54,7 @@ async function createAnswer(offer) {
 					totalEncodeTime: report.totalEncodeTime, // seconds, cumulative
 					encoderImplementation: report.encoderImplementation, // e.g. "VideoToolbox" or "libvpx" (software!)
 					bytesSent: report.bytesSent,
-				});
+				}, null, 2));
 			}
 		});
 	}, 1000);
