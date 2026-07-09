@@ -65,7 +65,7 @@ jobs:
                 webrtcsink enable-control-data-channel=true run-web-server=true &
               ;;
             Windows)
-              winget install -e --id Cloudflare.cloudflared
+              winget install -e --id Cloudflare.cloudflared --accept-source-agreements --accept-package-agreements --disable-interactivity
               choco install -y gstreamer
 
               gst-launch-1.0 \
