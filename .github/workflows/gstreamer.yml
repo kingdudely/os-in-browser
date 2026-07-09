@@ -18,17 +18,13 @@ jobs:
     steps:
       - uses: actions/checkout@main
 
-      - name: Setup
+      - name: Setup GStreamer
         shell: bash
         run: |
           set -euo pipefail
 
           case "${RUNNER_OS}" in
             Linux)
-              sudo mkdir -p --mode=0755 /usr/share/keyrings
-              curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
-              echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
-
               sudo apt-get update
               sudo apt-get install -y \
                 gstreamer1.0-tools \
@@ -39,8 +35,7 @@ jobs:
                 lxqt \
                 openbox \
                 dbus-x11 \
-                xvfb \
-                cloudflared
+                xvfb
               
               xvfb-run -as "-screen 0 1920x1080x24" bash -c '
                 dbus-launch --exit-with-session startlxqt &
@@ -57,15 +52,13 @@ jobs:
                 gst-plugins-base \
                 gst-plugins-good \
                 gst-plugins-bad \
-                gst-plugins-ugly \
-                cloudflared
+                gst-plugins-ugly
 
               gst-launch-1.0 \
                 avfvideosrc capture-screen=true ! videoconvert ! queue ! \
                 webrtcsink enable-control-data-channel=true run-web-server=true &
               ;;
             Windows)
-              winget install -e --id Cloudflare.cloudflared --accept-source-agreements --accept-package-agreements --disable-interactivity
               choco install -y gstreamer
 
               gst-launch-1.0 \
@@ -78,7 +71,14 @@ jobs:
               ;;
           esac
 
-      - name: Tunnel
+      - name: Establish tunnel
+        id: tunnel
+        uses: anyvm-org/cf-tunnel@v0
+        with:
+          protocol: http
+          port: 8080
+
+      - name: Use tunnel
         run: |
-          cloudflared tunnel --url "http://localhost:8080" 2>&1 | grep --line-buffered -o 'https://[^ ]*trycloudflare.com'
+          echo "Tunnel URL: https://${{ steps.tunnel.outputs.server }}"
           sleep 21600
