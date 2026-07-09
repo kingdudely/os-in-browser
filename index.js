@@ -1,4 +1,4 @@
-// Use IPC instead, export the port to GITHUB_OUTPUT ("use unjs/listhen" - no, its third party; "use our own custom input library" - only if Nut.JS only supports U.S. keyboard layout)
+// Use IPC instead, export the port to GITHUB_OUTPUT, getCoalescedEvents, onpointerrawupdate || onpointermove, ("use unjs/listhen" - no, its third party; "use our own custom input library" - only if Nut.JS only supports U.S. keyboard layout)
 console.log("Node.js loaded!")
 import { app, BrowserWindow, desktopCapturer, session } from 'electron';
 import { fileURLToPath } from 'node:url';
