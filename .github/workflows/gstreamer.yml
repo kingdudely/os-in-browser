@@ -1,0 +1,84 @@
+name: webrtcsink
+
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        description: Runner OS
+        required: true
+        type: choice
+        options:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+
+jobs:
+  run-webrtcsink:
+    runs-on: ${{ inputs.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "${RUNNER_OS}" in
+            Linux)
+              sudo mkdir -p --mode=0755 /usr/share/keyrings
+              curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
+              echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
+
+              sudo apt-get update
+              sudo apt-get install -y \
+                gstreamer1.0-tools \
+                gstreamer1.0-plugins-base \
+                gstreamer1.0-plugins-good \
+                gstreamer1.0-plugins-bad \
+                gstreamer1.0-plugins-ugly \
+                lxqt \
+                openbox \
+                dbus-x11 \
+                xvfb \
+                cloudflared
+              
+              xvfb-run -as "-screen 0 1920x1080x24" bash -c '
+                dbus-launch --exit-with-session startlxqt &
+                gst-launch-1.0 \
+                  ximagesrc use-damage=0 ! videoconvert ! queue ! \
+                  webrtcsink enable-control-data-channel=true run-web-server=true
+              ' &
+              
+              ;;
+            macOS)
+              brew update
+              brew install \
+                gstreamer \
+                gst-plugins-base \
+                gst-plugins-good \
+                gst-plugins-bad \
+                gst-plugins-ugly \
+                cloudflared
+
+              gst-launch-1.0 \
+                avfvideosrc ! videoconvert ! queue ! \
+                webrtcsink enable-control-data-channel=true run-web-server=true &
+              ;;
+            Windows)
+              winget install -e --id Cloudflare.cloudflared
+              choco install -y gstreamer
+
+              gst-launch-1.0 \
+                dxgiscreencapsrc ! videoconvert ! queue ! \
+                webrtcsink enable-control-data-channel=true run-web-server=true &
+              ;;
+            *)
+              echo "Unsupported runner: ${RUNNER_OS}"
+              exit 1
+              ;;
+          esac
+
+      - name: Use tunnel
+        run: |
+          cloudflared tunnel --url "http://localhost:${NOVNC_PORT}" 2>&1 | grep --line-buffered -o 'https://[^ ]*trycloudflare.com'
+          sleep 21600
