@@ -6,8 +6,6 @@ const basicAuth = require('express-basic-auth');
 const { spawn } = require('node:child_process');
 const { mouse, keyboard, Point, Key } = require('@nut-tree-fork/nut-js');
 // console.log(JSON.stringify(Key, null, 2))
-mouse.config.autoDelayMs = 0;
-keyboard.config.autoDelayMs = 0;
 
 const app = express();
 const server = app.listen(0);
@@ -42,41 +40,8 @@ async function createAnswer(offer) {
 		]
 	});
 
-	const stream = await navigator.mediaDevices.getDisplayMedia({
-		video: {
-			frameRate: { ideal: 60 }
-		},
-		audio: false
-	});
-
-	stream.getVideoTracks()[0].contentHint = "motion";
-	const senders = [];
-	stream.getTracks().forEach((track) => {
-		senders.push(peer.addTrack(track, stream));
-	});
-	
-	peer.addEventListener("connectionstatechange", async () => {
-		if (peer.connectionState !== "connected") return;
-		for (const sender of senders) {
-			if (sender.track?.kind !== "video") continue;
-			try {
-				const params = sender.getParameters();
-				if (!params.encodings) params.encodings = [{}];
-				params.encodings[0].maxBitrate = 10_000_000;
-				params.degradationPreference = "maintain-framerate";
-				await sender.setParameters(params);
-			} catch (err) {
-				console.warn("Failed to set encoding params:", err);
-			}
-		}
-	});
-
-	const transceiver = peer.getTransceivers().find(t => t.sender.track?.kind === "video");
-	const codecs = RTCRtpSender.getCapabilities("video").codecs;
-	const h264 = codecs.filter(c => c.mimeType === "video/H264");
-	if (transceiver && h264.length) {
-		transceiver.setCodecPreferences([...h264, ...codecs]);
-	}
+	const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+	stream.getTracks().forEach((track) => peer.addTrack(track, stream));
 
 	const pointerMovementChannel = peer.createDataChannel("pointer-movement", {
 		ordered: false,
