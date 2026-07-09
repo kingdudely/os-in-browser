@@ -34,7 +34,6 @@ const sharedView = new DataView(sharedBytes.buffer);
 
 const peer = await ConnectToServerPeer();
 peer.addEventListener("track", (event) => {
-	event.receiver.jitterBufferTarget = 0;
 	screenshare.srcObject = event.streams[0];
 	screenshare.play().catch(console.warn);
 });

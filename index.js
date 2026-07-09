@@ -3,10 +3,6 @@ console.log("Node.js loaded!")
 import { app, BrowserWindow, desktopCapturer, session } from 'electron';
 import { fileURLToPath } from 'node:url';
 
-app.commandLine.appendSwitch('enable-features', 'VaapiVideoEncoder,VaapiVideoDecoder'); // Linux
-app.commandLine.appendSwitch('ignore-gpu-blocklist');
-app.commandLine.appendSwitch('disable-frame-rate-limit');
-
 app.whenReady().then(() => {
 	console.log("App loaded!")
 	session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
@@ -21,7 +17,7 @@ app.whenReady().then(() => {
 	}, { useSystemPicker: false });
 
 	const win = new BrowserWindow({
-		show: false,
+		show: true,
 		webPreferences: {
 			nodeIntegration: true,
 			contextIsolation: false,
