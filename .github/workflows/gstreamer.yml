@@ -64,7 +64,7 @@ jobs:
               "/c/Program Files/gstreamer/1.0/msvc_x86_64/bin/gst-launch-1.0.exe" -e \
                 d3d11screencapturesrc ! videoconvert ! queue ! \
                 x264enc tune=zerolatency speed-preset=veryfast ! h264parse ! \
-                webrtcsink enable-control-data-channel=true run-signalling-server=true run-web-server=true
+                webrtcsink enable-control-data-channel=true run-signalling-server=true run-web-server=true &
               ;;
             *)
               echo "Unsupported operating system: ${RUNNER_OS}"
