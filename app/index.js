@@ -40,6 +40,25 @@ async function createAnswer(offer) {
 		]
 	});
 
+	setInterval(async () => {
+		const stats = await peer.getStats();
+		stats.forEach(report => {
+			if (report.type === "outbound-rtp" && report.kind === "video") {
+				console.log({
+					framesEncoded: report.framesEncoded,
+					framesSent: report.framesSent,
+					frameWidth: report.frameWidth,
+					frameHeight: report.frameHeight,
+					framesPerSecond: report.framesPerSecond,
+					qualityLimitationReason: report.qualityLimitationReason, // "none" | "cpu" | "bandwidth" | "other" — THIS is the key field
+					totalEncodeTime: report.totalEncodeTime, // seconds, cumulative
+					encoderImplementation: report.encoderImplementation, // e.g. "VideoToolbox" or "libvpx" (software!)
+					bytesSent: report.bytesSent,
+				});
+			}
+		});
+	}, 1000);
+
 	const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
 	stream.getTracks().forEach((track) => peer.addTrack(track, stream));
 
