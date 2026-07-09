@@ -6,6 +6,8 @@ const basicAuth = require('express-basic-auth');
 const { spawn } = require('node:child_process');
 const { mouse, keyboard, Point, Key } = require('@nut-tree-fork/nut-js');
 // console.log(JSON.stringify(Key, null, 2))
+mouse.config.autoDelayMs = 0;
+keyboard.config.autoDelayMs = 0;
 
 const app = express();
 const server = app.listen(0);
