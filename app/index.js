@@ -5,7 +5,7 @@ const express = require('express');
 const basicAuth = require('express-basic-auth');
 const { spawn } = require('node:child_process');
 const { mouse, keyboard, Point, Key } = require('@nut-tree-fork/nut-js');
-console.log(JSON.stringify(Key, null, 2))
+// console.log(JSON.stringify(Key, null, 2))
 
 const app = express();
 const server = app.listen(0);

@@ -77,17 +77,27 @@ window.addEventListener("pointerdown", (event) => {
 	if (pointerClickChannel.readyState !== "open") return;
 	triggerImmersiveMode();
 
+	if (!(event.button in nutButtons)) {
+		console.warn(`${event.button} does not have a corresponding Nut.JS button`);
+		return;
+	}
+
 	sharedView.setUint8(0, 1); // isDown
-	sharedView.setUint8(1, event.button);
+	sharedView.setUint8(1, nutButtons[event.button]);
 	pointerClickChannel.send(sharedBytes.subarray(0, 2));
 });
 
 window.addEventListener("pointerup", (event) => {
 	event.preventDefault();
 	if (pointerClickChannel.readyState !== "open") return;
+	
+	if (!(event.button in nutButtons)) {
+		console.warn(`${event.button} does not have a corresponding Nut.JS button`);
+		return;
+	}
 
 	sharedView.setUint8(0, 0); // isDown
-	sharedView.setUint8(1, event.button);
+	sharedView.setUint8(1, nutButtons[event.button]);
 	pointerClickChannel.send(sharedBytes.subarray(0, 2));
 });
 
@@ -103,14 +113,13 @@ window.addEventListener("keydown", (event) => {
 	if (keyboardTypeChannel.readyState !== "open" || event.repeat) return;
 	triggerImmersiveMode();
 
-	const nutKey = nutKeys.indexOf(event.code);
-	if (nutKey === -1) {
+	if (!(event.code in nutKeys)) {
 		console.warn(`${event.code} does not have a corresponding Nut.JS key`);
 		return;
 	}
 
 	sharedView.setUint8(0, 1); // isDown
-	sharedView.setUint8(1, nutKey);
+	sharedView.setUint8(1, nutKeys[event.code]);
 
 	keyboardTypeChannel.send(sharedBytes.subarray(0, 2));
 });
@@ -119,14 +128,13 @@ window.addEventListener("keyup", (event) => {
 	event.preventDefault();
 	if (keyboardTypeChannel.readyState !== "open") return;
 
-	const nutKey = nutKeys.indexOf(event.code);
-	if (nutKey === -1) {
+	if (!(event.code in nutKeys)) {
 		console.warn(`${event.code} does not have a corresponding Nut.JS key`);
 		return;
 	}
 
 	sharedView.setUint8(0, 0); // isDown
-	sharedView.setUint8(1, nutKey);
+	sharedView.setUint8(1, nutKeys[event.code]);
 
 	keyboardTypeChannel.send(sharedBytes.subarray(0, 2));
 })
