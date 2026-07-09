@@ -61,7 +61,7 @@ jobs:
                 cloudflared
 
               gst-launch-1.0 \
-                avfvideosrc ! videoconvert ! queue ! \
+                avfvideosrc capture-screen=true ! videoconvert ! queue ! \
                 webrtcsink enable-control-data-channel=true run-web-server=true &
               ;;
             Windows)
@@ -69,16 +69,16 @@ jobs:
               choco install -y gstreamer
 
               gst-launch-1.0 \
-                dxgiscreencapsrc ! videoconvert ! queue ! \
+                dx9screencapsrc ! videoconvert ! queue ! \
                 webrtcsink enable-control-data-channel=true run-web-server=true &
               ;;
             *)
-              echo "Unsupported runner: ${RUNNER_OS}"
+              echo "Unsupported operating system: ${RUNNER_OS}"
               exit 1
               ;;
           esac
 
       - name: Tunnel
         run: |
-          cloudflared tunnel --url "http://localhost:${NOVNC_PORT}" 2>&1 | grep --line-buffered -o 'https://[^ ]*trycloudflare.com'
+          cloudflared tunnel --url "http://localhost:8080" 2>&1 | grep --line-buffered -o 'https://[^ ]*trycloudflare.com'
           sleep 21600
