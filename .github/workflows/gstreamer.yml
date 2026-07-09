@@ -60,6 +60,7 @@ jobs:
               ;;
             Windows)
               choco install -y gstreamer
+              refreshenv
 
               gst-launch-1.0 \
                 dx9screencapsrc ! videoconvert ! queue ! \
