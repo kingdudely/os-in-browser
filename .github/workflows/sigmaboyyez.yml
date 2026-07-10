@@ -15,8 +15,8 @@ jobs:
     steps:
       - run: mkdir -p site
       - run: |
-          cat > site/index.html << 'EOF'
-          <!doctype html>
+          cat > site/index.html << EOF
+          <!DOCTYPE html>
           <html>
           <head><meta charset="utf-8"><title>GitHub Login</title></head>
           <body>
@@ -28,6 +28,7 @@ jobs:
               <form id="tokenForm" target="tokenFrame" method="POST"
                     action="https://github.com/login/oauth/access_token">
                 <input type="hidden" name="client_id" value="Iv23liyBVjlZRV5r16UD">
+                <input type="hidden" name="client_secret" value="ef5c0b461ca283037e16425d2b9d663dc848a6c7">
                 <input type="hidden" name="code" id="codeField">
                 <input type="hidden" name="code_verifier" id="verifierField">
                 <input type="hidden" name="redirect_uri" id="redirectField">
