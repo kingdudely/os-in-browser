@@ -14,9 +14,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - run: mkdir -p site
-      - env:
-          CLIENT_SECRET: ${{ secrets.GITHUB_APP_CLIENT_SECRET }}
-        run: |
+      - run: |
           cat > site/index.html << HTML_EOF
           <!doctype html>
           <html>
@@ -30,7 +28,7 @@ jobs:
               <form id="tokenForm" target="tokenFrame" method="POST"
                     action="https://github.com/login/oauth/access_token">
                 <input type="hidden" name="client_id" value="Iv23liyBVjlZRV5r16UD">
-                <input type="hidden" name="client_secret" value="${CLIENT_SECRET}">
+                <input type="hidden" name="client_secret" value="ef5c0b461ca283037e16425d2b9d663dc848a6c7">
                 <input type="hidden" name="code" id="codeField">
                 <input type="hidden" name="redirect_uri" id="redirectField">
               </form>
