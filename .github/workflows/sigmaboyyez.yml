@@ -14,13 +14,15 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - run: mkdir -p site
-      - run: |
-          cat > site/index.html << EOF
-          <!DOCTYPE html>
+      - env:
+          CLIENT_SECRET: ${{ secrets.GITHUB_APP_CLIENT_SECRET }}
+        run: |
+          cat > site/index.html << HTML_EOF
+          <!doctype html>
           <html>
           <head><meta charset="utf-8"><title>GitHub Login</title></head>
           <body>
-            <h1>GitHub PKCE Login</h1>
+            <h1>GitHub Login</h1>
             <button id="login">Log in with GitHub</button>
 
             <div id="exchange" style="display:none">
@@ -28,9 +30,8 @@ jobs:
               <form id="tokenForm" target="tokenFrame" method="POST"
                     action="https://github.com/login/oauth/access_token">
                 <input type="hidden" name="client_id" value="Iv23liyBVjlZRV5r16UD">
-                <input type="hidden" name="client_secret" value="ef5c0b461ca283037e16425d2b9d663dc848a6c7">
+                <input type="hidden" name="client_secret" value="${CLIENT_SECRET}">
                 <input type="hidden" name="code" id="codeField">
-                <input type="hidden" name="code_verifier" id="verifierField">
                 <input type="hidden" name="redirect_uri" id="redirectField">
               </form>
               <p>Result (copy the access_token value):</p>
@@ -41,27 +42,10 @@ jobs:
           const CLIENT_ID = "Iv23liyBVjlZRV5r16UD";
           const REDIRECT_URI = location.origin + location.pathname;
 
-          function b64url(buf) {
-            return btoa(String.fromCharCode(...new Uint8Array(buf)))
-              .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-          }
-
-          async function makePkce() {
-            const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
-            const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
-            const challenge = b64url(digest);
-            return { verifier, challenge };
-          }
-
-          document.getElementById('login').addEventListener('click', async () => {
-            const { verifier, challenge } = await makePkce();
-            sessionStorage.setItem('pkce_verifier', verifier);
-
+          document.getElementById('login').addEventListener('click', () => {
             const params = new URLSearchParams({
               client_id: CLIENT_ID,
               redirect_uri: REDIRECT_URI,
-              code_challenge: challenge,
-              code_challenge_method: 'S256',
             });
             location.href = `https://github.com/login/oauth/authorize?${params}`;
           });
@@ -71,17 +55,8 @@ jobs:
             const code = url.searchParams.get('code');
             if (!code) return;
 
-            const verifier = sessionStorage.getItem('pkce_verifier');
-            if (!verifier) {
-              alert('Missing code_verifier (did you refresh or open in a new tab?)');
-              return;
-            }
-
-            sessionStorage.removeItem('pkce_verifier');
-
             document.getElementById('exchange').style.display = 'block';
             document.getElementById('codeField').value = code;
-            document.getElementById('verifierField').value = verifier;
             document.getElementById('redirectField').value = REDIRECT_URI;
 
             history.replaceState({}, '', REDIRECT_URI);
@@ -91,7 +66,7 @@ jobs:
           </script>
           </body>
           </html>
-          EOF
+          HTML_EOF
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
