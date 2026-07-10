@@ -48,8 +48,10 @@
 				window.alert(credentialToken);
 			});
 
-			document.getElementById('code').value = new URLSearchParams(location.search).get("code");
-			history.replaceState({}, "", REDIRECT_URI);
+			const windowUrl = new URL(location.href);
+			document.getElementById('code').value = windowUrl.searchParams.get("code");
+			windowUrl.search = "";
+			history.replaceState({}, document.title, windowUrl);
 		</script>
 	</body>
 </html>
