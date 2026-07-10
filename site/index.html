@@ -1,63 +1,55 @@
 <!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><title>GitHub Login</title></head>
-<body>
-	<h1>GitHub Login</h1>
-	<button id="login">Log in with GitHub</button>
-
-	<div id="exchange" style="display:none;margin-top:20px">
-		<p>Code received. Download your secret login token:</p>
-		<form method="POST" action="https://github.com/login/oauth/access_token" target="_blank">
-			<input type="hidden" name="client_id" id="client_id">
-			<input type="hidden" name="client_secret" id="client_secret">
-			<input type="hidden" name="code" id="code">
-			<input type="hidden" name="redirect_uri" id="redirect_uri">
-			<button type="submit">Download secret login token</button>
-		</form>
+	<head>
+		<meta charset="utf-8">
+		<title>GitHub Login</title>
+	</head>
+	<body>
+		<button id="login">
+			<a href="https://github.com/login/oauth/authorize?client_id=Ov23lipwX2GRkJRc0FdF&redirect_uri=https://kingdudely.github.io/os-in-browser/">Create a new secret credential file</a>
+		</button>
 
 		<br />
-		
-		<form id="tokenForm">
-			<label for="tokenInput">Paste the downloaded file contents:</label>
-			<input type="text" id="tokenInput" name="token" placeholder="Paste here" />
-			<button type="submit">Submit</button>
-		</form>
-	</div>
 
-	<script>
-		const CLIENT_ID = "Ov23lipwX2GRkJRc0FdF";
-		const CLIENT_SECRET = "e1acb40a1999c11881db8be8a8ae26f2def89602";
-		const REDIRECT_URI = location.origin + location.pathname;
+		<div id="exchange">
+			<form method="POST" action="https://github.com/login/oauth/access_token" target="_blank">
+				<input type="hidden" name="client_id" id="client_id" value="Ov23lipwX2GRkJRc0FdF">
+				<input type="hidden" name="client_secret" id="client_secret" value="e1acb40a1999c11881db8be8a8ae26f2def89602">
+				<input type="hidden" name="redirect_uri" id="redirect_uri" value="https://kingdudely.github.io/os-in-browser/">
+				<input type="hidden" name="code" id="code">
+				<button type="submit">Download secret login token</button>
+			</form>
 
-		document.getElementById('login').addEventListener('click', () => {
-			const params = new URLSearchParams({
-				client_id: CLIENT_ID,
-				redirect_uri: REDIRECT_URI,
+			<br />
+			
+			<form id="tokenForm">
+				<label for="tokenInput">Upload the credential file:</label>
+				<input type="file" id="tokenInput" name="token"/>
+				<button type="submit">Submit</button>
+			</form>
+		</div>
+
+		<script defer>
+			document.getElementById('tokenForm').addEventListener('submit', async (event) => {
+				event.preventDefault();
+				const credentialFile = event.target.files[0];
+				if (!credentialFile) {
+					window.alert("No credential file provided");
+					return;
+				};
+
+				const credentialParameters = new URLSearchParams(await credentialFile.text());
+				if (!credentialParameters.has("access_token")) {
+					window.alert("Invalid credential file");
+					return;
+				};
+
+				const credentialToken = credentialParameters.get('access_token');
+				window.alert(credentialToken);
 			});
-			location.href = `https://github.com/login/oauth/authorize?${params}`;
-		});
 
-		window.addEventListener('DOMContentLoaded', () => {
-			const url = new URL(location.href);
-			const code = url.searchParams.get('code');
-			if (!code) return;
-
-			history.replaceState({}, '', REDIRECT_URI);
-			document.getElementById('exchange').style.display = 'block';
-
-			document.getElementById("client_id").value = CLIENT_ID;
-			document.getElementById("client_secret").value = CLIENT_SECRET;
-			document.getElementById('code').value = code;
-			document.getElementById('redirect_uri').value = REDIRECT_URI;
-
-			document.getElementById('tokenForm').addEventListener('submit', (e) => {
-				e.preventDefault();
-				const raw = document.getElementById('tokenInput').value.trim();
-				const params = new URLSearchParams(raw);
-				const token = params.get('access_token');
-				window.alert(token);
-			});
-		});
-	</script>
-</body>
+			document.getElementById('code').value = new URLSearchParams(location.search).get("code");
+			history.replaceState({}, "", REDIRECT_URI);
+		</script>
+	</body>
 </html>
