@@ -30,7 +30,7 @@
 		<script defer>
 			document.getElementById('tokenForm').addEventListener('submit', async (event) => {
 				event.preventDefault();
-				const credentialFile = event.target.files[0];
+				const credentialFile = event.target.token.files[0];
 				if (!credentialFile) {
 					window.alert("No credential file provided");
 					return;
@@ -49,7 +49,7 @@
 			const windowUrl = new URL(location.href);
 			if (windowUrl.searchParams.has("code")) {
 				document.getElementById('code').value = windowUrl.searchParams.get("code");
-				document.getElementById("download-credential-file").submit()
+				document.getElementById("download-credential-file").requestSubmit()
 			}
 
 			windowUrl.search = "";
