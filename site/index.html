@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>GitHub Login</title></head>
+<body>
+  <h1>GitHub Login</h1>
+  <button id="login">Log in with GitHub</button>
+
+  <div id="exchange" style="display:none">
+    <p>Exchanging code for token...</p>
+    <form id="tokenForm" target="tokenFrame" method="POST"
+          action="https://github.com/login/oauth/access_token">
+      <input type="hidden" name="client_id" value="Iv23liyBVjlZRV5r16UD">
+      <input type="hidden" name="client_secret" value="ef5c0b461ca283037e16425d2b9d663dc848a6c7">
+      <input type="hidden" name="code" id="codeField">
+      <input type="hidden" name="redirect_uri" id="redirectField">
+    </form>
+    <p>Result (copy the access_token value):</p>
+    <iframe id="tokenFrame" name="tokenFrame" style="width:100%;height:150px;border:1px solid #ccc"></iframe>
+  </div>
+
+<script>
+const CLIENT_ID = "Iv23liyBVjlZRV5r16UD";
+const REDIRECT_URI = location.origin + location.pathname;
+
+document.getElementById('login').addEventListener('click', () => {
+  const params = new URLSearchParams({
+    client_id: CLIENT_ID,
+    redirect_uri: REDIRECT_URI,
+  });
+  location.href = `https://github.com/login/oauth/authorize?${params}`;
+});
+
+window.addEventListener('DOMContentLoaded', () => {
+  const url = new URL(location.href);
+  const code = url.searchParams.get('code');
+  if (!code) return;
+
+  document.getElementById('exchange').style.display = 'block';
+  document.getElementById('codeField').value = code;
+  document.getElementById('redirectField').value = REDIRECT_URI;
+
+  history.replaceState({}, '', REDIRECT_URI);
+
+  document.getElementById('tokenForm').submit();
+});
+</script>
+</body>
+</html>
