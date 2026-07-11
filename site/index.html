@@ -17,7 +17,8 @@
 
 		<br />
 
-		<input type="file" title="Credential file" id="credential-file">
+		<label for="credential-file">Choose credential file:</label>
+		<input type="file" id="credential-file" aria-label="Credential file" title="Credential file">
 
 		<script defer>
 			document.getElementById("credential-file").addEventListener("change", async (event) => {
