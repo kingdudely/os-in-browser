@@ -39,25 +39,24 @@
 				})}`;
 			});
 
-			document.getElementById("tokenInput").addEventListener("change", async e => {
-				const file = e.target.files[0];
-				if (!file) return;
+			document.getElementById("tokenInput").addEventListener("change", async (event) => {
+				const credentialFile = event.target.files[0];
+				if (!credentialFile) return;
 
-				const access_token = new URLSearchParams(await file.text()).get("access_token");
+				const access_token = new URLSearchParams(await credentialFile.text()).get("access_token");
 				if (!access_token) {
-					window.alert("Invalid credential file");
+					alert("Invalid credential file");
 					return;
 				}
 
-				window.alert(access_token);
+				alert(access_token);
 			});
 
-			const url = new URL(location.href);
-			const code = url.searchParams.get("code");
+			const code = new URLSearchParams(location.search).get("code");
 			if (code) {
 				const verifier = sessionStorage.getItem(VERIFIER_KEY);
 				if (!verifier) {
-					alert("Missing code_verifier — the login flow was not started from this browser/tab.");
+					alert("Missing code_verifier - the login flow was not started from this browser/tab.");
 				} else {
 					document.getElementById("code").value = code;
 					document.getElementById("code_verifier").value = verifier;
@@ -66,8 +65,7 @@
 				}
 			}
 
-			url.search = "";
-			history.replaceState({}, document.title, url);
+			history.replaceState(history.state, document.title, location.pathname);
 		</script>
 	</body>
 </html>
