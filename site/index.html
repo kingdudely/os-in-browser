@@ -43,10 +43,13 @@
 				const file = e.target.files[0];
 				if (!file) return;
 
-				const params = new URLSearchParams(await file.text());
-				if (!params.has("access_token")) return alert("Invalid credential file");
+				const access_token = new URLSearchParams(await file.text()).get("access_token");
+				if (!access_token) {
+					window.alert("Invalid credential file");
+					return;
+				}
 
-				alert(params.get("access_token"));
+				window.alert(access_token);
 			});
 
 			const url = new URL(location.href);
