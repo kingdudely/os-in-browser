@@ -5,41 +5,22 @@
 		<title>GitHub Login</title>
 	</head>
 	<body>
-		<button id="login">Create a new secret credential file</button>
+		<form id="oauth">
+			<input type="hidden" name="client_id" value="Ov23lipwX2GRkJRc0FdF">
+			<input type="hidden" name="redirect_uri" value="https://kingdudely.github.io/os-in-browser/">
+			<input type="hidden" name="client_secret" value="e1acb40a1999c11881db8be8a8ae26f2def89602">
+			<input type="hidden" name="code">
+
+			<button type="submit" formaction="https://github.com/login/oauth/authorize" formmethod="GET" formtarget="_blank">Authorize</button>
+			<button type="submit" id="download-access-token" formaction="https://github.com/login/oauth/access_token" formmethod="POST" formtarget="_blank" hidden>Get Access Token</button>
+		</form>
 
 		<br />
 
-		<form id="tokenForm">
-			<label for="tokenInput">Upload a credential file:</label>
-			<input type="file" id="tokenInput" name="token" />
-		</form>
-
-		<form id="download-credential-file" method="POST" action="https://github.com/login/oauth/access_token" target="_blank" hidden>
-			<input type="hidden" name="client_id" value="Ov23lipwX2GRkJRc0FdF">
-			<input type="hidden" name="client_secret" value="e1acb40a1999c11881db8be8a8ae26f2def89602">
-			<input type="hidden" name="redirect_uri" value="https://kingdudely.github.io/os-in-browser/">
-			<input type="hidden" name="code" id="code">
-			<input type="hidden" name="code_verifier" id="code_verifier">
-		</form>
+		<input type="file" title="Credential file" id="credential-file">
 
 		<script defer>
-			const VERIFIER_KEY = "pkce_code_verifier";
-			const to_base64url = (...args) => new Uint8Array(...args).toBase64({ alphabet: "base64url", omitPadding: true });
-
-			document.getElementById("login").addEventListener("click", async () => {
-				const verifier = to_base64url(crypto.getRandomValues(new Uint8Array(32)));
-				const challenge = to_base64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
-
-				sessionStorage.setItem(VERIFIER_KEY, verifier);
-				location.href = `https://github.com/login/oauth/authorize?${new URLSearchParams({
-					client_id: "Ov23lipwX2GRkJRc0FdF",
-					redirect_uri: "https://kingdudely.github.io/os-in-browser/",
-					code_challenge: challenge,
-					code_challenge_method: "S256"
-				})}`;
-			});
-
-			document.getElementById("tokenInput").addEventListener("change", async (event) => {
+			document.getElementById("credential-file").addEventListener("change", async (event) => {
 				const credentialFile = event.target.files[0];
 				if (!credentialFile) return;
 
@@ -54,18 +35,11 @@
 
 			const code = new URLSearchParams(location.search).get("code");
 			if (code) {
-				const verifier = sessionStorage.getItem(VERIFIER_KEY);
-				if (!verifier) {
-					alert("Missing code_verifier - the login flow was not started from this browser/tab.");
-				} else {
-					document.getElementById("code").value = code;
-					document.getElementById("code_verifier").value = verifier;
-					sessionStorage.removeItem(VERIFIER_KEY);
-					document.getElementById("download-credential-file").requestSubmit();
-				}
+				history.replaceState(history.state, document.title, location.pathname);
+				const oauth = document.getElementById("oauth");
+				oauth.code.value = code;
+				oauth.requestSubmit(document.getElementById("download-access-token"));
 			}
-
-			history.replaceState(history.state, document.title, location.pathname);
 		</script>
 	</body>
 </html>
