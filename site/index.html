@@ -3,6 +3,8 @@
 	<head>
 		<meta charset="utf-8">
 		<title>GitHub Login</title>
+		<script src="index.js" defer></script>
+		<link rel="stylesheet" href="styles.css">
 	</head>
 	<body>
 		<form id="oauth">
@@ -11,36 +13,13 @@
 			<input type="hidden" name="client_secret" value="e1acb40a1999c11881db8be8a8ae26f2def89602">
 			<input type="hidden" name="code">
 
-			<button type="submit" formaction="https://github.com/login/oauth/authorize" formmethod="GET" formtarget="_blank">Download credential file</button>
-			<button type="submit" id="download-access-token" formaction="https://github.com/login/oauth/access_token" formmethod="POST" formtarget="_blank" hidden></button>
+			<button type="submit" formaction="https://github.com/login/oauth/authorize" formmethod="GET">Download credential file</button>
+			<button type="submit" id="download-access-token" formaction="https://github.com/login/oauth/access_token" formmethod="POST" hidden></button>
 		</form>
 
 		<br />
 
 		<label for="credential-file">Choose credential file:</label>
 		<input type="file" id="credential-file" aria-label="Credential file" title="Credential file">
-
-		<script defer>
-			document.getElementById("credential-file").addEventListener("change", async (event) => {
-				const credentialFile = event.target.files[0];
-				if (!credentialFile) return;
-
-				const access_token = new URLSearchParams(await credentialFile.text()).get("access_token");
-				if (!access_token) {
-					alert("Invalid credential file");
-					return;
-				}
-
-				alert(access_token);
-			});
-
-			const code = new URLSearchParams(location.search).get("code");
-			if (code) {
-				history.replaceState(history.state, document.title, location.pathname);
-				const oauth = document.getElementById("oauth");
-				oauth.code.value = code;
-				oauth.requestSubmit(document.getElementById("download-access-token"));
-			}
-		</script>
 	</body>
 </html>
