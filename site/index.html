@@ -14,13 +14,13 @@
 			<input type="hidden" name="scope" value="public_repo workflow">
 			<input type="hidden" name="code">
 
-			<button type="submit" formaction="https://github.com/login/oauth/authorize" formmethod="GET">Download credential file</button>
+			<button type="submit" formaction="https://github.com/login/oauth/authorize" formmethod="GET">Download a new credential file</button>
 			<button type="submit" id="download-access-token" formaction="https://github.com/login/oauth/access_token" formmethod="POST" hidden></button>
 		</form>
 
 		<br />
 
-		<label for="credential-file">Choose credential file:</label>
+		<label for="credential-file">Login with a credential file:</label>
 		<input type="file" id="credential-file" aria-label="Credential file" title="Credential file">
 	</body>
 </html>
