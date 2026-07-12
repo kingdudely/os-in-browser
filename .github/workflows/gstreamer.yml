@@ -1,4 +1,4 @@
-name: webrtcsink
+name: whepserversink
 
 on:
   workflow_dispatch:
@@ -21,7 +21,7 @@ jobs:
       - name: Setup GStreamer
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail   # no -e: a single failed probe/log line shouldn't kill the step
 
           case "${RUNNER_OS}" in
             Linux)
@@ -35,16 +35,19 @@ jobs:
                 lxqt \
                 openbox \
                 dbus-x11 \
-                xvfb
-              
-              xvfb-run -as "-screen 0 1920x1080x24" bash -c '
+                xvfb \
+                curl
+
+              nohup xvfb-run -a --server-args="-screen 0 1920x1080x24" bash -c '
                 dbus-launch --exit-with-session startlxqt &
-                gst-launch-1.0 \
+                sleep 3
+                exec env GST_DEBUG=webrtchttp*:6,whep*:6 gst-launch-1.0 -e \
                   ximagesrc use-damage=0 ! videoconvert ! queue ! \
-                  webrtcsink enable-control-data-channel=true run-web-server=true run-signalling-server=true
-              '
-              
+                  whepserversink signaller::host-addr=http://0.0.0.0:8080
+              ' > gst.log 2>&1 &
+              disown
               ;;
+
             macOS)
               brew update
               brew install \
@@ -54,29 +57,60 @@ jobs:
                 gst-plugins-bad \
                 gst-plugins-ugly
 
-              gst-launch-1.0 \
+              nohup env GST_DEBUG=webrtchttp*:6,whep*:6 gst-launch-1.0 -e \
                 avfvideosrc capture-screen=true ! videoconvert ! queue ! \
-                webrtcsink enable-control-data-channel=true run-web-server=true run-signalling-server=true
+                whepserversink signaller::host-addr=http://0.0.0.0:8080 \
+                > gst.log 2>&1 &
+              disown
               ;;
+
             Windows)
               choco install -y gstreamer
 
-              "/c/Program Files/gstreamer/1.0/msvc_x86_64/bin/gst-launch-1.0.exe" -e \
+              nohup env GST_DEBUG=webrtchttp*:6,whep*:6 \
+                "/c/Program Files/gstreamer/1.0/msvc_x86_64/bin/gst-launch-1.0.exe" -e \
                 d3d11screencapturesrc ! videoconvert ! queue ! \
                 x264enc tune=zerolatency speed-preset=veryfast ! h264parse ! \
-                webrtcsink \
-                  enable-control-data-channel=true \
-                  run-signalling-server=true \
-                  signalling-server-port=8443 \
-                  run-web-server=true \
-                  web-server-directory="$(realpath "./public")" \
-                  web-server-host-addr=http://0.0.0.0:8080/ &
+                whepserversink signaller::host-addr=http://0.0.0.0:8080 \
+                > gst.log 2>&1 &
+              disown
               ;;
+
             *)
               echo "Unsupported operating system: ${RUNNER_OS}"
               exit 1
               ;;
           esac
+
+          echo "----- waiting for pipeline to come up -----"
+          sleep 8
+          echo "----- gst.log (first pass) -----"
+          cat gst.log || true
+
+          echo "----- probing common WHEP endpoint paths -----"
+          for path in "/" "/whep" "/whep/" "/whep/endpoint" "/whep/default" "/endpoint" "/api/whep"; do
+            echo "== POST http://127.0.0.1:8080${path} =="
+            curl -s -o /tmp/resp_body -w "HTTP_STATUS:%{http_code}\n" \
+              -X POST "http://127.0.0.1:8080${path}" \
+              -H "Content-Type: application/sdp" \
+              --data "v=0" || echo "curl failed (connection refused / not listening)"
+            echo "--- response body ---"
+            cat /tmp/resp_body 2>/dev/null || true
+            echo ""
+          done
+
+          echo "----- also trying plain GET on root and a few guesses -----"
+          for path in "/" "/whep" "/player" "/status"; do
+            echo "== GET http://127.0.0.1:8080${path} =="
+            curl -s -o /tmp/resp_body2 -w "HTTP_STATUS:%{http_code}\n" \
+              "http://127.0.0.1:8080${path}" || echo "curl failed"
+            echo "--- response body (truncated) ---"
+            head -c 500 /tmp/resp_body2 2>/dev/null || true
+            echo ""
+          done
+
+          echo "----- full gst.log after probing (look for route registration / new consumer lines) -----"
+          cat gst.log || true
 
       - name: Establish tunnel
         id: tunnel
