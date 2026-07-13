@@ -47,13 +47,7 @@ jobs:
               
               ;;
             macOS)
-              brew update
-              brew install \
-                gstreamer \
-                gst-plugins-base \
-                gst-plugins-good \
-                gst-plugins-bad \
-                gst-plugins-ugly
+              brew install gstreamer
 
               gst-launch-1.0 \
                 avfvideosrc capture-screen=true ${WHEPSERVERSINK_PIPELINE}
