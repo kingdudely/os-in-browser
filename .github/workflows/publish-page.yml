@@ -1,0 +1,21 @@
+name: Publish page
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  pages: write
+  id-token: write
+jobs:
+  publish-page:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@main
+      - uses: actions/upload-pages-artifact@main
+        with:
+          path: public
+      - id: deployment
+        uses: actions/deploy-pages@main
