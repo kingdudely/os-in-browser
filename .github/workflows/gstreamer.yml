@@ -21,7 +21,7 @@ jobs:
       - name: Setup GStreamer
         shell: bash
         env:
-          WHEPSERVERSINK_PIPELINE: '! videoconvert ! queue ! whepserversink signaller::host-addr="http://0.0.0.0:8080" signaller::stun-server="stun://stun.l.google.com:19302'
+          WHEPSERVERSINK_PIPELINE: '! videoconvert ! queue ! whepserversink signaller::host-addr="http://0.0.0.0:8080" signaller::stun-server="stun://stun.l.google.com:19302"'
         run: |
           set -euo pipefail
 
