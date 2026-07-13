@@ -20,8 +20,6 @@ jobs:
 
       - name: Setup GStreamer
         shell: bash
-        env:
-          WHEPSERVERSINK_PIPELINE: '! videoconvert ! queue ! whepserversink signaller::host-addr="http://0.0.0.0:8080" signaller::stun-server="stun://stun.l.google.com:19302"'
         run: |
           set -euo pipefail
 
@@ -42,7 +40,8 @@ jobs:
               xvfb-run -as "-screen 0 1920x1080x24" bash -c '
                 dbus-launch --exit-with-session startlxqt &
                 gst-launch-1.0 \
-                  ximagesrc use-damage=0 ${WHEPSERVERSINK_PIPELINE}
+                  ximagesrc use-damage=0 ! videoconvert ! queue ! \
+                  whepserversink
               '
               
               ;;
@@ -50,13 +49,15 @@ jobs:
               brew install gstreamer
 
               gst-launch-1.0 \
-                avfvideosrc capture-screen=true ${WHEPSERVERSINK_PIPELINE} &
+                avfvideosrc capture-screen=true ! videoconvert ! queue ! \
+                whepserversink &
               ;;
             Windows)
               choco install -y gstreamer
 
               "/c/Program Files/gstreamer/1.0/msvc_x86_64/bin/gst-launch-1.0.exe" -e \
-                d3d11screencapturesrc ${WHEPSERVERSINK_PIPELINE}
+                d3d11screencapturesrc ! videoconvert ! queue ! \
+                whepserversink
               ;;
             *)
               echo "Unsupported operating system: ${RUNNER_OS}"
@@ -69,7 +70,7 @@ jobs:
         uses: anyvm-org/cf-tunnel@v0
         with:
           protocol: http
-          port: 8080
+          port: 9090
 
       - name: Use tunnel
         run: |
