@@ -18,6 +18,13 @@ jobs:
     steps:
       - uses: actions/checkout@main
 
+      - name: Establish tunnel
+        id: tunnel
+        uses: anyvm-org/cf-tunnel@v0
+        with:
+          protocol: http
+          port: 9090
+
       - name: Setup GStreamer
         shell: bash
         run: |
@@ -50,7 +57,7 @@ jobs:
 
               gst-launch-1.0 \
                 avfvideosrc capture-screen=true ! videoconvert ! queue ! \
-                whepserversink &
+                whepserversink
               ;;
             Windows)
               choco install -y gstreamer
@@ -64,13 +71,6 @@ jobs:
               exit 1
               ;;
           esac
-
-      - name: Establish tunnel
-        id: tunnel
-        uses: anyvm-org/cf-tunnel@v0
-        with:
-          protocol: http
-          port: 9090
 
       - name: Use tunnel
         run: |
