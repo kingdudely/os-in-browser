@@ -2,6 +2,9 @@ name: Generate new fingerprint
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - 'public/**'
 
 permissions:
   contents: write
