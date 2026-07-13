@@ -8,10 +8,10 @@ on:
         type: string
         required: true
       os:
-        description: 'Operating system'
+        description: "Operating system"
         type: choice
         required: true
-        default: 'windows-latest'
+        default: "windows-latest"
         options:
           - windows-latest
           - ubuntu-latest
@@ -26,31 +26,13 @@ jobs:
       run:
         shell: bash
 
-    env:
-      OFFER: ${{ github.event.inputs.offer }}
-      DISPLAY: ":0"
-
     steps:
       - name: Copy repository into PC
         uses: actions/checkout@main
-        
-      - name: Ubuntu setup
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends xorg xfce4 xvfb dbus-x11
-
-          Xvfb "${DISPLAY}" -screen 0 1920x1080x24 &
-
-          echo "Waiting for display to initialize..."
-          until xset -q &>/dev/null; do
-              sleep 0.67
-          done
-          echo "Display is ready!"
-
-          setsid startxfce4 &
 
       - name: Start server
+        env:
+          OFFER: ${{ github.event.inputs.offer }}
         run: |
           case "$RUNNER_OS" in
             macOS)
@@ -58,7 +40,14 @@ jobs:
               ;;
 
             Linux)
-              ./dist/linux
+              sudo apt-get update
+              sudo apt-get install -y --no-install-recommends \
+                lxqt \
+                openbox \
+                dbus-x11 \
+                xvfb
+              
+              xvfb-run -a -s "-screen 0 1920x1080x24" bash -c "dbus-launch startlxqt & ./dist/linux"
               ;;
 
             Windows)
