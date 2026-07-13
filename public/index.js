@@ -36,6 +36,7 @@ const peer = new RTCPeerConnection({
 
 peer.addEventListener("track", (event) => {
 	screenshare.srcObject = event.streams[0];
+	screenshare.play().catch(() => {});
 });
 
 peer.addTransceiver("audio", { direction: "recvonly" });
