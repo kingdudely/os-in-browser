@@ -1,4 +1,4 @@
-name: whepserversink
+name: webrtcsink
 
 on:
   workflow_dispatch:
@@ -18,10 +18,12 @@ jobs:
     steps:
       - uses: actions/checkout@main
 
-      - name: Setup GStreamer + static file server
+      - name: Setup GStreamer
         shell: bash
+        env:
+          WHEPSERVERSINK_PIPELINE: '! videoconvert ! queue ! whepserversink signaller::host-addr="http://0.0.0.0:8080" signaller::stun-server="stun://stun.l.google.com:19302'
         run: |
-          set -uo pipefail
+          set -euo pipefail
 
           case "${RUNNER_OS}" in
             Linux)
@@ -35,23 +37,15 @@ jobs:
                 lxqt \
                 openbox \
                 dbus-x11 \
-                xvfb \
-                curl \
-                python3
-
-              nohup xvfb-run -a --server-args="-screen 0 1920x1080x24" bash -c '
+                xvfb
+              
+              xvfb-run -as "-screen 0 1920x1080x24" bash -c '
                 dbus-launch --exit-with-session startlxqt &
-                sleep 3
-                exec env GST_DEBUG=webrtchttp*:6,whep*:6 gst-launch-1.0 -e \
-                  ximagesrc use-damage=0 ! videoconvert ! queue ! \
-                  whepserversink signaller::host-addr=http://0.0.0.0:8080
-              ' > gst.log 2>&1 &
-              disown
-
-              nohup python3 -m http.server 8081 --directory ./public > static.log 2>&1 &
-              disown
+                gst-launch-1.0 \
+                  ximagesrc use-damage=0 ${WHEPSERVERSINK_PIPELINE}
+              '
+              
               ;;
-
             macOS)
               brew update
               brew install \
@@ -61,70 +55,29 @@ jobs:
                 gst-plugins-bad \
                 gst-plugins-ugly
 
-              nohup env GST_DEBUG=webrtchttp*:6,whep*:6 gst-launch-1.0 -e \
-                avfvideosrc capture-screen=true ! videoconvert ! queue ! \
-                whepserversink signaller::host-addr=http://0.0.0.0:8080 \
-                > gst.log 2>&1 &
-              disown
-
-              nohup python3 -m http.server 8081 --directory ./public > static.log 2>&1 &
-              disown
+              gst-launch-1.0 \
+                avfvideosrc capture-screen=true ${WHEPSERVERSINK_PIPELINE}
               ;;
-
             Windows)
               choco install -y gstreamer
 
-              nohup env GST_DEBUG=webrtchttp*:6,whep*:6 \
-                "/c/Program Files/gstreamer/1.0/msvc_x86_64/bin/gst-launch-1.0.exe" -e \
-                d3d11screencapturesrc ! videoconvert ! queue ! \
-                x264enc tune=zerolatency speed-preset=veryfast ! h264parse ! \
-                whepserversink signaller::host-addr=http://0.0.0.0:8080 \
-                > gst.log 2>&1 &
-              disown
-
-              nohup python3 -m http.server 8081 --directory ./public > static.log 2>&1 &
-              disown
+              "/c/Program Files/gstreamer/1.0/msvc_x86_64/bin/gst-launch-1.0.exe" -e \
+                d3d11screencapturesrc ${WHEPSERVERSINK_PIPELINE}
               ;;
-
             *)
               echo "Unsupported operating system: ${RUNNER_OS}"
               exit 1
               ;;
           esac
 
-          echo "----- waiting for services to come up -----"
-          sleep 8
-
-          echo "----- gst.log -----"
-          cat gst.log || true
-
-          echo "----- static.log -----"
-          cat static.log || true
-
-          echo "----- sanity check: WHEP endpoint should reject empty body with 406, not 404/405 -----"
-          curl -i -X POST http://127.0.0.1:8080/whep/endpoint \
-            -H "Content-Type: application/sdp" \
-            --data "v=0" || echo "curl failed - server not listening"
-
-          echo "----- sanity check: static file server -----"
-          curl -i http://127.0.0.1:8081/ || echo "curl failed - static server not listening"
-
-      - name: Establish tunnel (static site)
-        id: tunnel_static
-        uses: anyvm-org/cf-tunnel@v0
-        with:
-          protocol: http
-          port: 8081
-
-      - name: Establish tunnel (WHEP signalling)
-        id: tunnel_whep
+      - name: Establish tunnel
+        id: tunnel
         uses: anyvm-org/cf-tunnel@v0
         with:
           protocol: http
           port: 8080
 
-      - name: Use tunnels
+      - name: Use tunnel
         run: |
-          echo "Static site URL: https://${{ steps.tunnel_static.outputs.server }}"
-          echo "WHEP endpoint URL: https://${{ steps.tunnel_whep.outputs.server }}/whep/endpoint"
+          echo "Tunnel URL: https://${{ steps.tunnel.outputs.server }}"
           sleep 21600

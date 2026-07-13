@@ -1,17 +1,3 @@
-const waitForIceGathering = async (peer) =>
-	new Promise((resolve) => {
-		if (peer.iceGatheringState === "complete") {
-			resolve();
-		} else {
-			peer.addEventListener("icegatheringstatechange", function onStateChange() {
-				if (peer.iceGatheringState === "complete") {
-					peer.removeEventListener("icegatheringstatechange", onStateChange);
-					resolve();
-				}
-			});
-		}
-	});
-
 export default async function ConnectToServerPeer(configuration = {}) {
 	const peer = new RTCPeerConnection({
 		iceServers: [
@@ -21,18 +7,15 @@ export default async function ConnectToServerPeer(configuration = {}) {
 		...configuration
 	});
 
+	/*
+	peer.addTransceiver("audio", {
+		direction: "recvonly"
+	});
+	*/
+
 	peer.addTransceiver("video", {
 		direction: "recvonly"
 	});
-
-	let resourceUrl = null;
-
-	const endSession = () => {
-		if (!resourceUrl) return;
-		const url = resourceUrl;
-		resourceUrl = null;
-		fetch(url, { method: "DELETE", keepalive: true }).catch(() => {});
-	};
 
 	let isNegotiating = false;
 	peer.addEventListener("negotiationneeded", async () => {
@@ -42,7 +25,18 @@ export default async function ConnectToServerPeer(configuration = {}) {
 			isNegotiating = true;
 
 			await peer.setLocalDescription();
-			await waitForIceGathering(peer);
+			await new Promise((resolve) => {
+				if (peer.iceGatheringState === "complete") {
+					resolve();
+				} else {
+					peer.addEventListener("icegatheringstatechange", function onStateChange() {
+						if (peer.iceGatheringState === "complete") {
+							peer.removeEventListener("icegatheringstatechange", onStateChange);
+							resolve();
+						}
+					});
+				}
+			});
 
 			const response = await fetch("/whep/endpoint", {
 				method: "POST",
@@ -53,12 +47,7 @@ export default async function ConnectToServerPeer(configuration = {}) {
 			});
 
 			if (!response.ok) {
-				throw new Error(`WHEP server responded with status ${response.status}`);
-			}
-
-			const location = response.headers.get("Location");
-			if (location) {
-				resourceUrl = new URL(location, response.url).href;
+				throw new Error(`WHIP server responded with status ${response.status}`);
 			}
 
 			const answerSdp = await response.text();
@@ -67,7 +56,7 @@ export default async function ConnectToServerPeer(configuration = {}) {
 				sdp: answerSdp
 			});
 
-			console.log("WHEP negotiation successful.");
+			console.log("WebRTC negotiation successful.");
 		} catch (error) {
 			console.error("Negotiation failed:", error);
 		} finally {
@@ -76,13 +65,11 @@ export default async function ConnectToServerPeer(configuration = {}) {
 	});
 
 	peer.addEventListener("connectionstatechange", () => {
-		console.log(`Connection state: ${peer.connectionState}`);
+		console.log(`ICE connection state: ${peer.iceConnectionState}`);
 		if (["failed", "disconnected", "closed"].includes(peer.connectionState)) {
-			endSession();
+			peer.restartIce();
 		}
 	});
-
-	window.addEventListener("pagehide", endSession);
 
 	return peer;
 }
