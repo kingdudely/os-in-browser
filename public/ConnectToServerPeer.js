@@ -21,15 +21,18 @@ export default async function ConnectToServerPeer(configuration = {}) {
 		...configuration
 	});
 
-	/*
-	peer.addTransceiver("audio", {
-		direction: "recvonly"
-	});
-	*/
-
 	peer.addTransceiver("video", {
 		direction: "recvonly"
 	});
+
+	let resourceUrl = null;
+
+	const endSession = () => {
+		if (!resourceUrl) return;
+		const url = resourceUrl;
+		resourceUrl = null;
+		fetch(url, { method: "DELETE", keepalive: true }).catch(() => {});
+	};
 
 	let isNegotiating = false;
 	peer.addEventListener("negotiationneeded", async () => {
@@ -41,7 +44,7 @@ export default async function ConnectToServerPeer(configuration = {}) {
 			await peer.setLocalDescription();
 			await waitForIceGathering(peer);
 
-			const response = await fetch("/whip", {
+			const response = await fetch("/whep/endpoint", {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/sdp"
@@ -50,7 +53,12 @@ export default async function ConnectToServerPeer(configuration = {}) {
 			});
 
 			if (!response.ok) {
-				throw new Error(`WHIP server responded with status ${response.status}`);
+				throw new Error(`WHEP server responded with status ${response.status}`);
+			}
+
+			const location = response.headers.get("Location");
+			if (location) {
+				resourceUrl = new URL(location, response.url).href;
 			}
 
 			const answerSdp = await response.text();
@@ -59,7 +67,7 @@ export default async function ConnectToServerPeer(configuration = {}) {
 				sdp: answerSdp
 			});
 
-			console.log("WebRTC negotiation successful.");
+			console.log("WHEP negotiation successful.");
 		} catch (error) {
 			console.error("Negotiation failed:", error);
 		} finally {
@@ -67,12 +75,14 @@ export default async function ConnectToServerPeer(configuration = {}) {
 		}
 	});
 
-	peer.addEventListener("iceconnectionstatechange", () => {
-		console.log(`ICE connection state: ${peer.iceConnectionState}`);
-		if (["failed", "disconnected"].includes(peer.iceConnectionState)) {
-			peer.restartIce();
+	peer.addEventListener("connectionstatechange", () => {
+		console.log(`Connection state: ${peer.connectionState}`);
+		if (["failed", "disconnected", "closed"].includes(peer.connectionState)) {
+			endSession();
 		}
 	});
+
+	window.addEventListener("pagehide", endSession);
 
 	return peer;
 }

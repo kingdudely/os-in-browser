@@ -18,10 +18,10 @@ jobs:
     steps:
       - uses: actions/checkout@main
 
-      - name: Setup GStreamer
+      - name: Setup GStreamer + static file server
         shell: bash
         run: |
-          set -uo pipefail   # no -e: a single failed probe/log line shouldn't kill the step
+          set -uo pipefail
 
           case "${RUNNER_OS}" in
             Linux)
@@ -36,7 +36,8 @@ jobs:
                 openbox \
                 dbus-x11 \
                 xvfb \
-                curl
+                curl \
+                python3
 
               nohup xvfb-run -a --server-args="-screen 0 1920x1080x24" bash -c '
                 dbus-launch --exit-with-session startlxqt &
@@ -45,6 +46,9 @@ jobs:
                   ximagesrc use-damage=0 ! videoconvert ! queue ! \
                   whepserversink signaller::host-addr=http://0.0.0.0:8080
               ' > gst.log 2>&1 &
+              disown
+
+              nohup python3 -m http.server 8081 --directory ./public > static.log 2>&1 &
               disown
               ;;
 
@@ -62,6 +66,9 @@ jobs:
                 whepserversink signaller::host-addr=http://0.0.0.0:8080 \
                 > gst.log 2>&1 &
               disown
+
+              nohup python3 -m http.server 8081 --directory ./public > static.log 2>&1 &
+              disown
               ;;
 
             Windows)
@@ -74,6 +81,9 @@ jobs:
                 whepserversink signaller::host-addr=http://0.0.0.0:8080 \
                 > gst.log 2>&1 &
               disown
+
+              nohup python3 -m http.server 8081 --directory ./public > static.log 2>&1 &
+              disown
               ;;
 
             *)
@@ -82,44 +92,39 @@ jobs:
               ;;
           esac
 
-          echo "----- waiting for pipeline to come up -----"
+          echo "----- waiting for services to come up -----"
           sleep 8
-          echo "----- gst.log (first pass) -----"
+
+          echo "----- gst.log -----"
           cat gst.log || true
 
-          echo "----- probing common WHEP endpoint paths -----"
-          for path in "/" "/whep" "/whep/" "/whep/endpoint" "/whep/default" "/endpoint" "/api/whep"; do
-            echo "== POST http://127.0.0.1:8080${path} =="
-            curl -s -o /tmp/resp_body -w "HTTP_STATUS:%{http_code}\n" \
-              -X POST "http://127.0.0.1:8080${path}" \
-              -H "Content-Type: application/sdp" \
-              --data "v=0" || echo "curl failed (connection refused / not listening)"
-            echo "--- response body ---"
-            cat /tmp/resp_body 2>/dev/null || true
-            echo ""
-          done
+          echo "----- static.log -----"
+          cat static.log || true
 
-          echo "----- also trying plain GET on root and a few guesses -----"
-          for path in "/" "/whep" "/player" "/status"; do
-            echo "== GET http://127.0.0.1:8080${path} =="
-            curl -s -o /tmp/resp_body2 -w "HTTP_STATUS:%{http_code}\n" \
-              "http://127.0.0.1:8080${path}" || echo "curl failed"
-            echo "--- response body (truncated) ---"
-            head -c 500 /tmp/resp_body2 2>/dev/null || true
-            echo ""
-          done
+          echo "----- sanity check: WHEP endpoint should reject empty body with 406, not 404/405 -----"
+          curl -i -X POST http://127.0.0.1:8080/whep/endpoint \
+            -H "Content-Type: application/sdp" \
+            --data "v=0" || echo "curl failed - server not listening"
 
-          echo "----- full gst.log after probing (look for route registration / new consumer lines) -----"
-          cat gst.log || true
+          echo "----- sanity check: static file server -----"
+          curl -i http://127.0.0.1:8081/ || echo "curl failed - static server not listening"
 
-      - name: Establish tunnel
-        id: tunnel
+      - name: Establish tunnel (static site)
+        id: tunnel_static
+        uses: anyvm-org/cf-tunnel@v0
+        with:
+          protocol: http
+          port: 8081
+
+      - name: Establish tunnel (WHEP signalling)
+        id: tunnel_whep
         uses: anyvm-org/cf-tunnel@v0
         with:
           protocol: http
           port: 8080
 
-      - name: Use tunnel
+      - name: Use tunnels
         run: |
-          echo "Tunnel URL: https://${{ steps.tunnel.outputs.server }}"
+          echo "Static site URL: https://${{ steps.tunnel_static.outputs.server }}"
+          echo "WHEP endpoint URL: https://${{ steps.tunnel_whep.outputs.server }}/whep/endpoint"
           sleep 21600
