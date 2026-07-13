@@ -50,7 +50,7 @@ jobs:
               brew install gstreamer
 
               gst-launch-1.0 \
-                avfvideosrc capture-screen=true ${WHEPSERVERSINK_PIPELINE}
+                avfvideosrc capture-screen=true ${WHEPSERVERSINK_PIPELINE} &
               ;;
             Windows)
               choco install -y gstreamer
