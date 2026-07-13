@@ -18,6 +18,15 @@ jobs:
     steps:
       - uses: actions/checkout@main
 
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            /var/cache/apt/archives
+            ~/Library/Caches/Homebrew
+            C:\ProgramData\chocolatey\lib
+          key: ${{ runner.os }}
+
       - name: Establish tunnel
         id: tunnel
         uses: anyvm-org/cf-tunnel@v0
