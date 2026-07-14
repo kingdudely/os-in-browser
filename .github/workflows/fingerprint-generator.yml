@@ -1,0 +1,45 @@
+name: Generate new fingerprint
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'public/**'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  generate-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@main
+
+      - name: Generate certificate and fingerprint
+        shell: bash
+        run: |
+          set -e
+          openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+            -keyout key.pem -out certificate.pem \
+            -nodes -subj "/CN=WebRTC-Workflow" -days 36500
+
+          openssl x509 -in certificate.pem -noout -fingerprint -sha256 \
+            | sed 's/.*=//' > public/fingerprint.txt
+
+          git add certificate.pem key.pem public/fingerprint.txt
+          git commit -m "Update WebRTC certificate and fingerprint" || true
+          git push
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@main
+        with:
+          path: ./public
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@main

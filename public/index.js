@@ -34,8 +34,8 @@ function onlogin(access_token) {
 const screenshare = document.getElementById("screenshare");
 const client = new Client(screenshare);
 
-await client.setLocalDescription();
-await client.iceGatheringCompleted;
+await client.getLocalAddress();
+await client.connectToRemoteAddress(responseidk);
 
 document.getElementById("credential-file").addEventListener("change", async (event) => {
 	const credentialFile = event.target.files[0];
