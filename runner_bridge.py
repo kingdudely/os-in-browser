@@ -1,31 +1,29 @@
 #!/usr/bin/env python3
 """
-STUN discovery + minimal HTTP/3 server, for testing whether a GitHub
-Actions runner's NAT actually lets an external client connect over UDP.
+Runner-side bridge:
 
-Flow:
-  1. Bind local UDP port, do STUN discovery, print PUBLIC_ENDPOINT + cert hash.
-  2. Close the discovery socket, immediately rebind the SAME local port
-     with the HTTP/3 (QUIC) server -- cone NATs key mappings by local
-     port, so this should preserve the mapping across the handoff.
-  3. Serve a trivial "it works" response on any path.
+  1. STUN-discover this runner's public UDP ip:port.
+  2. Start a real HTTP/3 (QUIC) server on that port (self-signed cert).
+  3. Start a tiny plain HTTP server on a local TCP port. This is what
+     Cloudflare Quick Tunnel will expose -- it has a REAL trusted cert
+     (Cloudflare's), so no serverCertificateHashes/cert-warning dance.
+     It just answers with JSON telling the browser where the *actual*
+     direct HTTP/3 endpoint is, and serves a redirect page for
+     convenience.
 
-Test from a machine with curl built against a QUIC-capable libcurl:
-    curl --http3-only -k https://<PUBLIC_ENDPOINT>/
-
-Test from a browser devtools console (self-signed cert needs pinning
-via serverCertificateHashes, same mechanism WebTransport uses,
-since fetch() itself can't just ignore cert errors like curl -k can):
-    fetch("https://<PUBLIC_ENDPOINT>/")  // will fail on untrusted cert
-    // easiest real test is curl --http3-only -k, or a real CA cert
+The Cloudflare tunnel itself is started separately (see workflow) and
+just points at this local TCP port -- it never carries the real
+traffic, only the signaling.
 """
 import argparse
 import asyncio
 import base64
 import datetime
+import json
 import socket
 import struct
 import random
+from aiohttp import web
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -148,8 +146,8 @@ class Http3TestProtocol(QuicConnectionProtocol):
         if isinstance(event, HeadersReceived):
             headers = dict(event.headers)
             path = headers.get(b":path", b"/")
-            print(f"[+] HTTP/3 request for {path!r} from stream {event.stream_id}", flush=True)
-            body = b"it works! served over http/3 (udp) from the github runner.\n"
+            print(f"[quic] request for {path!r}", flush=True)
+            body = b"it works! served over http/3 (udp) direct to the runner.\n"
             self._http.send_headers(
                 stream_id=event.stream_id,
                 headers=[
@@ -160,48 +158,85 @@ class Http3TestProtocol(QuicConnectionProtocol):
             )
             self._http.send_data(stream_id=event.stream_id, data=body, end_stream=True)
             self.transmit()
-            print("[+] responded 200 OK", flush=True)
 
 
-async def run_server(local_port: int, duration: int):
-    print("[+] Starting STUN discovery...", flush=True)
-    ext_ip, ext_port = stun_discover(local_port)
-
+async def start_quic_server(local_port: int):
     cert_hash = gen_cert()
-    cert_hash_b64 = base64.b64encode(cert_hash).decode()
+    configuration = QuicConfiguration(alpn_protocols=["h3"], is_client=False)
+    configuration.load_cert_chain("cert.pem", "key.pem")
+    server = await serve(
+        "0.0.0.0", local_port,
+        configuration=configuration,
+        create_protocol=Http3TestProtocol,
+    )
+    return server, base64.b64encode(cert_hash).decode()
+
+
+def make_signaling_app(ext_ip: str, ext_port: int, cert_hash_b64: str):
+    app = web.Application()
+
+    async def srflx(request):
+        return web.json_response({
+            "ip": ext_ip,
+            "port": ext_port,
+            "cert_hash_b64": cert_hash_b64,
+            "direct_url": f"https://{ext_ip}:{ext_port}/",
+        })
+
+    async def index(request):
+        html = f"""<!doctype html>
+<html><body>
+<h3>Runner signaling</h3>
+<p>Direct HTTP/3 endpoint: <code>{ext_ip}:{ext_port}</code></p>
+<p>Cert hash (base64): <code>{cert_hash_b64}</code></p>
+<p><a href="https://{ext_ip}:{ext_port}/">Click to try direct connect</a>
+(self-signed cert -- your browser will warn, click through to test)</p>
+<script>
+// example of fetching the signaling data programmatically
+fetch('/srflx').then(r => r.json()).then(d => console.log('srflx:', d));
+</script>
+</body></html>"""
+        return web.Response(text=html, content_type="text/html")
+
+    app.router.add_get("/", index)
+    app.router.add_get("/srflx", srflx)
+    return app
+
+
+async def run(quic_port: int, signaling_port: int, duration: int):
+    print("[+] Starting STUN discovery...", flush=True)
+    ext_ip, ext_port = stun_discover(quic_port)
+    print(f"[+] srflx = {ext_ip}:{ext_port}", flush=True)
+
+    print("[+] Rebinding same local port for HTTP/3 server...", flush=True)
+    quic_server, cert_hash_b64 = await start_quic_server(quic_port)
 
     print("=" * 60, flush=True)
     print(f"PUBLIC_ENDPOINT={ext_ip}:{ext_port}", flush=True)
     print(f"CERT_HASH_B64={cert_hash_b64}", flush=True)
     print("=" * 60, flush=True)
-    print(f"[+] Test with: curl --http3-only -k https://{ext_ip}:{ext_port}/", flush=True)
-    print("[+] Rebinding same local port for HTTP/3 server...", flush=True)
 
-    configuration = QuicConfiguration(
-        alpn_protocols=["h3"],
-        is_client=False,
-    )
-    configuration.load_cert_chain("cert.pem", "key.pem")
-
-    server = await serve(
-        "0.0.0.0",
-        local_port,
-        configuration=configuration,
-        create_protocol=Http3TestProtocol,
-    )
-    print(f"[+] HTTP/3 server listening on local port {local_port}", flush=True)
+    app = make_signaling_app(ext_ip, ext_port, cert_hash_b64)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", signaling_port)
+    await site.start()
+    print(f"[+] Local signaling HTTP server on 127.0.0.1:{signaling_port} "
+          f"(this is what the Cloudflare tunnel should point at)", flush=True)
 
     await asyncio.sleep(duration)
     print("[+] Duration elapsed, shutting down.", flush=True)
-    server.close()
+    quic_server.close()
+    await runner.cleanup()
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", type=int, default=45000)
+    ap.add_argument("--quic-port", type=int, default=45000)
+    ap.add_argument("--signaling-port", type=int, default=8080)
     ap.add_argument("--duration", type=int, default=1800)
     args = ap.parse_args()
-    asyncio.run(run_server(args.port, args.duration))
+    asyncio.run(run(args.quic_port, args.signaling_port, args.duration))
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-name: Open Public UDP Port (STUN)
+name: Open Public Port via STUN + Cloudflare Signaling
 
 on:
   workflow_dispatch:
@@ -12,14 +12,18 @@ on:
           - windows-latest
           - macos-latest
         default: ubuntu-latest
-      local_port:
-        description: "Local UDP port to bind"
+      quic_port:
+        description: "Local UDP port for the HTTP/3 server"
         required: false
         default: "45000"
-      duration_seconds:
-        description: "How long to keep the port open (seconds)"
+      signaling_port:
+        description: "Local TCP port for the signaling server (tunneled)"
         required: false
-        default: "3300"
+        default: "8080"
+      duration_seconds:
+        description: "How long to keep everything open (seconds)"
+        required: false
+        default: "1800"
 
 jobs:
   open-port:
@@ -33,11 +37,78 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Install deps
-        run: pip install aioquic cryptography
+      - name: Install Python deps
+        run: pip install aioquic aiohttp cryptography
 
-      - name: Run HTTP/3 test server (STUN + plain HTTP/3 response)
-        run: >
-          python3 http3_test_server.py
-          --port ${{ inputs.local_port }}
-          --duration ${{ inputs.duration_seconds }}
+      # --- install cloudflared, per OS ---
+
+      - name: Install cloudflared (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          curl -L --output cloudflared \
+            https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          chmod +x cloudflared
+          sudo mv cloudflared /usr/local/bin/cloudflared
+
+      - name: Install cloudflared (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cloudflared
+
+      - name: Install cloudflared (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile "cloudflared.exe"
+          Move-Item cloudflared.exe C:\Windows\System32\cloudflared.exe
+
+      # --- run the runner bridge (STUN + HTTP/3 server + signaling server) in background ---
+
+      - name: Start runner bridge (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          python3 runner_bridge.py \
+            --quic-port ${{ inputs.quic_port }} \
+            --signaling-port ${{ inputs.signaling_port }} \
+            --duration ${{ inputs.duration_seconds }} &
+          echo $! > bridge.pid
+          sleep 3
+
+      - name: Start runner bridge (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Start-Process python3 -ArgumentList "runner_bridge.py --quic-port ${{ inputs.quic_port }} --signaling-port ${{ inputs.signaling_port }} --duration ${{ inputs.duration_seconds }}" -NoNewWindow
+          Start-Sleep -Seconds 3
+
+      # --- start the Cloudflare Quick Tunnel pointing at the LOCAL signaling port ---
+      # this gives us a trusted-https URL, no cert warnings, no punching needed
+      # for the signaling channel itself (only the direct HTTP/3 hop is raw UDP)
+
+      - name: Start Cloudflare Quick Tunnel and print URL
+        run: |
+          cloudflared tunnel --url http://localhost:${{ inputs.signaling_port }} \
+            > cloudflared.log 2>&1 &
+          echo $! > cloudflared.pid
+
+          echo "Waiting for tunnel URL..."
+          for i in $(seq 1 30); do
+            URL=$(grep -o 'https://[a-zA-Z0-9-]*\.trycloudflare\.com' cloudflared.log | head -n1)
+            if [ -n "$URL" ]; then
+              echo "=========================================="
+              echo "SIGNALING_URL=$URL"
+              echo "=========================================="
+              echo "Open this URL in a browser -- it will show"
+              echo "the runner's direct HTTP/3 endpoint + cert hash."
+              break
+            fi
+            sleep 1
+          done
+          if [ -z "$URL" ]; then
+            echo "Tunnel URL not found, dumping log:"
+            cat cloudflared.log
+          fi
+        shell: bash
+
+      - name: Hold job open for the test window
+        run: sleep ${{ inputs.duration_seconds }}
+        shell: bash
