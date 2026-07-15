@@ -33,8 +33,11 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Discover + hold public UDP port
+      - name: Install deps
+        run: pip install aioquic cryptography
+
+      - name: Run HTTP/3 test server (STUN + plain HTTP/3 response)
         run: >
-          python3 stun_open_port.py
+          python3 http3_test_server.py
           --port ${{ inputs.local_port }}
           --duration ${{ inputs.duration_seconds }}
