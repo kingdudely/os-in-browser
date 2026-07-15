@@ -1,387 +1,204 @@
 package main
 
 import (
-	"crypto/tls"
-	"crypto/x509"
-	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"strings"
+	"time"
 
-	"github.com/go-vgo/robotgo"
 	"github.com/pion/mediadevices"
-	"github.com/pion/mediadevices/pkg/codec/openh264"
-	"github.com/pion/mediadevices/pkg/codec/opus"
+	"github.com/pion/mediadevices/pkg/codec/x264"
+	_ "github.com/pion/mediadevices/pkg/driver/screen" // registers the screen capture driver
+	"github.com/pion/mediadevices/pkg/frame"
 	"github.com/pion/mediadevices/pkg/prop"
-	_ "github.com/pion/mediadevices/pkg/driver/microphone"
-	_ "github.com/pion/mediadevices/pkg/driver/screen"
-	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v4"
 )
 
-type Constants struct {
-	UsernameFragment    string `json:"usernameFragment"`
-	Password            string `json:"password"`
-	WorkflowFingerprint string `json:"workflowFingerprint"`
-}
-
-func mustReadJSON[T any](path string) T {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		log.Fatalf("read %s: %v", path, err)
-	}
-	var v T
-	if err := json.Unmarshal(data, &v); err != nil {
-		log.Fatalf("parse %s: %v", path, err)
-	}
-	return v
-}
+const (
+	usernameFragment = "myufraghere1234"
+	password         = "mypasswordthatisverylong12345"
+	iceCandidatePrio = 1686052607
+)
 
 func main() {
-	constants := mustReadJSON[Constants]("public/constants.json")
-	keyMap := mustReadJSON[[]interface{}]("code-map.json")
-	buttonMap := mustReadJSON[[]string]("button-map.json")
-	usernameFragment := constants.UsernameFragment
-	password := constants.Password
-	workflowFingerprint := constants.WorkflowFingerprint
+	remoteAddress := os.Getenv("REMOTE_ADDRESS")
+	fingerprint := os.Getenv("DTLS_FINGERPRINT")
 
-	keyForIndex := func(index uint8) string {
-		if int(index) >= len(keyMap) || keyMap[index] == nil {
-			return ""
+	pc, err := setupPeerConnection()
+	if err != nil {
+		log.Fatalf("setup peer connection: %v", err)
+	}
+	defer pc.Close()
+
+	track, err := setupScreenCapture()
+	if err != nil {
+		log.Fatalf("setup screen capture: %v", err)
+	}
+
+	if _, err := pc.AddTransceiverFromTrack(track, webrtc.RTPTransceiverInit{
+		Direction: webrtc.RTPTransceiverDirectionSendonly,
+	}); err != nil {
+		log.Fatalf("add video track: %v", err)
+	}
+
+	localAddress, err := gatherLocalSrflxAddress(pc)
+	if err != nil {
+		log.Fatalf("gather local srflx address: %v", err)
+	}
+
+	if err := writeGithubOutput("srflx_address", localAddress); err != nil {
+		log.Fatalf("write github output: %v", err)
+	}
+	log.Println("local srflx address:", localAddress)
+
+	if remoteAddress != "" {
+		if err := connectToRemoteAddress(pc, remoteAddress, fingerprint); err != nil {
+			log.Fatalf("connect to remote address: %v", err)
 		}
-		s, _ := keyMap[index].(string)
-		return s
-	}
-	buttonForIndex := func(index uint8) string {
-		if int(index) >= len(buttonMap) {
-			return "left"
-		}
-		return buttonMap[index]
+		log.Println("connected to remote:", remoteAddress)
 	}
 
-	offer := strings.TrimSpace(os.Getenv("OFFER"))
-	if offer == "" {
-		log.Fatal("OFFER env var required (format: ip:port or [ipv6]:port)")
-	}
-	host, port, err := net.SplitHostPort(offer)
-	if err != nil {
-		log.Fatalf("invalid OFFER %q: %v", offer, err)
-	}
+	select {} // keep the process (and its tracks) alive
+}
 
-	certPEM, err := os.ReadFile("workflow_cert.pem")
-	if err != nil {
-		log.Fatalf("read workflow_cert.pem: %v", err)
-	}
-	keyPEM, err := os.ReadFile("workflow_key.pem")
-	if err != nil {
-		log.Fatalf("read workflow_key.pem: %v", err)
-	}
-	tlsCert, err := tls.X509KeyPair(certPEM, keyPEM)
-	if err != nil {
-		log.Fatalf("X509KeyPair: %v", err)
-	}
-
-	x509Cert, err := x509.ParseCertificate(tlsCert.Certificate[0])
-	if err != nil {
-		log.Fatalf("parse x509: %v", err)
-	}
-	cert := webrtc.CertificateFromX509(tlsCert.PrivateKey, x509Cert)
-
-	mediaEngine := &webrtc.MediaEngine{}
-
-	se := webrtc.SettingEngine{}
-	se.SetICECredentials(usernameFragment, password)
-	se.DisableCertificateFingerprintVerification(true)
-
-	h264Params, err := openh264.NewParams()
-	if err != nil {
-		log.Fatalf("openh264 params: %v", err)
-	}
-	h264Params.BitRate = 2_000_000
-
-	opusParams, err := opus.NewParams()
-	if err != nil {
-		log.Fatalf("opus params: %v", err)
-	}
-
-	codecSelector := mediadevices.NewCodecSelector(
-		mediadevices.WithVideoEncoders(&h264Params),
-		mediadevices.WithAudioEncoders(&opusParams),
-	)
-	codecSelector.Populate(mediaEngine)
-
-	api := webrtc.NewAPI(
-		webrtc.WithSettingEngine(se),
-		webrtc.WithMediaEngine(mediaEngine),
-	)
-
-	peer, err := api.NewPeerConnection(webrtc.Configuration{
-		Certificates: []webrtc.Certificate{cert},
+// setupPeerConnection builds the RTCPeerConnection with the same STUN
+// servers used on the browser side.
+func setupPeerConnection() (*webrtc.PeerConnection, error) {
+	return webrtc.NewPeerConnection(webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
 			{URLs: []string{"stun:stun.l.google.com:19302"}},
+			{URLs: []string{"stun:stun.cloudflare.com:3478"}},
 		},
 	})
-	if err != nil {
-		log.Fatalf("NewPeerConnection: %v", err)
-	}
-	defer peer.Close()
+}
 
-	peer.OnICECandidate(func(c *webrtc.ICECandidate) {
-		if c != nil && c.Typ == webrtc.ICECandidateTypeSrflx {
-			fmt.Printf("Runner address: %s:%d\n", c.Address, c.Port)
-		}
-	})
+// setupScreenCapture is the Go equivalent of getDisplayMedia(), using
+// pion/mediadevices' screen driver with x264 (ultrafast preset, the
+// fastest H.264 option for CPU-only GitHub Actions runners).
+func setupScreenCapture() (mediadevices.Track, error) {
+	params, err := x264.NewParams()
+	if err != nil {
+		return nil, fmt.Errorf("new x264 params: %w", err)
+	}
+	params.BitRate = 4_000_000
+	params.Preset = x264.PresetUltrafast
 
 	stream, err := mediadevices.GetDisplayMedia(mediadevices.MediaStreamConstraints{
 		Video: func(c *mediadevices.MediaTrackConstraints) {
-			c.FrameRate = prop.Float(30)
+			c.FrameFormat = prop.FrameFormatOneOf{frame.FormatI420}
 		},
-		Audio: func(c *mediadevices.MediaTrackConstraints) {},
-		Codec: codecSelector,
+		Codec: mediadevices.NewCodecSelector(mediadevices.WithVideoEncoders(&params)),
 	})
 	if err != nil {
-		log.Fatalf("GetDisplayMedia: %v", err)
-	}
-	for _, t := range stream.GetVideoTracks() {
-		defer t.Close()
-		if _, err := peer.AddTransceiverFromTrack(t, webrtc.RTPTransceiverInit{
-			Direction: webrtc.RTPTransceiverDirectionSendonly,
-		}); err != nil {
-			log.Fatalf("add video track: %v", err)
-		}
-	}
-	for _, t := range stream.GetAudioTracks() {
-		defer t.Close()
-		if _, err := peer.AddTransceiverFromTrack(t, webrtc.RTPTransceiverInit{
-			Direction: webrtc.RTPTransceiverDirectionSendonly,
-		}); err != nil {
-			log.Fatalf("add audio track: %v", err)
-		}
+		return nil, fmt.Errorf("get display media: %w", err)
 	}
 
-	boolTrue := true
-	maxRetransmits := uint16(0)
-	ch := func(label string, ordered bool, retransmits *uint16, id uint16) *webrtc.DataChannel {
-		dc, dcErr := peer.CreateDataChannel(label, &webrtc.DataChannelInit{
-			Ordered:        &ordered,
-			MaxRetransmits: retransmits,
-			Negotiated:     &boolTrue,
-			ID:             &id,
-		})
-		if dcErr != nil {
-			log.Fatalf("CreateDataChannel %s: %v", label, dcErr)
-		}
-		return dc
+	tracks := stream.GetVideoTracks()
+	if len(tracks) == 0 {
+		return nil, fmt.Errorf("no video tracks returned by getDisplayMedia")
 	}
+	return tracks[0].(mediadevices.Track), nil
+}
 
-	pointerMovement := ch("pointer-movement", false, &maxRetransmits, 0)
-	pointerClick := ch("pointer-click", true, nil, 1)
-	keyboard := ch("keyboard", true, nil, 2)
-	screenResize := ch("screen-resize", false, &maxRetransmits, 3)
-	scroll := ch("scroll", false, &maxRetransmits, 4)
-
-	clientW, clientH := robotgo.GetScreenSize()
-
-	pointerMovement.OnMessage(func(msg webrtc.DataChannelMessage) {
-		if len(msg.Data) < 5 {
-			return
-		}
-		isRelative := msg.Data[0] == 1
-		x := int(int16(binary.LittleEndian.Uint16(msg.Data[1:3])))
-		y := int(int16(binary.LittleEndian.Uint16(msg.Data[3:5])))
-		if isRelative {
-			cx, cy := robotgo.Location()
-			robotgo.Move(cx+x, cy+y)
-		} else {
-			sw, sh := robotgo.GetScreenSize()
-			robotgo.Move(x*sw/clientW, y*sh/clientH)
-		}
-	})
-
-	pointerClick.OnMessage(func(msg webrtc.DataChannelMessage) {
-		if len(msg.Data) < 2 {
-			return
-		}
-		isDown := msg.Data[0] == 1
-		button := buttonForIndex(msg.Data[1])
-		if isDown {
-			robotgo.Toggle(button, "down")
-		} else {
-			robotgo.Toggle(button, "up")
-		}
-	})
-
-	keyboard.OnMessage(func(msg webrtc.DataChannelMessage) {
-		if len(msg.Data) < 2 {
-			return
-		}
-		isDown := msg.Data[0] == 1
-		key := keyForIndex(msg.Data[1])
-		if key == "" {
-			log.Printf("unsupported key index %d", msg.Data[1])
-			return
-		}
-		if isDown {
-			robotgo.KeyToggle(key, "down")
-		} else {
-			robotgo.KeyToggle(key, "up")
-		}
-	})
-
-	screenResize.OnMessage(func(msg webrtc.DataChannelMessage) {
-		if len(msg.Data) < 4 {
-			return
-		}
-		clientW = int(binary.LittleEndian.Uint16(msg.Data[0:2]))
-		clientH = int(binary.LittleEndian.Uint16(msg.Data[2:4]))
-		fmt.Printf("client viewport: %dx%d\n", clientW, clientH)
-	})
-
-	scroll.OnMessage(func(msg webrtc.DataChannelMessage) {
-		if len(msg.Data) < 4 {
-			return
-		}
-		dx := int(int16(binary.LittleEndian.Uint16(msg.Data[0:2])))
-		dy := int(int16(binary.LittleEndian.Uint16(msg.Data[2:4])))
-		if dy != 0 {
-			amount := dy / 100
-			if amount == 0 {
-				amount = 1
-			}
-			if dy > 0 {
-				robotgo.ScrollDir(amount, "down")
-			} else {
-				robotgo.ScrollDir(-amount, "up")
-			}
-		}
-		if dx != 0 {
-			amount := dx / 100
-			if amount == 0 {
-				amount = 1
-			}
-			if dx > 0 {
-				robotgo.ScrollDir(amount, "right")
-			} else {
-				robotgo.ScrollDir(-amount, "left")
-			}
-		}
-	})
-
-	isIPv6 := strings.Contains(host, ":")
-	netType := "IP4"
-	if isIPv6 {
-		netType = "IP6"
-	}
-
-	candidateStr := fmt.Sprintf("0 1 UDP 1686052607 %s %s typ srflx", host, port)
-
-	newMedia := func(typ, mid, rtpmap string, payloadType uint8) *sdp.MediaDescription {
-		return (&sdp.MediaDescription{
-			MediaName: sdp.MediaName{
-				Media:   typ,
-				Port:    sdp.RangedPort{Value: 9},
-				Protos:  []string{"UDP", "TLS", "RTP", "SAVPF"},
-				Formats: []string{fmt.Sprintf("%d", payloadType)},
-			},
-			ConnectionInformation: &sdp.ConnectionInformation{
-				NetworkType: "IN",
-				AddressType: netType,
-				Address:     &sdp.Address{Address: host},
-			},
-		}).
-			WithICECredentials(usernameFragment, password).
-			WithFingerprint("sha-256", workflowFingerprint).
-			WithPropertyAttribute("setup:active").
-			WithCandidate(candidateStr).
-			WithPropertyAttribute("recvonly").
-			WithValueAttribute("mid", mid).
-			WithPropertyAttribute("rtcp-mux").
-			WithCodec(payloadType, rtpmap, func() uint32 {
-				if typ == "audio" {
-					return 48000
-				}
-				return 90000
-			}(), func() uint16 {
-				if typ == "audio" {
-					return 2
-				}
-				return 0
-			}(), "")
-	}
-
-	appMedia := &sdp.MediaDescription{
-		MediaName: sdp.MediaName{
-			Media:   "application",
-			Port:    sdp.RangedPort{Value: 9},
-			Protos:  []string{"UDP", "DTLS", "SCTP"},
-			Formats: []string{"webrtc-datachannel"},
-		},
-		ConnectionInformation: &sdp.ConnectionInformation{
-			NetworkType: "IN",
-			AddressType: netType,
-			Address:     &sdp.Address{Address: host},
-		},
-	}
-	appMedia.
-		WithICECredentials(usernameFragment, password).
-		WithFingerprint("sha-256", workflowFingerprint).
-		WithPropertyAttribute("setup:active").
-		WithCandidate(candidateStr).
-		WithValueAttribute("mid", "2").
-		WithValueAttribute("sctp-port", "5000").
-		WithValueAttribute("max-message-size", "262144")
-
-	sess := &sdp.SessionDescription{
-		Version: 0,
-		Origin: sdp.Origin{
-			Username:       "-",
-			SessionID:      0,
-			SessionVersion: 0,
-			NetworkType:    "IN",
-			AddressType:    "IP4",
-			UnicastAddress: "0.0.0.0",
-		},
-		SessionName: "-",
-		TimeDescriptions: []sdp.TimeDescription{
-			{Timing: sdp.Timing{StartTime: 0, StopTime: 0}},
-		},
-	}
-	sess.
-		WithValueAttribute("group", "BUNDLE 0 1 2").
-		WithMedia(newMedia("audio", "0", "opus", 111)).
-		WithMedia(newMedia("video", "1", "H264", 102)).
-		WithMedia(appMedia)
-
-	offerSDP, err := sess.Marshal()
+// gatherLocalSrflxAddress creates an offer, patches in the fixed
+// ice-ufrag/ice-pwd, sets it as the local description, then returns as soon
+// as the first srflx ICE candidate is found (no need to wait for the rest
+// of gathering to finish).
+func gatherLocalSrflxAddress(pc *webrtc.PeerConnection) (string, error) {
+	offer, err := pc.CreateOffer(nil)
 	if err != nil {
-		log.Fatalf("marshal SDP: %v", err)
+		return "", fmt.Errorf("create offer: %w", err)
 	}
 
-	if err := peer.SetRemoteDescription(webrtc.SessionDescription{
-		Type: webrtc.SDPTypeOffer,
-		SDP:  string(offerSDP),
-	}); err != nil {
-		log.Fatalf("SetRemoteDescription: %v", err)
+	sdp := replaceAllAttr(offer.SDP, "a=ice-ufrag:", usernameFragment)
+	sdp = replaceAllAttr(sdp, "a=ice-pwd:", password)
+
+	found := make(chan string, 1)
+	pc.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+		if candidate != nil && candidate.Typ == webrtc.ICECandidateTypeSrflx {
+			select {
+			case found <- fmt.Sprintf("%s:%d", candidate.Address, candidate.Port):
+			default: // already found one, ignore the rest
+			}
+		}
+	})
+
+	if err := pc.SetLocalDescription(webrtc.SessionDescription{Type: offer.Type, SDP: sdp}); err != nil {
+		return "", fmt.Errorf("set local description: %w", err)
 	}
 
-	answer, err := peer.CreateAnswer(nil)
+	select {
+	case addr := <-found:
+		return addr, nil
+	case <-time.After(30 * time.Second):
+		return "", fmt.Errorf("timed out waiting for srflx candidate")
+	}
+}
+
+// connectToRemoteAddress hand-crafts an SDP answer around a single srflx
+// candidate at remoteAddress.
+func connectToRemoteAddress(pc *webrtc.PeerConnection, remoteAddress, fingerprint string) error {
+	host, port, err := net.SplitHostPort(remoteAddress)
 	if err != nil {
-		log.Fatalf("CreateAnswer: %v", err)
-	}
-	if err := peer.SetLocalDescription(answer); err != nil {
-		log.Fatalf("SetLocalDescription: %v", err)
+		return fmt.Errorf("parse remote address: %w", err)
 	}
 
-	peer.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
-		fmt.Printf("connection: %s\n", s)
-	})
-	peer.OnICEConnectionStateChange(func(s webrtc.ICEConnectionState) {
-		fmt.Printf("ICE: %s\n", s)
-	})
+	iceLines := []string{
+		fmt.Sprintf("c=IN IP4 %s", host),
+		fmt.Sprintf("a=ice-ufrag:%s", usernameFragment),
+		fmt.Sprintf("a=ice-pwd:%s", password),
+		fmt.Sprintf("a=fingerprint:sha-256 %s", fingerprint),
+		"a=setup:active",
+		fmt.Sprintf("a=candidate:0 1 UDP %d %s %s typ srflx", iceCandidatePrio, host, port),
+	}
 
-	fmt.Printf("Connecting to browser at %s:%s ...\n", host, port)
-	select {}
+	section := func(mLine string, mid int, extra ...string) []string {
+		lines := append([]string{mLine}, iceLines...)
+		lines = append(lines, extra...)
+		lines = append(lines, fmt.Sprintf("a=mid:%d", mid), "a=rtcp-mux")
+		return lines
+	}
+
+	sdp := []string{"v=0", "o=- 0 0 IN IP4 0.0.0.0", "s=-", "t=0 0", "a=group:BUNDLE 0 1 2"}
+	sdp = append(sdp, section("m=audio 9 UDP/TLS/RTP/SAVPF 111", 0, "a=recvonly", "a=rtpmap:111 opus/48000/2")...)
+	sdp = append(sdp, section("m=video 9 UDP/TLS/RTP/SAVPF 102", 1, "a=sendonly", "a=rtpmap:102 H264/90000")...)
+	sdp = append(sdp, section("m=application 9 UDP/DTLS/SCTP webrtc-datachannel", 2,
+		"a=sctp-port:5000", "a=max-message-size:262144")...)
+	sdp = append(sdp, "")
+
+	return pc.SetRemoteDescription(webrtc.SessionDescription{
+		Type: webrtc.SDPTypeAnswer,
+		SDP:  strings.Join(sdp, "\r\n"),
+	})
+}
+
+func replaceAllAttr(sdp, prefix, value string) string {
+	lines := strings.Split(sdp, "\r\n")
+	for i, line := range lines {
+		if strings.HasPrefix(line, prefix) {
+			lines[i] = prefix + value
+		}
+	}
+	return strings.Join(lines, "\r\n")
+}
+
+// writeGithubOutput appends `key=value` to $GITHUB_OUTPUT for a later
+// workflow step to pick up (e.g. write to a file and upload as an artifact).
+func writeGithubOutput(key, value string) error {
+	path := os.Getenv("GITHUB_OUTPUT")
+	if path == "" {
+		fmt.Printf("GITHUB_OUTPUT not set, would have written: %s=%s\n", key, value)
+		return nil
+	}
+
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("open GITHUB_OUTPUT: %w", err)
+	}
+	defer f.Close()
+
+	_, err = fmt.Fprintf(f, "%s=%s\n", key, value)
+	return err
 }

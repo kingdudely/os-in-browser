@@ -185,7 +185,7 @@ export default class Client extends RTCPeerConnection {
 			`a=candidate:0 1 UDP 1686052607 ${srflxCandidate.hostname} ${srflxCandidate.port} typ srflx`
 		];
 
-		await peer.setRemoteDescription({
+		await this.setRemoteDescription({
 			type: "answer",
 			sdp: [
 				"v=0",
@@ -224,11 +224,12 @@ export default class Client extends RTCPeerConnection {
 				offerToReceiveVideo: true
 			});
 
-			const offerSdp = offer.sdp // offer.sdp = ...
-				.replace(/a=ice-ufrag:\S+/g, `a=ice-ufrag:${usernameFragment}`)
-				.replace(/a=ice-pwd:\S+/g, `a=ice-pwd:${password}`);
-
-			await peer.setLocalDescription({ type: offer.type, sdp: offerSdp }); // offer
+			await this.setLocalDescription({
+				type: offer.type,
+				sdp: offer.sdp
+					.replace(/a=ice-ufrag:\S+/g, `a=ice-ufrag:${usernameFragment}`)
+					.replace(/a=ice-pwd:\S+/g, `a=ice-pwd:${password}`)
+			}); // offer
 
 			this.#localAddress = await new Promise((resolve, reject) => {
 				const cleanup = () => {
@@ -243,15 +244,15 @@ export default class Client extends RTCPeerConnection {
 					}
 				}
 
-				function onGatheringChange() {
-					if (peer.iceGatheringState === "complete") {
+				function onGatheringChange(event) {
+					if (event.target.iceGatheringState === "complete") {
 						cleanup();
-						reject(new Error("ICE gathering complete, but no srflx candidate found."));
+						reject("ICE gathering complete, but no srflx candidate found.");
 					}
 				}
 
-				peer.addEventListener("icecandidate", onCandidate);
-				peer.addEventListener("icegatheringstatechange", onGatheringChange);
+				this.addEventListener("icecandidate", onCandidate);
+				this.addEventListener("icegatheringstatechange", onGatheringChange);
 			});
 		}
 

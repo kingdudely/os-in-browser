@@ -22,20 +22,16 @@ import Client from "./client.js";
 const oauthDialog = document.getElementById("oauth-dialog");
 oauthDialog.showModal();
 oauthDialog.addEventListener('cancel', (event) => event.preventDefault());
-function onlogin(access_token) {
-    oauthDialog.close();
-
-    await peer.setRemoteDescription({
-        type: "answer",
-        sdp: answer
-    });
-}
 
 const screenshare = document.getElementById("screenshare");
 const client = new Client(screenshare);
+async function onlogin(access_token) {
+    oauthDialog.close();
 
-await client.getLocalAddress();
-await client.connectToRemoteAddress(responseidk);
+	await client.getLocalAddress();
+	await client.connectToRemoteAddress(responseidk);
+}
+
 
 document.getElementById("credential-file").addEventListener("change", async (event) => {
 	const credentialFile = event.target.files[0];
