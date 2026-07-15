@@ -2,89 +2,92 @@ name: Test Hardware Video Encoders
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
 
 jobs:
-  test-encoders:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+  test-linux:
+    runs-on: ubuntu-latest
     steps:
-      - name: Install ffmpeg (Ubuntu)
-        if: runner.os == 'Linux'
+      - name: Check + test hardware encoding (Linux)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg vainfo intel-media-va-driver-non-free
+          set -x
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg vainfo intel-media-va-driver-non-free mesa-va-drivers xvfb > /dev/null
 
-      - name: Install ffmpeg (Windows)
-        if: runner.os == 'Windows'
-        run: choco install ffmpeg -y
+          echo "### GPU / render node check ###"
+          lspci -nnk | grep -iA3 vga || echo "No VGA device via lspci"
+          ls -la /dev/dri 2>/dev/null || echo "No /dev/dri present"
 
-      - name: Install ffmpeg (macOS)
-        if: runner.os == 'macOS'
-        run: brew install ffmpeg
+          echo "### VA-API driver check (under Xvfb) ###"
+          xvfb-run -a vainfo 2>&1 || echo "VA-API unavailable"
 
-      - name: Show ffmpeg encoders
-        run: ffmpeg -hide_banner -encoders | grep -iE "qsv|videotoolbox|nvenc" || echo "No hw encoders listed"
+          echo "### NVIDIA check ###"
+          nvidia-smi 2>&1 || echo "No NVIDIA GPU"
 
-      - name: Check VA-API devices (Linux only)
-        if: runner.os == 'Linux'
-        run: |
-          echo "Checking for /dev/dri render nodes..."
-          ls -la /dev/dri 2>/dev/null || echo "No /dev/dri found - no GPU/iGPU exposed to this runner"
-          echo "---"
-          echo "Running vainfo (expect failure if no device)..."
-          vainfo || echo "vainfo failed - confirms no VA-API device access"
+          xvfb-run -a ffmpeg -f lavfi -i testsrc=duration=5:size=1280x720:rate=30 -pix_fmt yuv420p -y test_input.mp4
 
-      - name: Generate test clip
-        shell: bash
-        run: |
-          ffmpeg -f lavfi -i testsrc=duration=5:size=1280x720:rate=30 -pix_fmt yuv420p test_input.mp4
+          echo "### QSV encode attempt ###"
+          xvfb-run -a ffmpeg -y -init_hw_device qsv=hw -filter_hw_device hw -i test_input.mp4 \
+            -vf format=nv12,hwupload=extra_hw_frames=64 -c:v h264_qsv -b:v 3M out_qsv.mp4 \
+            2>&1 || echo "QSV FAILED"
 
-      - name: Test QSV encode (Ubuntu)
-        if: runner.os == 'Linux'
-        continue-on-error: true
-        run: |
-          echo "=== Attempting h264_qsv encode ==="
-          time ffmpeg -y -init_hw_device qsv=hw -filter_hw_device hw \
-            -i test_input.mp4 -vf format=nv12,hwupload=extra_hw_frames=64 \
-            -c:v h264_qsv -b:v 3M out_qsv.mp4
-          echo "QSV encode result: $?"
+          echo "### NVENC encode attempt ###"
+          xvfb-run -a ffmpeg -y -i test_input.mp4 -c:v h264_nvenc -b:v 3M out_nvenc.mp4 2>&1 || echo "NVENC FAILED"
 
-      - name: Test QSV encode (Windows)
-        if: runner.os == 'Windows'
-        continue-on-error: true
-        run: |
-          echo "=== Attempting h264_qsv encode ==="
-          $t0 = Get-Date
-          ffmpeg -y -i test_input.mp4 -c:v h264_qsv -b:v 3M out_qsv.mp4
-          $exit = $LASTEXITCODE
-          $t1 = Get-Date
-          Write-Host "QSV encode exit code: $exit, took $(($t1 - $t0).TotalSeconds)s"
-
-      - name: Test VideoToolbox encode (macOS)
-        if: runner.os == 'macOS'
-        continue-on-error: true
-        run: |
-          echo "=== Attempting h264_videotoolbox encode ==="
-          time ffmpeg -y -i test_input.mp4 -c:v h264_videotoolbox -b:v 3M out_vt.mp4
-          echo "VideoToolbox encode result: $?"
-
-      - name: Baseline software (libx264) encode for comparison
-        shell: bash
-        run: |
-          echo "=== Software x264 encode (baseline) ==="
+          echo "### Software baseline ###"
           time ffmpeg -y -i test_input.mp4 -c:v libx264 -preset medium -b:v 3M out_sw.mp4
-          echo "Software encode result: $?"
 
-      - name: Summarize results
-        shell: bash
+          echo "### RESULT SUMMARY ###"
+          ls -la out_*.mp4 2>/dev/null
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Check + test hardware encoding (Windows)
+        shell: pwsh
         run: |
-          echo "### Encode output files present ###"
-          ls -la out_*.mp4 2>/dev/null || echo "No hardware-encoded output produced"
-          echo ""
-          echo "If out_qsv.mp4 / out_vt.mp4 is missing above, that encoder failed on this runner."
-          echo "Compare the 'real' time from each encode step to see speed difference vs libx264."
+          Write-Host "### GPU check (WMI) ###"
+          Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM, DriverVersion | Format-List
+
+          choco install ffmpeg -y | Out-Null
+
+          ffmpeg -f lavfi -i testsrc=duration=5:size=1280x720:rate=30 -pix_fmt yuv420p -y test_input.mp4
+
+          Write-Host "### QSV encode attempt ###"
+          ffmpeg -y -i test_input.mp4 -c:v h264_qsv -b:v 3M out_qsv.mp4 2>&1 | Write-Host
+          if ($LASTEXITCODE -ne 0) { Write-Host "QSV FAILED (exit $LASTEXITCODE)" }
+
+          Write-Host "### NVENC encode attempt ###"
+          ffmpeg -y -i test_input.mp4 -c:v h264_nvenc -b:v 3M out_nvenc.mp4 2>&1 | Write-Host
+          if ($LASTEXITCODE -ne 0) { Write-Host "NVENC FAILED (exit $LASTEXITCODE)" }
+
+          Write-Host "### Software baseline ###"
+          $t0 = Get-Date
+          ffmpeg -y -i test_input.mp4 -c:v libx264 -preset medium -b:v 3M out_sw.mp4
+          Write-Host "Software encode took $((Get-Date) - $t0)"
+
+          Write-Host "### RESULT SUMMARY ###"
+          Get-ChildItem out_*.mp4 -ErrorAction SilentlyContinue
+
+  test-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Check + test hardware encoding (macOS)
+        run: |
+          echo "### Hardware check ###"
+          system_profiler SPDisplaysDataType | head -30
+          sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "N/A"
+
+          brew install ffmpeg > /dev/null
+
+          ffmpeg -f lavfi -i testsrc=duration=5:size=1280x720:rate=30 -pix_fmt yuv420p -y test_input.mp4
+
+          echo "### VideoToolbox encode attempt ###"
+          ffmpeg -y -i test_input.mp4 -c:v h264_videotoolbox -b:v 3M out_vt.mp4 2>&1 || echo "VideoToolbox FAILED"
+
+          echo "### VideoToolbox forced software fallback (-allow_sw 1) ###"
+          ffmpeg -y -i test_input.mp4 -c:v h264_videotoolbox -allow_sw 1 -b:v 3M out_vt_sw.mp4 2>&1 || echo "VideoToolbox sw-fallback FAILED"
+
+          echo "### Software baseline ###"
+          time ffmpeg -y -i test_input.mp4 -c:v libx264 -preset medium -b:v 3M out_sw.mp4
+
+          echo "### RESULT SUMMARY ###"
+          ls -la out_*.mp4 2>/dev/null
