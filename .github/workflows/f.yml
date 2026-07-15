@@ -40,27 +40,6 @@ jobs:
       - name: Install Python deps
         run: pip install aioquic aiohttp cryptography
 
-      # --- install cloudflared, per OS ---
-
-      - name: Install cloudflared (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          curl -L --output cloudflared \
-            https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
-          chmod +x cloudflared
-          sudo mv cloudflared /usr/local/bin/cloudflared
-
-      - name: Install cloudflared (macOS)
-        if: runner.os == 'macOS'
-        run: brew install cloudflared
-
-      - name: Install cloudflared (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile "cloudflared.exe"
-          Move-Item cloudflared.exe C:\Windows\System32\cloudflared.exe
-
       # --- run the runner bridge (STUN + HTTP/3 server + signaling server) in background ---
 
       - name: Start runner bridge (Linux/macOS)
@@ -80,35 +59,15 @@ jobs:
           Start-Process python3 -ArgumentList "runner_bridge.py --quic-port ${{ inputs.quic_port }} --signaling-port ${{ inputs.signaling_port }} --duration ${{ inputs.duration_seconds }}" -NoNewWindow
           Start-Sleep -Seconds 3
 
-      # --- start the Cloudflare Quick Tunnel pointing at the LOCAL signaling port ---
-      # this gives us a trusted-https URL, no cert warnings, no punching needed
-      # for the signaling channel itself (only the direct HTTP/3 hop is raw UDP)
-
-      - name: Start Cloudflare Quick Tunnel and print URL
-        run: |
-          cloudflared tunnel --url http://localhost:${{ inputs.signaling_port }} \
-            > cloudflared.log 2>&1 &
-          echo $! > cloudflared.pid
-
-          echo "Waiting for tunnel URL..."
-          for i in $(seq 1 30); do
-            URL=$(grep -o 'https://[a-zA-Z0-9-]*\.trycloudflare\.com' cloudflared.log | head -n1)
-            if [ -n "$URL" ]; then
-              echo "=========================================="
-              echo "SIGNALING_URL=$URL"
-              echo "=========================================="
-              echo "Open this URL in a browser -- it will show"
-              echo "the runner's direct HTTP/3 endpoint + cert hash."
-              break
-            fi
-            sleep 1
-          done
-          if [ -z "$URL" ]; then
-            echo "Tunnel URL not found, dumping log:"
-            cat cloudflared.log
-          fi
-        shell: bash
+      - name: Establish tunnel
+        id: tunnel
+        uses: anyvm-org/cf-tunnel@v0
+        with:
+          protocol: http
+          port: 8080
 
       - name: Hold job open for the test window
-        run: sleep ${{ inputs.duration_seconds }}
+        run: |
+          echo "Tunnel URL: https://${{ steps.tunnel.outputs.server }}"
+          sleep ${{ inputs.duration_seconds }}
         shell: bash
