@@ -1,0 +1,40 @@
+name: Open Public UDP Port (STUN)
+
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        description: "Runner OS"
+        required: true
+        type: choice
+        options:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+        default: ubuntu-latest
+      local_port:
+        description: "Local UDP port to bind"
+        required: false
+        default: "45000"
+      duration_seconds:
+        description: "How long to keep the port open (seconds)"
+        required: false
+        default: "3300"
+
+jobs:
+  open-port:
+    runs-on: ${{ inputs.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Discover + hold public UDP port
+        run: >
+          python3 stun_open_port.py
+          --port ${{ inputs.local_port }}
+          --duration ${{ inputs.duration_seconds }}
