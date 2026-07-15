@@ -40,24 +40,12 @@ jobs:
       - name: Install Python deps
         run: pip install aioquic aiohttp cryptography
 
-      # --- run the runner bridge (STUN + HTTP/3 server + signaling server) in background ---
-
-      - name: Start runner bridge (Linux/macOS)
-        if: runner.os != 'Windows'
+      - name: Start runner bridge
         run: |
           python3 runner_bridge.py \
             --quic-port ${{ inputs.quic_port }} \
             --signaling-port ${{ inputs.signaling_port }} \
             --duration ${{ inputs.duration_seconds }} &
-          echo $! > bridge.pid
-          sleep 3
-
-      - name: Start runner bridge (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          Start-Process python3 -ArgumentList "runner_bridge.py --quic-port ${{ inputs.quic_port }} --signaling-port ${{ inputs.signaling_port }} --duration ${{ inputs.duration_seconds }}" -NoNewWindow
-          Start-Sleep -Seconds 3
 
       - name: Establish tunnel
         id: tunnel
