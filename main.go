@@ -74,9 +74,6 @@ func setupPeerConnection() (*webrtc.PeerConnection, error) {
 	})
 }
 
-// setupScreenCapture is the Go equivalent of getDisplayMedia(), using
-// pion/mediadevices' screen driver with x264 (ultrafast preset, the
-// fastest H.264 option for CPU-only GitHub Actions runners).
 func setupScreenCapture() (mediadevices.Track, error) {
 	params, err := x264.NewParams()
 	if err != nil {
@@ -102,10 +99,6 @@ func setupScreenCapture() (mediadevices.Track, error) {
 	return tracks[0].(mediadevices.Track), nil
 }
 
-// gatherLocalSrflxAddress creates an offer, patches in the fixed
-// ice-ufrag/ice-pwd, sets it as the local description, then returns as soon
-// as the first srflx ICE candidate is found (no need to wait for the rest
-// of gathering to finish).
 func gatherLocalSrflxAddress(pc *webrtc.PeerConnection) (string, error) {
 	offer, err := pc.CreateOffer(nil)
 	if err != nil {
@@ -137,8 +130,6 @@ func gatherLocalSrflxAddress(pc *webrtc.PeerConnection) (string, error) {
 	}
 }
 
-// connectToRemoteAddress hand-crafts an SDP answer around a single srflx
-// candidate at remoteAddress.
 func connectToRemoteAddress(pc *webrtc.PeerConnection, remoteAddress, fingerprint string) error {
 	host, port, err := net.SplitHostPort(remoteAddress)
 	if err != nil {
@@ -184,8 +175,7 @@ func replaceAllAttr(sdp, prefix, value string) string {
 	return strings.Join(lines, "\r\n")
 }
 
-// writeGithubOutput appends `key=value` to $GITHUB_OUTPUT for a later
-// workflow step to pick up (e.g. write to a file and upload as an artifact).
+
 func writeGithubOutput(key, value string) error {
 	path := os.Getenv("GITHUB_OUTPUT")
 	if path == "" {
