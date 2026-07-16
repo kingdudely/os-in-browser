@@ -2,6 +2,10 @@ import codeMap from "./code-map.json" with { type: "json" };
 const workflowFingerprint = await (await fetch("fingerprint.txt")).text();
 const usernameFragment = "myufraghere1234";
 const password = "mypasswordthatisverylong12345";
+const sharedBytes = new Uint8Array(18);
+const sharedView = new DataView(sharedBytes.buffer);
+const textDecoder = new TextDecoder("utf-8");
+const textEncoder = new TextEncoder("utf-8");
 
 function triggerImmersiveMode(element) {
 	if (document.fullscreenEnabled && !document.fullscreenElement) {
@@ -17,8 +21,64 @@ function triggerImmersiveMode(element) {
 	}
 }
 
-const sharedBytes = new Uint8Array(8);
-const sharedView = new DataView(sharedBytes.buffer);
+function getConnectionTokenFromCandidate(candidate) {
+	let { address, port } = candidate;
+	// IPv6 zone id handling
+	const zoneIdIndex = address.indexOf("%");
+	if (zoneIdIndex !== -1) { // If there is a zone ID, remove it
+		address = address.substring(0, zoneIdIndex); // ([ip] = ip.split("%", 1))
+	}
+
+	let addressByteLength = 0;
+	if (URL.canParse(`http://[${address}]`)) { // is IPv6
+		const [prefixHextets, suffixHextets] = address.split("::", 2);
+		const previousHextets = prefixHextets?.split(":") ?? [];
+		const nextHextets = suffixHextets?.split(":") ?? [];
+		const missingHextets = new Array( // "0".repeat(...)
+			8 - (previousHextets.length + nextHextets.length) // the difference of the max hextet count and the current hextet count
+		).fill("0000");
+
+		const hex = [...previousHextets, ...missingHextets, ...nextHextets].map(v => v.padStart(4, "0")).join("");
+		addressByteLength = sharedBytes.setFromHex(hex).written;
+	} else if (URL.canParse(`http://${address}`)) { // is IPv4
+		const octets = address.split("."); // , 4
+		if (octets.length !== 4) {
+			throw new Error("Invalid IPv4 candidate address, expected 4 octets!");
+		}
+
+		sharedBytes.set(octets);
+		addressByteLength = octets.length;
+	} else {
+		throw new Error("Invalid candidate address")
+	}
+
+	sharedView.setUint16(addressByteLength, port, true);
+	return textDecoder.decode(sharedBytes.subarray(0, addressByteLength + 2));
+}
+
+function getCandidateURLFromConnectionToken(connectionToken) {
+	const connectionTokenWriteInfo = textEncoder.encodeInto(connectionToken, sharedBytes);
+	if (connectionTokenWriteInfo.read > 18 || connectionTokenWriteInfo.read < 4) {
+		throw new Error("Invalid connection token, does not meet bound requirements!");
+	};
+
+	const address = sharedBytes.subarray(0, connectionTokenWriteInfo.written - 2);
+	const port = sharedView.getUint16(address.byteLength, true);
+
+	switch (address.byteLength) {
+		case 16: { // is IPv6
+			return new URL(`http://[${address.toHex().match(/.{1,4}/g).join(':')}]:${port}`);
+		}
+
+		case 4: { // is IPv4
+			return new URL(`http://${address.join(".")}:${port}`);
+		}
+
+		default: {
+			throw new Error("Invalid address byte length")
+		}
+	}
+}
 
 const RTCPeerConnectionInit = {
 	iceServers: [
@@ -28,10 +88,12 @@ const RTCPeerConnectionInit = {
 };
 
 export default class Client extends RTCPeerConnection {
-	#localAddress;
+	#connectionToken;
 
 	constructor(videoElement) {
 		super(RTCPeerConnectionInit);
+
+		videoElement.muted = true; // Add system audio... one day. :(
 
 		this.addEventListener("track", (event) => {
 			videoElement.srcObject = event.streams[0];
@@ -163,7 +225,7 @@ export default class Client extends RTCPeerConnection {
 					case event.DOM_DELTA_LINE: return 20;
 					case event.DOM_DELTA_PAGE: return 400; // 800
 
-					default: throw new Error("Unsupported deltaMode");
+					default: throw new Error("Unsupported delta mode");
 				}
 			})();
 
@@ -173,16 +235,17 @@ export default class Client extends RTCPeerConnection {
 		});
 	}
 
-	async connectToRemoteAddress(remoteAddress) {
-		const srflxCandidate = new URL(`http://${remoteAddress}`);
+	async connectToConnectionToken(connectionToken) {
+		const srflxCandidateURL = getCandidateURLFromConnectionToken(connectionToken);
+		const hostname  = srflxCandidateURL.hostname.replace(/[\[\]]/g, "");
 	
 		const commonIceLines = [
-			`c=IN IP4 ${srflxCandidate.hostname}`,
+			`c=IN IP4 ${hostname}`,
 			`a=ice-ufrag:${usernameFragment}`,
 			`a=ice-pwd:${password}`,
 			`a=fingerprint:sha-256 ${workflowFingerprint}`,
 			"a=setup:active",
-			`a=candidate:0 1 UDP 1686052607 ${srflxCandidate.hostname} ${srflxCandidate.port} typ srflx`
+			`a=candidate:0 1 UDP 1686052607 ${hostname} ${srflxCandidateURL.port} typ srflx`
 		];
 
 		await this.setRemoteDescription({
@@ -218,8 +281,8 @@ export default class Client extends RTCPeerConnection {
 		});
 	}
 
-	async getLocalAddress() {
-		if (!this.#localAddress) {
+	async getConnectionToken() {
+		if (!this.#connectionToken) {
 			const offer = await this.createOffer({
 				offerToReceiveVideo: true
 			});
@@ -231,7 +294,7 @@ export default class Client extends RTCPeerConnection {
 					.replace(/a=ice-pwd:\S+/g, `a=ice-pwd:${password}`)
 			}); // offer
 
-			this.#localAddress = await new Promise((resolve, reject) => {
+			this.#connectionToken = await new Promise((resolve, reject) => {
 				const cleanup = () => {
 					this.removeEventListener("icegatheringstatechange", onGatheringChange);
 					this.removeEventListener("icecandidate", onCandidate);
@@ -240,7 +303,7 @@ export default class Client extends RTCPeerConnection {
 				function onCandidate({ candidate }) {
 					if (candidate?.type === "srflx") {
 						cleanup();
-						resolve(`${candidate.address}:${candidate.port}`);
+						resolve(getConnectionTokenFromCandidate(candidate));
 					}
 				}
 
@@ -256,6 +319,6 @@ export default class Client extends RTCPeerConnection {
 			});
 		}
 
-		return this.#localAddress;
+		return this.#connectionToken;
 	}
 }
