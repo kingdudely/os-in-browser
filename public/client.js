@@ -4,8 +4,6 @@ const usernameFragment = "myufraghere1234";
 const password = "mypasswordthatisverylong12345";
 const sharedBytes = new Uint8Array(18);
 const sharedView = new DataView(sharedBytes.buffer);
-const textDecoder = new TextDecoder("utf-8");
-const textEncoder = new TextEncoder("utf-8");
 
 function triggerImmersiveMode(element) {
 	if (document.fullscreenEnabled && !document.fullscreenElement) {
@@ -21,7 +19,7 @@ function triggerImmersiveMode(element) {
 	}
 }
 
-function getConnectionTokenFromCandidate(candidate) {
+function getShareIdFromCandidate(candidate) {
 	let { address, port } = candidate;
 	// IPv6 zone id handling
 	const zoneIdIndex = address.indexOf("%");
@@ -38,13 +36,18 @@ function getConnectionTokenFromCandidate(candidate) {
 			8 - (previousHextets.length + nextHextets.length) // the difference of the max hextet count and the current hextet count
 		).fill("0000");
 
-		const hex = [...previousHextets, ...missingHextets, ...nextHextets].map(v => v.padStart(4, "0")).join("");
+		const hex = [...previousHextets, ...missingHextets, ...nextHextets].map((hextet) => hextet.padStart(4, "0")).join("");
 		addressByteLength = sharedBytes.setFromHex(hex).written;
 	} else if (URL.canParse(`http://${address}`)) { // is IPv4
-		const octets = address.split("."); // , 4
-		if (octets.length !== 4) {
-			throw new Error("Invalid IPv4 candidate address, expected 4 octets!");
-		}
+		const octets = address.split(".").map((octet, index) => {
+			octet = parseInt(octet, 10);
+
+			if (index > 4 || !Number.isSafeInteger(octet) || octet < 0 || octet > 255) {
+				throw new Error("Invalid IPv4 candidate address octet!");
+			}
+
+			return octet;
+		}); // , 4
 
 		sharedBytes.set(octets);
 		addressByteLength = octets.length;
@@ -53,16 +56,16 @@ function getConnectionTokenFromCandidate(candidate) {
 	}
 
 	sharedView.setUint16(addressByteLength, port, true);
-	return textDecoder.decode(sharedBytes.subarray(0, addressByteLength + 2));
+	return sharedBytes.subarray(0, addressByteLength + 2).toBase64();
 }
 
-function getCandidateURLFromConnectionToken(connectionToken) {
-	const connectionTokenWriteInfo = textEncoder.encodeInto(connectionToken, sharedBytes);
-	if (connectionTokenWriteInfo.read > 18 || connectionTokenWriteInfo.read < 4) {
+function getCandidateURLFromShareId(shareId) {
+	const { read, written } = sharedBytes.setFromBase64(shareId);
+	if (read !== shareId.length) {
 		throw new Error("Invalid connection token, does not meet bound requirements!");
-	};
+	}
 
-	const address = sharedBytes.subarray(0, connectionTokenWriteInfo.written - 2);
+	const address = sharedBytes.subarray(0, written - 2);
 	const port = sharedView.getUint16(address.byteLength, true);
 
 	switch (address.byteLength) {
@@ -88,7 +91,7 @@ const RTCPeerConnectionInit = {
 };
 
 export default class Client extends RTCPeerConnection {
-	#connectionToken;
+	#shareId;
 
 	constructor(videoElement) {
 		super(RTCPeerConnectionInit);
@@ -235,12 +238,13 @@ export default class Client extends RTCPeerConnection {
 		});
 	}
 
-	async connectToConnectionToken(connectionToken) {
-		const srflxCandidateURL = getCandidateURLFromConnectionToken(connectionToken);
-		const hostname  = srflxCandidateURL.hostname.replace(/[\[\]]/g, "");
+	async connectToShareId(shareId) {
+		const srflxCandidateURL = getCandidateURLFromShareId(shareId);
+		const hostname = srflxCandidateURL.hostname.replace(/[\[\]]/g, "");
+		const isIPv6 = hostname.includes(":");
 	
 		const commonIceLines = [
-			`c=IN IP4 ${hostname}`,
+			`c=IN ${isIPv6 ? "IP6" : "IP4"} ${hostname}`,
 			`a=ice-ufrag:${usernameFragment}`,
 			`a=ice-pwd:${password}`,
 			`a=fingerprint:sha-256 ${workflowFingerprint}`,
@@ -281,8 +285,8 @@ export default class Client extends RTCPeerConnection {
 		});
 	}
 
-	async getConnectionToken() {
-		if (!this.#connectionToken) {
+	async getShareId() {
+		if (!this.#shareId) {
 			const offer = await this.createOffer({
 				offerToReceiveVideo: true
 			});
@@ -294,7 +298,7 @@ export default class Client extends RTCPeerConnection {
 					.replace(/a=ice-pwd:\S+/g, `a=ice-pwd:${password}`)
 			}); // offer
 
-			this.#connectionToken = await new Promise((resolve, reject) => {
+			this.#shareId = await new Promise((resolve, reject) => {
 				const cleanup = () => {
 					this.removeEventListener("icegatheringstatechange", onGatheringChange);
 					this.removeEventListener("icecandidate", onCandidate);
@@ -303,7 +307,7 @@ export default class Client extends RTCPeerConnection {
 				function onCandidate({ candidate }) {
 					if (candidate?.type === "srflx") {
 						cleanup();
-						resolve(getConnectionTokenFromCandidate(candidate));
+						resolve(getShareIdFromCandidate(candidate));
 					}
 				}
 
@@ -319,6 +323,6 @@ export default class Client extends RTCPeerConnection {
 			});
 		}
 
-		return this.#connectionToken;
+		return this.#shareId;
 	}
 }
