@@ -19,62 +19,26 @@ function triggerImmersiveMode(element) {
 	}
 }
 
-function getShareIdFromCandidate(candidate) {
-	let { address, port } = candidate;
-	// IPv6 zone id handling
-	const zoneIdIndex = address.indexOf("%");
-	if (zoneIdIndex !== -1) { // If there is a zone ID, remove it
-		address = address.substring(0, zoneIdIndex); // ([ip] = ip.split("%", 1))
-	}
+function IPv6toHex(address) {
+	address = address.replace(/[\[\]]/g, "");
+	const [prefixHextets, suffixHextets] = address.split("::", 2);
+	const previousHextets = prefixHextets?.split(":") ?? [];
+	const nextHextets = suffixHextets?.split(":") ?? [];
+	const missingHextets = new Array( // "0".repeat(...)
+		8 - (previousHextets.length + nextHextets.length) // the difference of the max hextet count and the current hextet count
+	).fill("0000");
 
-	let addressByteLength = 0;
-	if (URL.canParse(`http://[${address}]`)) { // is IPv6
-		const [prefixHextets, suffixHextets] = address.split("::", 2);
-		const previousHextets = prefixHextets?.split(":") ?? [];
-		const nextHextets = suffixHextets?.split(":") ?? [];
-		const missingHextets = new Array( // "0".repeat(...)
-			8 - (previousHextets.length + nextHextets.length) // the difference of the max hextet count and the current hextet count
-		).fill("0000");
-
-		const hex = [...previousHextets, ...missingHextets, ...nextHextets].map((hextet) => hextet.padStart(4, "0")).join("");
-		addressByteLength = sharedBytes.setFromHex(hex).written;
-	} else if (URL.canParse(`http://${address}`)) { // is IPv4
-		const octets = address.split(".").map((octet, index) => {
-			octet = parseInt(octet, 10);
-
-			if (index > 4 || !Number.isSafeInteger(octet) || octet < 0 || octet > 255) {
-				throw new Error("Invalid IPv4 candidate address octet!");
-			}
-
-			return octet;
-		}); // , 4
-
-		sharedBytes.set(octets);
-		addressByteLength = octets.length;
-	} else {
-		throw new Error("Invalid candidate address")
-	}
-
-	sharedView.setUint16(addressByteLength, port, true);
-	return sharedBytes.subarray(0, addressByteLength + 2).toBase64();
+	return [...previousHextets, ...missingHextets, ...nextHextets].map((hextet) => hextet.padStart(4, "0")).join("");
 }
 
-function getCandidateURLFromShareId(shareId) {
-	const { read, written } = sharedBytes.setFromBase64(shareId);
-	if (read !== shareId.length) {
-		throw new Error("Invalid connection token, does not meet bound requirements!");
-	}
-
-	const address = sharedBytes.subarray(0, written - 2);
-	const port = sharedView.getUint16(address.byteLength, true);
-
-	switch (address.byteLength) {
+function bytesToIPAddress(bytes) {
+	switch (bytes.byteLength) {
 		case 16: { // is IPv6
-			return new URL(`http://[${address.toHex().match(/.{1,4}/g).join(':')}]:${port}`);
+			return bytes.toHex().match(/.{1,4}/g).join(":");
 		}
 
 		case 4: { // is IPv4
-			return new URL(`http://${address.join(".")}:${port}`);
+			return bytes.join(".");
 		}
 
 		default: {
@@ -239,17 +203,22 @@ export default class Client extends RTCPeerConnection {
 	}
 
 	async connectToShareId(shareId) {
-		const srflxCandidateURL = getCandidateURLFromShareId(shareId);
-		const hostname = srflxCandidateURL.hostname.replace(/[\[\]]/g, "");
-		const isIPv6 = hostname.includes(":");
-	
+		const { read, written } = sharedBytes.setFromBase64(shareId);
+		if (read !== shareId.length) {
+			throw new Error("Invalid connection token, does not meet bound requirements!");
+		}
+
+		const address = bytesToIPAddress(sharedBytes.subarray(0, written - 2));
+		const port = sharedView.getUint16(address.byteLength, true);
+		const isIPv6 = address.includes(":");
+
 		const commonIceLines = [
-			`c=IN ${isIPv6 ? "IP6" : "IP4"} ${hostname}`,
+			`c=IN ${isIPv6 ? "IP6" : "IP4"} ${address}`,
 			`a=ice-ufrag:${usernameFragment}`,
 			`a=ice-pwd:${password}`,
 			`a=fingerprint:sha-256 ${workflowFingerprint}`,
 			"a=setup:active",
-			`a=candidate:0 1 UDP 1686052607 ${hostname} ${srflxCandidateURL.port} typ srflx`
+			`a=candidate:0 1 UDP 1686052607 ${address} ${port} typ srflx`
 		];
 
 		await this.setRemoteDescription({
@@ -307,7 +276,38 @@ export default class Client extends RTCPeerConnection {
 				function onCandidate({ candidate }) {
 					if (candidate?.type === "srflx") {
 						cleanup();
-						resolve(getShareIdFromCandidate(candidate));
+						let ip = candidate.address.split("%", 1)[0];
+						const isIPv6 = ip.includes(":");
+
+						let addressByteLength = 0;
+						// srlfx candidate.address if ipv6 is wrapped in square brackets
+						if (URL.canParse(`http://${ip}`)) { // is IPv6
+							if (isIPv6) {
+								addressByteLength = sharedBytes.setFromHex(IPv6toHex(ip)).written;
+							} else {
+								const octets = ip.split(".").map((octet, index) => {
+									octet = parseInt(octet, 10);
+
+									if (index > 4 || !Number.isSafeInteger(octet) || octet < 0 || octet > 255) {
+										throw new Error("Invalid IPv4 candidate address octet!");
+									}
+
+									return octet;
+								}); // , 4
+
+								if (octets.length !== 4) {
+									throw new Error("Expected 4 octets in IPv4 candidate address!")
+								}
+
+								sharedBytes.set(octets);
+								addressByteLength = octets.length;
+							}
+						} else {
+							throw new Error("Invalid candidate address")
+						}
+
+						sharedView.setUint16(addressByteLength, candidate.port, true);
+						resolve(sharedBytes.subarray(0, addressByteLength + 2).toBase64());
 					}
 				}
 

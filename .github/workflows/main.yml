@@ -32,7 +32,7 @@ jobs:
 
       - name: Start server
         env:
-          OFFER: ${{ github.event.inputs.offer }}
+          arguments: ${{ github.event.inputs.offer }}
         run: |
           case "$RUNNER_OS" in
             macOS)

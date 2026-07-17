@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/base64"
+	"encoding/binary"
+	"flag"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"strings"
@@ -13,65 +15,301 @@ import (
 	_ "github.com/pion/mediadevices/pkg/driver/screen" // registers the screen capture driver
 	"github.com/pion/mediadevices/pkg/frame"
 	"github.com/pion/mediadevices/pkg/prop"
+	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v4"
 )
 
 const (
 	usernameFragment = "myufraghere1234"
 	password         = "mypasswordthatisverylong12345"
-	iceCandidatePrio = 1686052607
+
+	certPath = "./certificate.pem"
+	keyPath  = "./key.pem"
 )
 
 func main() {
-	remoteAddress := os.Getenv("REMOTE_ADDRESS")
-	fingerprint := os.Getenv("DTLS_FINGERPRINT")
+	offerFlag := flag.String("offer", "", "base64-encoded share id (compressed srflx address:port)")
+	flag.Parse()
 
-	pc, err := setupPeerConnection()
-	if err != nil {
-		log.Fatalf("setup peer connection: %v", err)
+	if *offerFlag == "" {
+		fmt.Fprintln(os.Stderr, "missing -offer argument")
+		os.Exit(1)
 	}
-	defer pc.Close()
+
+	answer, err := handleOffer(*offerFlag)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(1)
+	}
+
+	fmt.Println(answer)
+}
+
+// handleOffer takes a base64-encoded "share ID" -- the same compressed
+// srflx address+port token used elsewhere in this project, not a full SDP
+// offer -- sets up the peer connection as the answerer (screen-share track
+// + the same five negotiated data channels the browser side expects), and
+// returns the base64-encoded SDP answer.
+func handleOffer(offerB64 string) (string, error) {
+	address, port, err := decodeAddressPort(offerB64)
+	if err != nil {
+		return "", fmt.Errorf("decode share id: %w", err)
+	}
+
+	cert, err := loadCertificate()
+	if err != nil {
+		return "", fmt.Errorf("load certificate: %w", err)
+	}
+
+	settingEngine := webrtc.SettingEngine{}
+	settingEngine.SetICECredentials(usernameFragment, password)
+	// The compressed token only carries address+port, not the browser's
+	// real DTLS fingerprint, so the fingerprint we reconstruct below is a
+	// placeholder -- verification against it must be disabled.
+	settingEngine.DisableCertificateFingerprintVerification(true)
+
+	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine))
+
+	pc, err := api.NewPeerConnection(webrtc.Configuration{
+		ICEServers: []webrtc.ICEServer{
+			{URLs: []string{"stun:stun.l.google.com:19302"}},
+			{URLs: []string{"stun:stun.cloudflare.com:3478"}},
+		},
+		Certificates: []webrtc.Certificate{cert},
+	})
+	if err != nil {
+		return "", fmt.Errorf("new peer connection: %w", err)
+	}
+
+	if err := addDataChannels(pc); err != nil {
+		return "", fmt.Errorf("add data channels: %w", err)
+	}
 
 	track, err := setupScreenCapture()
 	if err != nil {
-		log.Fatalf("setup screen capture: %v", err)
+		return "", fmt.Errorf("setup screen capture: %w", err)
 	}
 
 	if _, err := pc.AddTransceiverFromTrack(track, webrtc.RTPTransceiverInit{
 		Direction: webrtc.RTPTransceiverDirectionSendonly,
 	}); err != nil {
-		log.Fatalf("add video track: %v", err)
+		return "", fmt.Errorf("add video track: %w", err)
 	}
 
-	localAddress, err := gatherLocalSrflxAddress(pc)
+	offerSDP, err := buildOfferSDP(address, port)
 	if err != nil {
-		log.Fatalf("gather local srflx address: %v", err)
+		return "", fmt.Errorf("build offer sdp: %w", err)
 	}
 
-	if err := writeGithubOutput("srflx_address", localAddress); err != nil {
-		log.Fatalf("write github output: %v", err)
+	if err := pc.SetRemoteDescription(webrtc.SessionDescription{
+		Type: webrtc.SDPTypeOffer,
+		SDP:  offerSDP,
+	}); err != nil {
+		return "", fmt.Errorf("set remote description: %w", err)
 	}
-	log.Println("local srflx address:", localAddress)
 
-	if remoteAddress != "" {
-		if err := connectToRemoteAddress(pc, remoteAddress, fingerprint); err != nil {
-			log.Fatalf("connect to remote address: %v", err)
+	answer, err := pc.CreateAnswer(nil)
+	if err != nil {
+		return "", fmt.Errorf("create answer: %w", err)
+	}
+
+	// ice-ufrag/ice-pwd already match usernameFragment/password because of
+	// SetICECredentials above -- no string patching needed here anymore.
+
+	found := make(chan *webrtc.ICECandidate, 1)
+	pc.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+		if candidate != nil && candidate.Typ == webrtc.ICECandidateTypeSrflx {
+			select {
+			case found <- candidate:
+			default: // already found one, ignore the rest
+			}
 		}
-		log.Println("connected to remote:", remoteAddress)
+	})
+
+	if err := pc.SetLocalDescription(answer); err != nil {
+		return "", fmt.Errorf("set local description: %w", err)
 	}
 
-	select {} // keep the process (and its tracks) alive
+	var candidate *webrtc.ICECandidate
+	select {
+	case candidate = <-found:
+	case <-time.After(30 * time.Second):
+		return "", fmt.Errorf("timed out waiting for srflx candidate")
+	}
+
+	return encodeAddressPort(candidate.Address, candidate.Port)
 }
 
-// setupPeerConnection builds the RTCPeerConnection with the same STUN
-// servers used on the browser side.
-func setupPeerConnection() (*webrtc.PeerConnection, error) {
-	return webrtc.NewPeerConnection(webrtc.Configuration{
-		ICEServers: []webrtc.ICEServer{
-			{URLs: []string{"stun:stun.l.google.com:19302"}},
-			{URLs: []string{"stun:stun.cloudflare.com:3478"}},
+// decodeAddressPort mirrors the browser Client's share-id codec: the
+// decoded bytes are the raw address (4 bytes IPv4 or 16 bytes IPv6)
+// followed by a little-endian uint16 port.
+func decodeAddressPort(shareID string) (string, uint16, error) {
+	raw, err := base64.StdEncoding.DecodeString(shareID)
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid share id, does not meet bound requirements: %w", err)
+	}
+	if len(raw) < 3 {
+		return "", 0, fmt.Errorf("share id too short")
+	}
+
+	addrBytes := raw[:len(raw)-2]
+	port := binary.LittleEndian.Uint16(raw[len(raw)-2:])
+
+	switch len(addrBytes) {
+	case 4, 16:
+		return net.IP(addrBytes).String(), port, nil
+	default:
+		return "", 0, fmt.Errorf("invalid address byte length: %d", len(addrBytes))
+	}
+}
+
+// buildOfferSDP reconstructs a plausible offer SDP from just the peer's
+// address/port, the same trick Client.js's connectToShareId uses in
+// reverse: since we only get a compressed token (not a real browser
+// offer), we fill in the fixed, always-the-same protocol shape (one
+// audio, one video, one datachannel m= section, BUNDLEd) and let pion
+// fill in the rest via CreateAnswer. Built with pion/sdp's JSEP helpers
+// instead of hand-formatted "a=..." strings.
+func buildOfferSDP(address string, port uint16) (string, error) {
+	session, err := sdp.NewJSEPSessionDescription(false)
+	if err != nil {
+		return "", fmt.Errorf("new jsep session description: %w", err)
+	}
+	session.WithValueAttribute("group", "BUNDLE 0 1 2")
+
+	candidate := sdp.ICECandidate{
+		Foundation: "0",
+		Component:  1,
+		Priority:   1686052607,
+		Address:    address,
+		Protocol:   "udp",
+		Port:       port,
+		Typ:        "srflx",
+	}
+
+	rtpMedia := func(codecType string, mid int, payloadType uint8, codecName string, clockRate uint32, channels uint16) *sdp.MediaDescription {
+		return sdp.NewJSEPMediaDescription(codecType, nil).
+			WithValueAttribute("mid", fmt.Sprintf("%d", mid)).
+			WithICECredentials(usernameFragment, password).
+			// Placeholder -- DisableCertificateFingerprintVerification means
+			// this value is never actually checked.
+			WithFingerprint("sha-256", "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00").
+			WithPropertyAttribute("setup:actpass").
+			WithPropertyAttribute("recvonly").
+			WithPropertyAttribute("rtcp-mux").
+			WithICECandidate(candidate).
+			WithCodec(payloadType, codecName, clockRate, channels, "")
+	}
+
+	session.WithMedia(rtpMedia("audio", 0, 111, "opus", 48000, 2))
+	session.WithMedia(rtpMedia("video", 1, 102, "H264", 90000, 0))
+
+	dataMedia := (&sdp.MediaDescription{
+		MediaName: sdp.MediaName{
+			Media:   "application",
+			Port:    sdp.RangedPort{Value: 9},
+			Protos:  []string{"UDP", "DTLS", "SCTP"},
+			Formats: []string{"webrtc-datachannel"},
 		},
-	})
+	}).
+		WithValueAttribute("mid", "2").
+		WithICECredentials(usernameFragment, password).
+		WithFingerprint("sha-256", "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00").
+		WithPropertyAttribute("setup:actpass").
+		WithICECandidate(candidate).
+		WithValueAttribute("sctp-port", "5000").
+		WithValueAttribute("max-message-size", "262144")
+
+	session.WithMedia(dataMedia)
+
+	marshaled, err := session.Marshal()
+	if err != nil {
+		return "", fmt.Errorf("marshal offer sdp: %w", err)
+	}
+	return string(marshaled), nil
+}
+
+// loadCertificate loads the long-lived DTLS certificate/key pair from
+// ./certificate.pem and ./key.pem so the fingerprint pion negotiates stays
+// stable across runs (matching whatever is published in
+// ./public/fingerprint.txt for the browser side to trust ahead of time).
+func loadCertificate() (webrtc.Certificate, error) {
+	certFile, err := os.ReadFile(certPath)
+	if err != nil {
+		return webrtc.Certificate{}, fmt.Errorf("read %s: %w", certPath, err)
+	}
+	keyFile, err := os.ReadFile(keyPath)
+	if err != nil {
+		return webrtc.Certificate{}, fmt.Errorf("read %s: %w", keyPath, err)
+	}
+
+	cert, err := webrtc.CertificateFromPEM(string(certFile) + string(keyFile))
+	if err != nil {
+		return webrtc.Certificate{}, fmt.Errorf("parse certificate/key PEM: %w", err)
+	}
+
+	return *cert, nil
+}
+
+// encodeAddressPort packs a candidate address + port the same way the JS
+// getShareId() does: raw address bytes (4 for IPv4, 16 for IPv6) followed
+// by a little-endian uint16 port, base64-encoded.
+func encodeAddressPort(address string, port uint16) (string, error) {
+	ip := net.ParseIP(address)
+	if ip == nil {
+		return "", fmt.Errorf("invalid candidate address: %s", address)
+	}
+
+	var addrBytes []byte
+	if v4 := ip.To4(); v4 != nil && !strings.Contains(address, ":") {
+		addrBytes = v4
+	} else {
+		addrBytes = ip.To16()
+		if addrBytes == nil {
+			return "", fmt.Errorf("invalid candidate address: %s", address)
+		}
+	}
+
+	buf := make([]byte, len(addrBytes)+2)
+	copy(buf, addrBytes)
+	binary.LittleEndian.PutUint16(buf[len(addrBytes):], port)
+
+	return base64.StdEncoding.EncodeToString(buf), nil
+}
+
+// addDataChannels creates the same five negotiated data channels the
+// browser Client expects, with matching ids/labels/reliability settings.
+func addDataChannels(pc *webrtc.PeerConnection) error {
+	negotiated := true
+	zero := uint16(0)
+
+	channels := []struct {
+		label          string
+		id             uint16
+		ordered        bool
+		maxRetransmits *uint16
+	}{
+		{"pointer-movement", 0, false, &zero},
+		{"pointer-click", 1, true, nil},
+		{"keyboard", 2, true, nil},
+		{"screen-resize", 3, false, nil},
+		{"scroll", 4, false, &zero},
+	}
+
+	for _, ch := range channels {
+		ordered := ch.ordered
+		id := ch.id
+		if _, err := pc.CreateDataChannel(ch.label, &webrtc.DataChannelInit{
+			Ordered:        &ordered,
+			MaxRetransmits: ch.maxRetransmits,
+			Negotiated:     &negotiated,
+			ID:             &id,
+		}); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func setupScreenCapture() (mediadevices.Track, error) {
@@ -97,98 +335,4 @@ func setupScreenCapture() (mediadevices.Track, error) {
 		return nil, fmt.Errorf("no video tracks returned by getDisplayMedia")
 	}
 	return tracks[0].(mediadevices.Track), nil
-}
-
-func gatherLocalSrflxAddress(pc *webrtc.PeerConnection) (string, error) {
-	offer, err := pc.CreateOffer(nil)
-	if err != nil {
-		return "", fmt.Errorf("create offer: %w", err)
-	}
-
-	sdp := replaceAllAttr(offer.SDP, "a=ice-ufrag:", usernameFragment)
-	sdp = replaceAllAttr(sdp, "a=ice-pwd:", password)
-
-	found := make(chan string, 1)
-	pc.OnICECandidate(func(candidate *webrtc.ICECandidate) {
-		if candidate != nil && candidate.Typ == webrtc.ICECandidateTypeSrflx {
-			select {
-			case found <- fmt.Sprintf("%s:%d", candidate.Address, candidate.Port):
-			default: // already found one, ignore the rest
-			}
-		}
-	})
-
-	if err := pc.SetLocalDescription(webrtc.SessionDescription{Type: offer.Type, SDP: sdp}); err != nil {
-		return "", fmt.Errorf("set local description: %w", err)
-	}
-
-	select {
-	case addr := <-found:
-		return addr, nil
-	case <-time.After(30 * time.Second):
-		return "", fmt.Errorf("timed out waiting for srflx candidate")
-	}
-}
-
-func connectToRemoteAddress(pc *webrtc.PeerConnection, remoteAddress, fingerprint string) error {
-	host, port, err := net.SplitHostPort(remoteAddress)
-	if err != nil {
-		return fmt.Errorf("parse remote address: %w", err)
-	}
-
-	iceLines := []string{
-		fmt.Sprintf("c=IN IP4 %s", host),
-		fmt.Sprintf("a=ice-ufrag:%s", usernameFragment),
-		fmt.Sprintf("a=ice-pwd:%s", password),
-		fmt.Sprintf("a=fingerprint:sha-256 %s", fingerprint),
-		"a=setup:active",
-		fmt.Sprintf("a=candidate:0 1 UDP %d %s %s typ srflx", iceCandidatePrio, host, port),
-	}
-
-	section := func(mLine string, mid int, extra ...string) []string {
-		lines := append([]string{mLine}, iceLines...)
-		lines = append(lines, extra...)
-		lines = append(lines, fmt.Sprintf("a=mid:%d", mid), "a=rtcp-mux")
-		return lines
-	}
-
-	sdp := []string{"v=0", "o=- 0 0 IN IP4 0.0.0.0", "s=-", "t=0 0", "a=group:BUNDLE 0 1 2"}
-	sdp = append(sdp, section("m=audio 9 UDP/TLS/RTP/SAVPF 111", 0, "a=recvonly", "a=rtpmap:111 opus/48000/2")...)
-	sdp = append(sdp, section("m=video 9 UDP/TLS/RTP/SAVPF 102", 1, "a=sendonly", "a=rtpmap:102 H264/90000")...)
-	sdp = append(sdp, section("m=application 9 UDP/DTLS/SCTP webrtc-datachannel", 2,
-		"a=sctp-port:5000", "a=max-message-size:262144")...)
-	sdp = append(sdp, "")
-
-	return pc.SetRemoteDescription(webrtc.SessionDescription{
-		Type: webrtc.SDPTypeAnswer,
-		SDP:  strings.Join(sdp, "\r\n"),
-	})
-}
-
-func replaceAllAttr(sdp, prefix, value string) string {
-	lines := strings.Split(sdp, "\r\n")
-	for i, line := range lines {
-		if strings.HasPrefix(line, prefix) {
-			lines[i] = prefix + value
-		}
-	}
-	return strings.Join(lines, "\r\n")
-}
-
-
-func writeGithubOutput(key, value string) error {
-	path := os.Getenv("GITHUB_OUTPUT")
-	if path == "" {
-		fmt.Printf("GITHUB_OUTPUT not set, would have written: %s=%s\n", key, value)
-		return nil
-	}
-
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("open GITHUB_OUTPUT: %w", err)
-	}
-	defer f.Close()
-
-	_, err = fmt.Fprintf(f, "%s=%s\n", key, value)
-	return err
 }
