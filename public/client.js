@@ -208,8 +208,9 @@ export default class Client extends RTCPeerConnection {
 			throw new Error("Invalid connection token, does not meet bound requirements!");
 		}
 
-		const address = bytesToIPAddress(sharedBytes.subarray(0, written - 2));
-		const port = sharedView.getUint16(address.byteLength, true);
+		const addressByteLength = written - 2;
+		const address = bytesToIPAddress(sharedBytes.subarray(0, addressByteLength));
+		const port = sharedView.getUint16(addressByteLength, true);
 		const isIPv6 = address.includes(":");
 
 		const commonIceLines = [

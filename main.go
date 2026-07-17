@@ -36,36 +36,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	answer, err := handleOffer(*offerFlag)
+	address, port, err := decodeAddressPort(*offerFlag)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
+		fmt.Fprintln(os.Stderr, "decode share id:", err)
 		os.Exit(1)
-	}
-
-	fmt.Println(answer)
-}
-
-// handleOffer takes a base64-encoded "share ID" -- the same compressed
-// srflx address+port token used elsewhere in this project, not a full SDP
-// offer -- sets up the peer connection as the answerer (screen-share track
-// + the same five negotiated data channels the browser side expects), and
-// returns the base64-encoded SDP answer.
-func handleOffer(offerB64 string) (string, error) {
-	address, port, err := decodeAddressPort(offerB64)
-	if err != nil {
-		return "", fmt.Errorf("decode share id: %w", err)
 	}
 
 	cert, err := loadCertificate()
 	if err != nil {
-		return "", fmt.Errorf("load certificate: %w", err)
+		fmt.Fprintln(os.Stderr, "load certificate:", err)
+		os.Exit(1)
 	}
 
 	settingEngine := webrtc.SettingEngine{}
 	settingEngine.SetICECredentials(usernameFragment, password)
-	// The compressed token only carries address+port, not the browser's
-	// real DTLS fingerprint, so the fingerprint we reconstruct below is a
-	// placeholder -- verification against it must be disabled.
 	settingEngine.DisableCertificateFingerprintVerification(true)
 
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine))
@@ -78,66 +62,97 @@ func handleOffer(offerB64 string) (string, error) {
 		Certificates: []webrtc.Certificate{cert},
 	})
 	if err != nil {
-		return "", fmt.Errorf("new peer connection: %w", err)
+		fmt.Fprintln(os.Stderr, "new peer connection:", err)
+		os.Exit(1)
 	}
+	defer pc.Close()
 
 	if err := addDataChannels(pc); err != nil {
-		return "", fmt.Errorf("add data channels: %w", err)
+		fmt.Fprintln(os.Stderr, "add data channels:", err)
+		os.Exit(1)
 	}
 
 	track, err := setupScreenCapture()
 	if err != nil {
-		return "", fmt.Errorf("setup screen capture: %w", err)
+		fmt.Fprintln(os.Stderr, "setup screen capture:", err)
+		os.Exit(1)
 	}
 
 	if _, err := pc.AddTransceiverFromTrack(track, webrtc.RTPTransceiverInit{
 		Direction: webrtc.RTPTransceiverDirectionSendonly,
 	}); err != nil {
-		return "", fmt.Errorf("add video track: %w", err)
+		fmt.Fprintln(os.Stderr, "add video track:", err)
+		os.Exit(1)
 	}
 
 	offerSDP, err := buildOfferSDP(address, port)
 	if err != nil {
-		return "", fmt.Errorf("build offer sdp: %w", err)
+		fmt.Fprintln(os.Stderr, "build offer sdp:", err)
+		os.Exit(1)
 	}
 
 	if err := pc.SetRemoteDescription(webrtc.SessionDescription{
 		Type: webrtc.SDPTypeOffer,
 		SDP:  offerSDP,
 	}); err != nil {
-		return "", fmt.Errorf("set remote description: %w", err)
+		fmt.Fprintln(os.Stderr, "set remote description:", err)
+		os.Exit(1)
 	}
 
 	answer, err := pc.CreateAnswer(nil)
 	if err != nil {
-		return "", fmt.Errorf("create answer: %w", err)
+		fmt.Fprintln(os.Stderr, "create answer:", err)
+		os.Exit(1)
 	}
-
-	// ice-ufrag/ice-pwd already match usernameFragment/password because of
-	// SetICECredentials above -- no string patching needed here anymore.
 
 	found := make(chan *webrtc.ICECandidate, 1)
 	pc.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		if candidate != nil && candidate.Typ == webrtc.ICECandidateTypeSrflx {
 			select {
 			case found <- candidate:
-			default: // already found one, ignore the rest
+			default:
 			}
 		}
 	})
 
 	if err := pc.SetLocalDescription(answer); err != nil {
-		return "", fmt.Errorf("set local description: %w", err)
+		fmt.Fprintln(os.Stderr, "set local description:", err)
+		os.Exit(1)
 	}
 
 	var candidate *webrtc.ICECandidate
 	select {
 	case candidate = <-found:
 	case <-time.After(30 * time.Second):
-		return "", fmt.Errorf("timed out waiting for srflx candidate")
+		fmt.Fprintln(os.Stderr, "timed out waiting for srflx candidate")
+		os.Exit(1)
 	}
 
-	return encodeAddressPort(candidate.Address, candidate.Port)
+	shareID, err := encodeAddressPort(candidate.Address, candidate.Port)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "encode share id:", err)
+		os.Exit(1)
+	}
+	fmt.Println(shareID)
+
+	// Keep the process alive for the lifetime of the connection.
+	closed := make(chan struct{})
+	var once sync.Once
+	pc.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
+		if s == webrtc.PeerConnectionStateFailed || s == webrtc.PeerConnectionStateClosed || s == webrtc.PeerConnectionStateDisconnected {
+			once.Do(func() { close(closed) })
+		}
+	})
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+
+	select {
+	case <-closed:
+		fmt.Fprintln(os.Stderr, "peer connection closed")
+	case s := <-sig:
+		fmt.Fprintln(os.Stderr, "received signal:", s)
+	}
 }
 
 // decodeAddressPort mirrors the browser Client's share-id codec: the
