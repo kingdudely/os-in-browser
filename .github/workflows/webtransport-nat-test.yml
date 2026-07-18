@@ -46,7 +46,7 @@ jobs:
 
       - name: Run server with cloudflared + WebTransport
         run: |
-          python3 -u << 'PYEOF'
+          python3 << 'PYEOF'
           import asyncio, socket, subprocess, base64, hashlib, sys, os
           from aiohttp import web
           from aioquic.asyncio.protocol import QuicConnectionProtocol
@@ -108,35 +108,55 @@ jobs:
               except Exception as e:
                   print(f"[!] punch failed: {e}")
 
-          async def punch_loop(client_ip, client_port, local_port):
+          async def punch_loop(local_port):
+              """Continuous hole-punching - aggressive at first, then maintenance"""
+              punches = 0
               while True:
-                  if client_ip and client_port:
-                      await punch_once(client_ip, client_port, local_port)
-                  await asyncio.sleep(28)
+                  if server_state["client_ip"] and server_state["client_port"]:
+                      await punch_once(server_state["client_ip"], server_state["client_port"], local_port)
+                      punches += 1
+                      if punches % 5 == 0:
+                          print(f"[*] Punched {punches} times to {server_state['client_ip']}:{server_state['client_port']}")
+                      # Aggressive: every 200ms for first 20 punches, then every 28s
+                      if punches < 20:
+                          await asyncio.sleep(0.2)
+                      else:
+                          await asyncio.sleep(28)
+                  else:
+                      await asyncio.sleep(0.5)
 
           class H3Protocol(QuicConnectionProtocol):
               def __init__(self, *a, **kw):
                   super().__init__(*a, **kw)
                   self._http = H3Connection(self._quic, enable_webtransport=True)
+                  print(f"[+] QUIC connection established from {self._quic.connection_id.hex()[:8]}")
 
               def quic_event_received(self, event):
-                  for e in self._http.handle_event(event):
-                      if isinstance(e, HeadersReceived):
-                          headers = dict(e.headers)
-                          if headers.get(b":method") == b"CONNECT" and headers.get(b":protocol") == b"webtransport":
-                              self._http.send_headers(e.stream_id, [(b":status", b"200")])
-                              print(f"[+] WebTransport session opened")
-                          else:
-                              self._http.send_headers(e.stream_id, [(b":status", b"404")], end_stream=True)
-                      elif isinstance(e, WebTransportStreamDataReceived):
-                          msg = e.data.decode('utf-8', errors='ignore')
-                          print(f"[+] stream: {msg}")
-                          self._http.send_data(e.stream_id, f"echo:{msg}".encode(), end_stream=False)
-                      elif isinstance(e, DatagramReceived):
-                          msg = e.data.decode('utf-8', errors='ignore')
-                          print(f"[+] dgram: {msg}")
-                          self._http.send_datagram(e.stream_id, f"echo:{msg}".encode())
-                  self.transmit()
+                  try:
+                      for e in self._http.handle_event(event):
+                          if isinstance(e, HeadersReceived):
+                              headers = dict(e.headers)
+                              method = headers.get(b":method", b"?").decode()
+                              proto = headers.get(b":protocol", b"?").decode()
+                              path = headers.get(b":path", b"?").decode()
+                              print(f"[+] Headers: {method} {path} protocol={proto}")
+                              if headers.get(b":method") == b"CONNECT" and headers.get(b":protocol") == b"webtransport":
+                                  self._http.send_headers(e.stream_id, [(b":status", b"200")])
+                                  print(f"[+] WebTransport session opened on stream {e.stream_id}")
+                              else:
+                                  self._http.send_headers(e.stream_id, [(b":status", b"404")], end_stream=True)
+                          elif isinstance(e, WebTransportStreamDataReceived):
+                              msg = e.data.decode('utf-8', errors='ignore')
+                              print(f"[+] stream: {msg}")
+                              self._http.send_data(e.stream_id, f"echo:{msg}".encode(), end_stream=False)
+                          elif isinstance(e, DatagramReceived):
+                              msg = e.data.decode('utf-8', errors='ignore')
+                              print(f"[+] dgram: {msg}")
+                              self._http.send_datagram(e.stream_id, f"echo:{msg}".encode())
+                      self.transmit()
+                  except Exception as ex:
+                      print(f"[!] Protocol error: {ex}")
+                      self.transmit()
 
           def cert_sha256():
               with open("cert.pem", "rb") as f:
@@ -151,6 +171,7 @@ jobs:
               server_state["client_ip"] = data.get("ip")
               server_state["client_port"] = data.get("port")
               print(f"[+] Client registered: {server_state['client_ip']}:{server_state['client_port']}")
+              print(f"[*] Starting aggressive hole-punch (200ms interval for 20 punches, then 28s)...")
               return web.json_response({
                   "server_ip": server_state["pub_ip"],
                   "server_port": server_state["pub_port"],
@@ -230,20 +251,40 @@ jobs:
                   log(`✓ Server: ${serverInfo.server_ip}:${serverInfo.server_port}`, 'ok');
 
                   // Step 3: Wait for server to start hole-punching
-                  log('Waiting for server to start punching...', 'info');
-                  await new Promise(r => setTimeout(r, 2000));
+                  log('Waiting for NAT hole to open (10s)...', 'info');
+                  await new Promise(r => setTimeout(r, 10000));
 
-                  // Step 4: Connect via WebTransport to server's public IP/port
+                  // Step 4: Connect via WebTransport with retries
                   log('Connecting via WebTransport...', 'info');
                   const digest = Uint8Array.from(atob(serverInfo.cert_hash), c => c.charCodeAt(0));
-                  const wt = new WebTransport(`https://${serverInfo.server_ip}:${serverInfo.server_port}/wt`, {
-                    serverCertificateHashes: [{ algorithm: 'sha-256', digest }]
-                  });
-
-                  await Promise.race([
-                    wt.ready,
-                    new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000))
-                  ]);
+                  
+                  let wt = null;
+                  let lastErr = null;
+                  for (let attempt = 1; attempt <= 6; attempt++) {
+                    try {
+                      wt = new WebTransport(`https://${serverInfo.server_ip}:${serverInfo.server_port}/wt`, {
+                        serverCertificateHashes: [{ algorithm: 'sha-256', digest }]
+                      });
+                      
+                      await Promise.race([
+                        wt.ready,
+                        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))
+                      ]);
+                      log(`✓ Connected on attempt ${attempt}`, 'ok');
+                      break;
+                    } catch (e) {
+                      lastErr = e;
+                      if (attempt < 6) {
+                        const wait = 1000 * attempt;
+                        log(`Attempt ${attempt} failed: ${e.message}, retrying in ${wait}ms...`, 'info');
+                        await new Promise(r => setTimeout(r, wait));
+                      }
+                    }
+                  }
+                  
+                  if (!wt || !wt.ready) {
+                    throw lastErr || new Error('WebTransport failed all attempts');
+                  }
                   log('✓ WebTransport connected!', 'ok');
 
                   // Step 5: Test bidirectional stream
@@ -295,7 +336,7 @@ jobs:
               print(f"[+] Server public: {pub_ip}:{pub_port}")
 
               # Start hole-punch loop
-              asyncio.create_task(punch_loop(None, None, LOCAL_QUIC_PORT))
+              asyncio.create_task(punch_loop(LOCAL_QUIC_PORT))
 
               # Start QUIC server
               quic_config = QuicConfiguration(alpn_protocols=H3_ALPN, is_client=False)
@@ -325,3 +366,5 @@ jobs:
 
           asyncio.run(main())
           PYEOF
+
+              
