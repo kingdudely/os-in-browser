@@ -36,20 +36,46 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libx11-dev libxext-dev libxtst-dev
+          sudo apt-get install -y libx11-dev libxext-dev libxtst-dev libx264-dev pkg-config
 
-      - name: Install Windows dependencies
+      - name: Install macOS dependencies
+        if: matrix.os == 'macos-latest'
+        run: brew install x264 pkg-config
+
+      - name: Install Windows MSYS2 toolchain
         if: matrix.os == 'windows-latest'
-        shell: bash
-        run: |
-          MINGW_LIB=$(dirname $(which ar))/../x86_64-w64-mingw32/lib
-          ar rcs "$MINGW_LIB/libssp.a"
+        uses: msys2/setup-msys2@main
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-x264
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-gcc
 
-      - name: Build
+      - name: Windows libssp workaround
+        if: matrix.os == 'windows-latest'
+        shell: msys2 {0}
+        run: |
+          MINGW_LIB=$(dirname $(which ar))/../lib
+          ar rcs "$MINGW_LIB/libssp.a" || true
+
+      - name: Build (Ubuntu/macOS)
+        if: matrix.os != 'windows-latest'
         shell: bash
         run: |
           mkdir -p dist
           GOARCH=amd64 CGO_ENABLED=1 GOOS=${{ matrix.goos }} \
+            go build -o "dist/${{ matrix.goos }}${{ matrix.ext }}" .
+
+      - name: Build (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: msys2 {0}
+        run: |
+          mkdir -p dist
+          export PATH="/mingw64/bin:$PATH"
+          export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig"
+          GOARCH=amd64 CGO_ENABLED=1 GOOS=windows \
             go build -o "dist/${{ matrix.goos }}${{ matrix.ext }}" .
 
       - name: Upload binary
