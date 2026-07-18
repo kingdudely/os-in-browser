@@ -70,8 +70,15 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Commit Files to Repo
-        uses: stefanzweifel/git-auto-commit-action@master
-        with:
-          commit_message: "Add cross-platform binaries to dist/"
-          file_pattern: "dist/*"
+      - name: Commit binaries
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dist/*
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Add cross-platform binaries to dist/"
+          git push

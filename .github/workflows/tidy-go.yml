@@ -1,0 +1,39 @@
+name: Tidy main.go
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tidy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+
+      - uses: actions/setup-go@main
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Set up go.mod
+        shell: bash
+        run: |
+          if [ ! -f go.mod ]; then
+            go mod init github.com/kingdudely/os-in-browser-runner
+          fi
+          go mod tidy
+
+      - name: Commit go.mod and go.sum
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add go.mod go.sum
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Update go.mod / go.sum"
+          git push
