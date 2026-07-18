@@ -43,8 +43,6 @@ jobs:
             fi
             sleep 1
           done
-          
-          wait $TUNNEL_PID || true
 
       - name: Run server with cloudflared + WebTransport
         run: |
