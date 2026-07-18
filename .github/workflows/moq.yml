@@ -1,80 +1,189 @@
-name: NAT Type Test
+name: QUIC Runner (WebRTC hole-punch + HTTP/3, single-file)
 
 on:
   workflow_dispatch: {}
 
 jobs:
-  test-nat:
+  serve:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Write NAT test script
-        run: |
-          cat > nat_test.py << 'PYEOF'
-          import socket
-          import struct
-          import random
+      - name: Install deps
+        run: pip install aiortc aioquic aiohttp cryptography
 
-          def stun_request(sock, server, port=19302):
-              msg_type = 0x0001
-              msg_len = 0
-              magic_cookie = 0x2112A442
-              txn_id = random.randbytes(12)
-              packet = struct.pack("!HHI12s", msg_type, msg_len, magic_cookie, txn_id)
-              sock.sendto(packet, (server, port))
-              data, _ = sock.recvfrom(2048)
-              i = 20
-              while i < len(data):
-                  attr_type, attr_len = struct.unpack("!HH", data[i:i+4])
-                  val = data[i+4:i+4+attr_len]
-                  if attr_type == 0x0020:  # XOR-MAPPED-ADDRESS
-                      xport = struct.unpack("!H", val[2:4])[0] ^ (magic_cookie >> 16)
-                      xip = struct.unpack("!I", val[4:8])[0] ^ magic_cookie
-                      ip = socket.inet_ntoa(struct.pack("!I", xip))
-                      return ip, xport
-                  elif attr_type == 0x0001:  # MAPPED-ADDRESS
-                      xport = struct.unpack("!H", val[2:4])[0]
-                      ip = socket.inet_ntoa(val[4:8])
-                      return ip, xport
-                  i += 4 + attr_len + (attr_len % 4)
+      - name: Install cloudflared
+        run: |
+          curl -L -o cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          chmod +x cloudflared
+          sudo mv cloudflared /usr/local/bin/
+
+      - name: Generate self-signed cert for HTTP/3
+        run: |
+          openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+            -keyout key.pem -out cert.pem -days 14 -nodes -subj "/CN=os-in-browser"
+
+      - name: Write landing page (offer -> srflx -> iframe swap)
+        run: |
+          mkdir -p www
+          cat > www/index.html << 'HTMLEOF'
+          <!doctype html><html><body>
+          <h1>os-in-browser</h1>
+          <iframe id="target" style="width:100%;height:80vh;border:0"></iframe>
+          <script>
+          async function main() {
+            const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+            pc.createDataChannel("keepalive"); // keeps ICE consent checks flowing after this
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+
+            // wait for local ICE gathering so the SDP we send is complete
+            await new Promise(resolve => {
+              if (pc.iceGatheringState === "complete") return resolve();
+              pc.onicegatheringstatechange = () => {
+                if (pc.iceGatheringState === "complete") resolve();
+              };
+            });
+
+            const res = await fetch("/offer", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type }),
+            });
+            const { answer, srflx } = await res.json();
+            await pc.setRemoteDescription(answer);
+
+            const [ip, port] = srflx.split(":");
+            document.getElementById("target").src = `https://${ip}:${port}/`;
+          }
+          main();
+          </script>
+          </body></html>
+          HTMLEOF
+
+      - name: Write server (offer/answer + srflx harvest + HTTP/3, one process)
+        run: |
+          cat > server.py << 'PYEOF'
+          import asyncio
+          import json
+          import pathlib
+          import socket
+
+          from aiohttp import web
+          from aiortc import RTCPeerConnection, RTCConfiguration, RTCIceServer, RTCSessionDescription
+
+          from aioquic.asyncio import serve
+          from aioquic.quic.configuration import QuicConfiguration
+          from aioquic.h3.connection import H3_ALPN, H3Connection
+          from aioquic.asyncio.protocol import QuicConnectionProtocol
+          from aioquic.h3.events import HeadersReceived
+
+          INDEX_HTML = b"<p>Hello, world!</p>"
+
+
+          def extract_srflx(sdp: str):
+              for line in sdp.splitlines():
+                  if "typ srflx" in line:
+                      parts = line.split()
+                      return parts[4], int(parts[5])
               return None
 
-          sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-          sock.bind(("0.0.0.0", 0))
-          sock.settimeout(5)
 
-          servers = [
-              ("stun.l.google.com", 19302),
-              ("stun1.l.google.com", 19302),
-              ("stun.cloudflare.com", 3478),
-          ]
+          async def handle_offer(request):
+              body = await request.json()
+              offer = RTCSessionDescription(sdp=body["sdp"], type=body["type"])
 
-          results = []
-          for host, port in servers:
-              try:
-                  ip, mapped_port = stun_request(sock, host, port)
-                  print(f"{host}:{port} -> {ip}:{mapped_port}")
-                  results.append((ip, mapped_port))
-              except Exception as e:
-                  print(f"{host}:{port} -> failed ({e})")
+              # Bind our own UDP socket first so we control which local port
+              # STUN discovers a mapping for — that's the port aioquic will
+              # later rebind to, keeping the punched hole valid.
+              sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+              sock.bind(("0.0.0.0", 0))
+              local_port = sock.getsockname()[1]
 
-          print()
-          if len(results) >= 2:
-              ports = set(p for _, p in results)
-              ips = set(i for i, _ in results)
-              if len(ports) == 1 and len(ips) == 1:
-                  print("=> Likely CONE NAT (consistent mapping across servers) — srflx hole-punching is viable")
-              else:
-                  print("=> Likely SYMMETRIC NAT (mapping varies per destination) — srflx punching won't work, need a relay/TURN")
-          else:
-              print("=> Not enough successful STUN responses to determine NAT type")
+              pc = RTCPeerConnection(
+                  configuration=RTCConfiguration(
+                      iceServers=[RTCIceServer(urls=["stun:stun.l.google.com:19302"])]
+                  )
+              )
+              await pc.setRemoteDescription(offer)
+              answer = await pc.createAnswer()
+              await pc.setLocalDescription(answer)
+
+              while pc.iceGatheringState != "complete":
+                  await asyncio.sleep(0.1)
+
+              srflx = extract_srflx(pc.localDescription.sdp)
+              if not srflx:
+                  sock.close()
+                  return web.json_response({"error": "no srflx candidate"}, status=500)
+
+              srflx_ip, srflx_port = srflx
+              print(f"[+] srflx candidate: {srflx_ip}:{srflx_port} (local port {local_port})")
+
+              # Keep pc alive in app state so the browser's ICE keepalives
+              # (its datachannel) still have a live remote peer to talk to —
+              # do NOT close it here.
+              request.app["peers"].append(pc)
+
+              asyncio.create_task(start_quic(sock, local_port))
+
+              return web.json_response({
+                  "answer": {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type},
+                  "srflx": f"{srflx_ip}:{srflx_port}",
+              })
+
+
+          class H3Protocol(QuicConnectionProtocol):
+              def __init__(self, *args, **kwargs):
+                  super().__init__(*args, **kwargs)
+                  self._http = H3Connection(self._quic)
+
+              def quic_event_received(self, event):
+                  for h3_event in self._http.handle_event(event):
+                      if isinstance(h3_event, HeadersReceived):
+                          self._http.send_headers(
+                              stream_id=h3_event.stream_id,
+                              headers=[(b":status", b"200"), (b"content-type", b"text/html; charset=utf-8")],
+                          )
+                          self._http.send_data(stream_id=h3_event.stream_id, data=INDEX_HTML, end_stream=True)
+                  self.transmit()
+
+
+          async def start_quic(sock, local_port):
+              quic_config = QuicConfiguration(alpn_protocols=H3_ALPN, is_client=False)
+              quic_config.load_cert_chain("cert.pem", "key.pem")
+              sock.close()  # aioquic rebinds fresh, but on the SAME port
+              await serve("0.0.0.0", local_port, configuration=quic_config, create_protocol=H3Protocol)
+              print(f"[+] HTTP/3 serving on 0.0.0.0:{local_port}")
+
+
+          app = web.Application()
+          app["peers"] = []
+          app.router.add_post("/offer", handle_offer)
+          app.router.add_static("/", pathlib.Path("www"), show_index=True)
+
+          if __name__ == "__main__":
+              web.run_app(app, host="0.0.0.0", port=8080)
           PYEOF
 
-      - name: Run NAT test
-        run: python3 nat_test.py
+      - name: Start server
+        run: |
+          python3 server.py &
+          sleep 2
 
-      - name: Runner egress IP (for reference)
-        run: curl -s https://ifconfig.me && echo
+      - name: Start cloudflared quick tunnel
+        run: |
+          cloudflared tunnel --url http://localhost:8080 --no-autoupdate > tunnel.log 2>&1 &
+          for i in $(seq 1 15); do
+            URL=$(grep -o 'https://[a-zA-Z0-9.-]*trycloudflare.com' tunnel.log | head -n1)
+            [ -n "$URL" ] && break
+            sleep 1
+          done
+          [ -n "$URL" ] || { echo "Tunnel URL never appeared" >&2; cat tunnel.log; exit 1; }
+          echo "::notice title=Click this URL::$URL"
+
+      - name: Keep runner alive
+        run: sleep 1800
