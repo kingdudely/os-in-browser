@@ -96,18 +96,20 @@ jobs:
               body = await request.json()
               offer = RTCSessionDescription(sdp=body["sdp"], type=body["type"])
 
-              # Bind our own UDP socket first so we control which local port
-              # STUN discovers a mapping for — that's the port aioquic will
-              # later rebind to, keeping the punched hole valid.
-              sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-              sock.bind(("0.0.0.0", 0))
-              local_port = sock.getsockname()[1]
-
               pc = RTCPeerConnection(
                   configuration=RTCConfiguration(
                       iceServers=[RTCIceServer(urls=["stun:stun.l.google.com:19302"])]
                   )
               )
+
+              connected = asyncio.Event()
+
+              @pc.on("iceconnectionstatechange")
+              async def on_ice_state_change():
+                  print(f"[+] ICE state: {pc.iceConnectionState}")
+                  if pc.iceConnectionState == "connected":
+                      connected.set()
+
               await pc.setRemoteDescription(offer)
               answer = await pc.createAnswer()
               await pc.setLocalDescription(answer)
@@ -117,18 +119,35 @@ jobs:
 
               srflx = extract_srflx(pc.localDescription.sdp)
               if not srflx:
-                  sock.close()
                   return web.json_response({"error": "no srflx candidate"}, status=500)
-
               srflx_ip, srflx_port = srflx
-              print(f"[+] srflx candidate: {srflx_ip}:{srflx_port} (local port {local_port})")
 
               # Keep pc alive in app state so the browser's ICE keepalives
               # (its datachannel) still have a live remote peer to talk to —
               # do NOT close it here.
               request.app["peers"].append(pc)
 
-              asyncio.create_task(start_quic(sock, local_port))
+              # Respond to the browser now with the answer + expected srflx
+              # address, but only start HTTP/3 once ICE actually reports
+              # connected -- that's the real signal the NAT punch succeeded,
+              # not just that we harvested a candidate.
+              async def start_after_connected():
+                  await connected.wait()
+                  print("[+] ICE connected -- NAT binding is open toward the browser.")
+
+                  # Get the real local port ICE ended up using, via aioice's
+                  # public Connection API (component 1 = the only component
+                  # for a datachannel-only connection).
+                  ice_transport = pc.sctp.transport.transport
+                  default_candidate = ice_transport._connection.get_default_candidate(component=1)
+                  if default_candidate is None:
+                      print("[!] Could not resolve default candidate; aborting HTTP/3 startup")
+                      return
+                  local_port = default_candidate.port
+                  print(f"[+] ICE-connected local port: {local_port}, public srflx: {srflx_ip}:{srflx_port}")
+                  await start_quic(local_port)
+
+              asyncio.create_task(start_after_connected())
 
               return web.json_response({
                   "answer": {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type},
