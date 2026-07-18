@@ -1,0 +1,211 @@
+name: QUIC Runner (WebRTC hole-punch + HTTP/3, single-file)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  serve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install aiortc aioquic aiohttp cryptography
+
+      - name: Install cloudflared
+        run: |
+          curl -L -o cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          chmod +x cloudflared
+          sudo mv cloudflared /usr/local/bin/
+
+      - name: Generate self-signed cert for HTTP/3
+        run: |
+          openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+            -keyout key.pem -out cert.pem -days 14 -nodes -subj "/CN=os-in-browser"
+          CERTHASH=$(openssl x509 -in cert.pem -outform der | openssl dgst -sha256 | awk '{print $2}')
+          echo "CERTHASH=$CERTHASH" >> "$GITHUB_ENV"
+
+      - name: Write signaling relay + landing page
+        run: |
+          mkdir -p www
+          cat > www/index.html << 'HTMLEOF'
+          <!doctype html><html><body>
+          <h1>os-in-browser signaling relay</h1>
+          <p>POST/GET /srflx to exchange the runner's punched address.</p>
+          <script>
+          async function main() {
+            const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+            pc.createDataChannel("keepalive");
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            // Wait for the runner to publish its srflx pair, then embed it
+            // in an iframe INSTEAD of navigating away, so this pc (and its
+            // NAT mapping) stays alive to keep the hole punched.
+            let srflx = null;
+            while (!srflx) {
+              const res = await fetch("/srflx");
+              if (res.ok) srflx = await res.text();
+              else await new Promise(r => setTimeout(r, 1000));
+            }
+            const [ip, port] = srflx.split(":");
+            const iframe = document.createElement("iframe");
+            iframe.src = `https://${ip}:${port}/`;
+            iframe.style = "width:100%;height:80vh;border:0";
+            document.body.appendChild(iframe);
+          }
+          main();
+          </script>
+          </body></html>
+          HTMLEOF
+
+          cat > signaling.py << 'PYEOF'
+          from aiohttp import web
+          import pathlib
+
+          STORE = {}
+
+          async def post_srflx(request):
+              STORE["srflx"] = await request.text()
+              return web.Response(text="ok")
+
+          async def get_srflx(request):
+              data = STORE.get("srflx")
+              if data is None:
+                  return web.Response(status=404)
+              return web.Response(text=data)
+
+          app = web.Application()
+          app.router.add_post("/srflx", post_srflx)
+          app.router.add_get("/srflx", get_srflx)
+          app.router.add_static("/", pathlib.Path("www"), show_index=True)
+
+          if __name__ == "__main__":
+              web.run_app(app, host="0.0.0.0", port=8080)
+          PYEOF
+
+      - name: Write runner (hole-punch + HTTP/3 server)
+        run: |
+          cat > runner.py << 'PYEOF'
+          import argparse
+          import asyncio
+          import socket
+
+          import aiohttp
+          from aiortc import RTCPeerConnection, RTCConfiguration, RTCIceServer
+
+          from aioquic.asyncio import serve
+          from aioquic.quic.configuration import QuicConfiguration
+          from aioquic.h3.connection import H3_ALPN, H3Connection
+          from aioquic.asyncio.protocol import QuicConnectionProtocol
+          from aioquic.h3.events import HeadersReceived
+
+          INDEX_HTML = b"""<!doctype html><html><body>
+          <h1>os-in-browser runner</h1>
+          <p>Served over HTTP/3 from the runner's srflx (hole-punched) address.</p>
+          </body></html>"""
+
+
+          async def harvest_srflx(stun_server="stun:stun.l.google.com:19302"):
+              sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+              sock.bind(("0.0.0.0", 0))
+              local_port = sock.getsockname()[1]
+
+              pc = RTCPeerConnection(
+                  configuration=RTCConfiguration(iceServers=[RTCIceServer(urls=[stun_server])])
+              )
+              pc.createDataChannel("probe")
+              offer = await pc.createOffer()
+              await pc.setLocalDescription(offer)
+
+              while pc.iceGatheringState != "complete":
+                  await asyncio.sleep(0.1)
+
+              srflx = None
+              for line in pc.localDescription.sdp.splitlines():
+                  if "typ srflx" in line:
+                      parts = line.split()
+                      srflx = (parts[4], int(parts[5]))
+                      break
+
+              await pc.close()
+              if not srflx:
+                  raise RuntimeError("No srflx candidate discovered")
+              return srflx[0], srflx[1], sock, local_port
+
+
+          class H3Protocol(QuicConnectionProtocol):
+              def __init__(self, *args, **kwargs):
+                  super().__init__(*args, **kwargs)
+                  self._http = H3Connection(self._quic)
+
+              def quic_event_received(self, event):
+                  for h3_event in self._http.handle_event(event):
+                      if isinstance(h3_event, HeadersReceived):
+                          self._http.send_headers(
+                              stream_id=h3_event.stream_id,
+                              headers=[(b":status", b"200"), (b"content-type", b"text/html; charset=utf-8")],
+                          )
+                          self._http.send_data(stream_id=h3_event.stream_id, data=INDEX_HTML, end_stream=True)
+                  self.transmit()
+
+
+          async def main():
+              ap = argparse.ArgumentParser()
+              ap.add_argument("--signaling-url", required=True)
+              ap.add_argument("--cert", required=True)
+              ap.add_argument("--key", required=True)
+              args = ap.parse_args()
+
+              srflx_ip, srflx_port, sock, local_port = await harvest_srflx()
+              print(f"[+] srflx candidate: {srflx_ip}:{srflx_port} (local port {local_port})")
+
+              async with aiohttp.ClientSession() as session:
+                  await session.post(f"{args.signaling_url}/srflx", data=f"{srflx_ip}:{srflx_port}")
+
+              quic_config = QuicConfiguration(alpn_protocols=H3_ALPN, is_client=False)
+              quic_config.load_cert_chain(args.cert, args.key)
+
+              # IMPORTANT: reuse the exact local_port STUN used, so the NAT
+              # mapping the browser is punching towards stays valid.
+              sock.close()
+
+              await serve("0.0.0.0", local_port, configuration=quic_config, create_protocol=H3Protocol)
+              print(f"[+] HTTP/3 serving on 0.0.0.0:{local_port} (public: {srflx_ip}:{srflx_port})")
+              await asyncio.Event().wait()
+
+
+          if __name__ == "__main__":
+              asyncio.run(main())
+          PYEOF
+
+      - name: Start signaling relay
+        run: |
+          python3 signaling.py &
+          echo $! > signaling.pid
+          sleep 2
+
+      - name: Start cloudflared quick tunnel (this IS the share ID)
+        run: |
+          cloudflared tunnel --url http://localhost:8080 --no-autoupdate > tunnel.log 2>&1 &
+          echo $! > tunnel.pid
+          for i in $(seq 1 15); do
+            URL=$(grep -o 'https://[a-zA-Z0-9.-]*trycloudflare.com' tunnel.log | head -n1)
+            [ -n "$URL" ] && break
+            sleep 1
+          done
+          if [ -z "$URL" ]; then
+            echo "Tunnel URL never appeared" >&2
+            cat tunnel.log
+            exit 1
+          fi
+          echo "$URL" > tunnel_url.txt
+          echo "::notice title=Share URL (open this in the browser)::$URL"
+
+      - name: Run hole-punch + HTTP/3 server
+        run: |
+          python3 runner.py \
+            --signaling-url "$(cat tunnel_url.txt)" \
+            --cert cert.pem --key key.pem
