@@ -46,7 +46,7 @@ jobs:
 
       - name: Run server with cloudflared + WebTransport
         run: |
-          python3 << 'PYEOF'
+          python3 -u << 'PYEOF'
           import asyncio, socket, subprocess, base64, hashlib, sys, os
           from aiohttp import web
           from aioquic.asyncio.protocol import QuicConnectionProtocol
