@@ -29,9 +29,26 @@ jobs:
           chmod +x cloudflared
           sudo mv cloudflared /usr/local/bin/
 
+      - name: Start cloudflared tunnel
+        run: |
+          timeout 1800 cloudflared tunnel --url http://localhost:8080 --no-autoupdate 2>&1 | tee tunnel.log &
+          TUNNEL_PID=$!
+          
+          # Wait for tunnel URL to appear
+          for i in $(seq 1 30); do
+            URL=$(grep -o 'https://[a-zA-Z0-9.-]*trycloudflare.com' tunnel.log | head -n1)
+            if [ -n "$URL" ]; then
+              echo "::notice title=Click to test::$URL"
+              break
+            fi
+            sleep 1
+          done
+          
+          wait $TUNNEL_PID || true
+
       - name: Run server with cloudflared + WebTransport
         run: |
-          python3 << 'PYEOF'
+          python3 -u << 'PYEOF'
           import asyncio, socket, subprocess, base64, hashlib, sys, os
           from aiohttp import web
           from aioquic.asyncio.protocol import QuicConnectionProtocol
@@ -310,20 +327,3 @@ jobs:
 
           asyncio.run(main())
           PYEOF
-
-      - name: Start cloudflared tunnel
-        run: |
-          timeout 1800 cloudflared tunnel --url http://localhost:8080 --no-autoupdate 2>&1 | tee tunnel.log &
-          TUNNEL_PID=$!
-          
-          # Wait for tunnel URL to appear
-          for i in $(seq 1 30); do
-            URL=$(grep -o 'https://[a-zA-Z0-9.-]*trycloudflare.com' tunnel.log | head -n1)
-            if [ -n "$URL" ]; then
-              echo "::notice title=Click to test::$URL"
-              break
-            fi
-            sleep 1
-          done
-          
-          wait $TUNNEL_PID || true
