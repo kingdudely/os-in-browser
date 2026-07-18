@@ -1,4 +1,4 @@
-name: QUIC Runner (WebRTC hole-punch + HTTP/3, single-file)
+name: WebTransport Hole-Punch Test (single-file)
 
 on:
   workflow_dispatch: {}
@@ -6,14 +6,14 @@ on:
 jobs:
   serve:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install deps
-        run: pip install aiortc aioquic aiohttp cryptography
+        run: pip install "aiortc>=1.9" "aioquic>=0.9.20" aiohttp cryptography
 
       - name: Install cloudflared
         run: |
@@ -21,26 +21,27 @@ jobs:
           chmod +x cloudflared
           sudo mv cloudflared /usr/local/bin/
 
-      - name: Generate self-signed cert for HTTP/3
+      - name: Generate short-lived ECDSA cert for WebTransport
         run: |
           openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
-            -keyout key.pem -out cert.pem -days 14 -nodes -subj "/CN=os-in-browser"
+            -keyout key.pem -out cert.pem -days 13 -nodes -subj "/CN=wt-test"
 
-      - name: Write landing page (offer -> srflx -> iframe swap)
+      - name: Write landing page (offer -> srflx -> WebTransport echo test)
         run: |
           mkdir -p www
           cat > www/index.html << 'HTMLEOF'
           <!doctype html><html><body>
-          <h1>os-in-browser</h1>
-          <iframe id="target" style="width:100%;height:80vh;border:0"></iframe>
+          <h1>WebTransport hole-punch test</h1>
+          <pre id="log">connecting...</pre>
           <script>
+          const log = (m) => { document.getElementById("log").textContent += "\n" + m; console.log(m); };
+
           async function main() {
             const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
-            pc.createDataChannel("keepalive"); // keeps ICE consent checks flowing after this
+            pc.createDataChannel("keepalive"); // keeps ICE consent checks flowing
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
 
-            // wait for local ICE gathering so the SDP we send is complete
             await new Promise(resolve => {
               if (pc.iceGatheringState === "complete") return resolve();
               pc.onicegatheringstatechange = () => {
@@ -48,29 +49,56 @@ jobs:
               };
             });
 
+            log("posting offer...");
             const res = await fetch("/offer", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type }),
             });
-            const { answer, srflx } = await res.json();
+            const { answer, srflx, certHash } = await res.json();
             await pc.setRemoteDescription(answer);
+            log(`got srflx=${srflx}`);
 
             const [ip, port] = srflx.split(":");
-            document.getElementById("target").src = `https://${ip}:${port}/`;
+            const digest = Uint8Array.from(atob(certHash), c => c.charCodeAt(0));
+
+            log("opening WebTransport session...");
+            const transport = new WebTransport(`https://${ip}:${port}/wt`, {
+              serverCertificateHashes: [{ algorithm: "sha-256", digest }],
+            });
+
+            await transport.ready;
+            log("WebTransport session established!");
+
+            // Bidi stream echo test
+            const stream = await transport.createBidirectionalStream();
+            const writer = stream.writable.getWriter();
+            const reader = stream.readable.getReader();
+            await writer.write(new TextEncoder().encode("ping-stream"));
+            const { value } = await reader.read();
+            log(`stream echo reply: ${new TextDecoder().decode(value)}`);
+
+            // Datagram echo test
+            const dgWriter = transport.datagrams.writable.getWriter();
+            const dgReader = transport.datagrams.readable.getReader();
+            await dgWriter.write(new TextEncoder().encode("ping-datagram"));
+            const { value: dgValue } = await dgReader.read();
+            log(`datagram echo reply: ${new TextDecoder().decode(dgValue)}`);
+
+            log("TEST PASSED: NAT hole-punch + WebTransport round trip OK");
           }
-          main();
+          main().catch(e => log("ERROR: " + e));
           </script>
           </body></html>
           HTMLEOF
 
-      - name: Write server (offer/answer + srflx harvest + HTTP/3, one process)
+      - name: Write server (offer/answer + srflx harvest + WebTransport echo)
         run: |
           cat > server.py << 'PYEOF'
           import asyncio
-          import json
+          import base64
+          import hashlib
           import pathlib
-          import socket
 
           from aiohttp import web
           from aiortc import RTCPeerConnection, RTCConfiguration, RTCIceServer, RTCSessionDescription
@@ -79,9 +107,17 @@ jobs:
           from aioquic.quic.configuration import QuicConfiguration
           from aioquic.h3.connection import H3_ALPN, H3Connection
           from aioquic.asyncio.protocol import QuicConnectionProtocol
-          from aioquic.h3.events import HeadersReceived
+          from aioquic.h3.events import HeadersReceived, WebTransportStreamDataReceived, DatagramReceived
 
-          INDEX_HTML = b"<p>Hello, world!</p>"
+          from cryptography import x509
+          from cryptography.hazmat.primitives.serialization import Encoding
+
+
+          def cert_sha256_b64(path="cert.pem"):
+              with open(path, "rb") as f:
+                  cert = x509.load_pem_x509_certificate(f.read())
+              der = cert.public_bytes(Encoding.DER)
+              return base64.b64encode(hashlib.sha256(der).digest()).decode()
 
 
           def extract_srflx(sdp: str):
@@ -90,6 +126,41 @@ jobs:
                       parts = line.split()
                       return parts[4], int(parts[5])
               return None
+
+
+          class H3Protocol(QuicConnectionProtocol):
+              def __init__(self, *args, **kwargs):
+                  super().__init__(*args, **kwargs)
+                  self._http = H3Connection(self._quic, enable_webtransport=True)
+                  self._sessions = set()
+
+              def quic_event_received(self, event):
+                  for h3_event in self._http.handle_event(event):
+                      if isinstance(h3_event, HeadersReceived):
+                          headers = dict(h3_event.headers)
+                          if headers.get(b":method") == b"CONNECT" and headers.get(b":protocol") == b"webtransport":
+                              self._sessions.add(h3_event.stream_id)
+                              self._http.send_headers(h3_event.stream_id, [(b":status", b"200")])
+                              print(f"[+] WebTransport session established on stream {h3_event.stream_id}")
+                          else:
+                              self._http.send_headers(h3_event.stream_id, [(b":status", b"404")], end_stream=True)
+                      elif isinstance(h3_event, WebTransportStreamDataReceived):
+                          print(f"[+] stream data received: {h3_event.data!r}")
+                          # simple echo back on the same stream
+                          self._http.send_data(h3_event.stream_id, b"pong-stream", end_stream=False)
+                      elif isinstance(h3_event, DatagramReceived):
+                          print(f"[+] datagram received: {h3_event.data!r}")
+                          # simple echo back as a datagram on the same session
+                          for session_id in self._sessions:
+                              self._http.send_datagram(session_id, b"pong-datagram")
+                  self.transmit()
+
+
+          async def start_quic(local_port):
+              quic_config = QuicConfiguration(alpn_protocols=H3_ALPN, is_client=False)
+              quic_config.load_cert_chain("cert.pem", "key.pem")
+              await serve("0.0.0.0", local_port, configuration=quic_config, create_protocol=H3Protocol)
+              print(f"[+] WebTransport/HTTP3 serving on 0.0.0.0:{local_port}")
 
 
           async def handle_offer(request):
@@ -122,26 +193,15 @@ jobs:
                   return web.json_response({"error": "no srflx candidate"}, status=500)
               srflx_ip, srflx_port = srflx
 
-              # Keep pc alive in app state so the browser's ICE keepalives
-              # (its datachannel) still have a live remote peer to talk to —
-              # do NOT close it here.
               request.app["peers"].append(pc)
 
-              # Respond to the browser now with the answer + expected srflx
-              # address, but only start HTTP/3 once ICE actually reports
-              # connected -- that's the real signal the NAT punch succeeded,
-              # not just that we harvested a candidate.
               async def start_after_connected():
                   await connected.wait()
                   print("[+] ICE connected -- NAT binding is open toward the browser.")
-
-                  # Get the real local port ICE ended up using, via aioice's
-                  # public Connection API (component 1 = the only component
-                  # for a datachannel-only connection).
                   ice_transport = pc.sctp.transport.transport
                   default_candidate = ice_transport._connection.get_default_candidate(component=1)
                   if default_candidate is None:
-                      print("[!] Could not resolve default candidate; aborting HTTP/3 startup")
+                      print("[!] Could not resolve default candidate; aborting WebTransport startup")
                       return
                   local_port = default_candidate.port
                   print(f"[+] ICE-connected local port: {local_port}, public srflx: {srflx_ip}:{srflx_port}")
@@ -152,31 +212,8 @@ jobs:
               return web.json_response({
                   "answer": {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type},
                   "srflx": f"{srflx_ip}:{srflx_port}",
+                  "certHash": cert_sha256_b64(),
               })
-
-
-          class H3Protocol(QuicConnectionProtocol):
-              def __init__(self, *args, **kwargs):
-                  super().__init__(*args, **kwargs)
-                  self._http = H3Connection(self._quic)
-
-              def quic_event_received(self, event):
-                  for h3_event in self._http.handle_event(event):
-                      if isinstance(h3_event, HeadersReceived):
-                          self._http.send_headers(
-                              stream_id=h3_event.stream_id,
-                              headers=[(b":status", b"200"), (b"content-type", b"text/html; charset=utf-8")],
-                          )
-                          self._http.send_data(stream_id=h3_event.stream_id, data=INDEX_HTML, end_stream=True)
-                  self.transmit()
-
-
-          async def start_quic(sock, local_port):
-              quic_config = QuicConfiguration(alpn_protocols=H3_ALPN, is_client=False)
-              quic_config.load_cert_chain("cert.pem", "key.pem")
-              sock.close()  # aioquic rebinds fresh, but on the SAME port
-              await serve("0.0.0.0", local_port, configuration=quic_config, create_protocol=H3Protocol)
-              print(f"[+] HTTP/3 serving on 0.0.0.0:{local_port}")
 
 
           app = web.Application()
@@ -205,4 +242,4 @@ jobs:
           echo "::notice title=Click this URL::$URL"
 
       - name: Keep runner alive
-        run: sleep 1800
+        run: sleep 900
