@@ -25,76 +25,55 @@ jobs:
         run: |
           openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
             -keyout key.pem -out cert.pem -days 14 -nodes -subj "/CN=os-in-browser"
-          CERTHASH=$(openssl x509 -in cert.pem -outform der | openssl dgst -sha256 | awk '{print $2}')
-          echo "CERTHASH=$CERTHASH" >> "$GITHUB_ENV"
 
-      - name: Write signaling relay + landing page
+      - name: Write landing page (offer -> srflx -> iframe swap)
         run: |
           mkdir -p www
           cat > www/index.html << 'HTMLEOF'
           <!doctype html><html><body>
-          <h1>os-in-browser signaling relay</h1>
-          <p>POST/GET /srflx to exchange the runner's punched address.</p>
+          <h1>os-in-browser</h1>
+          <iframe id="target" style="width:100%;height:80vh;border:0"></iframe>
           <script>
           async function main() {
             const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
-            pc.createDataChannel("keepalive");
+            pc.createDataChannel("keepalive"); // keeps ICE consent checks flowing after this
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
-            // Wait for the runner to publish its srflx pair, then embed it
-            // in an iframe INSTEAD of navigating away, so this pc (and its
-            // NAT mapping) stays alive to keep the hole punched.
-            let srflx = null;
-            while (!srflx) {
-              const res = await fetch("/srflx");
-              if (res.ok) srflx = await res.text();
-              else await new Promise(r => setTimeout(r, 1000));
-            }
+
+            // wait for local ICE gathering so the SDP we send is complete
+            await new Promise(resolve => {
+              if (pc.iceGatheringState === "complete") return resolve();
+              pc.onicegatheringstatechange = () => {
+                if (pc.iceGatheringState === "complete") resolve();
+              };
+            });
+
+            const res = await fetch("/offer", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type }),
+            });
+            const { answer, srflx } = await res.json();
+            await pc.setRemoteDescription(answer);
+
             const [ip, port] = srflx.split(":");
-            const iframe = document.createElement("iframe");
-            iframe.src = `https://${ip}:${port}/`;
-            iframe.style = "width:100%;height:80vh;border:0";
-            document.body.appendChild(iframe);
+            document.getElementById("target").src = `https://${ip}:${port}/`;
           }
           main();
           </script>
           </body></html>
           HTMLEOF
 
-          cat > signaling.py << 'PYEOF'
-          from aiohttp import web
-          import pathlib
-
-          STORE = {}
-
-          async def post_srflx(request):
-              STORE["srflx"] = await request.text()
-              return web.Response(text="ok")
-
-          async def get_srflx(request):
-              data = STORE.get("srflx")
-              if data is None:
-                  return web.Response(status=404)
-              return web.Response(text=data)
-
-          app = web.Application()
-          app.router.add_post("/srflx", post_srflx)
-          app.router.add_get("/srflx", get_srflx)
-          app.router.add_static("/", pathlib.Path("www"), show_index=True)
-
-          if __name__ == "__main__":
-              web.run_app(app, host="0.0.0.0", port=8080)
-          PYEOF
-
-      - name: Write runner (hole-punch + HTTP/3 server)
+      - name: Write server (offer/answer + srflx harvest + HTTP/3, one process)
         run: |
-          cat > runner.py << 'PYEOF'
-          import argparse
+          cat > server.py << 'PYEOF'
           import asyncio
+          import json
+          import pathlib
           import socket
 
-          import aiohttp
-          from aiortc import RTCPeerConnection, RTCConfiguration, RTCIceServer
+          from aiohttp import web
+          from aiortc import RTCPeerConnection, RTCConfiguration, RTCIceServer, RTCSessionDescription
 
           from aioquic.asyncio import serve
           from aioquic.quic.configuration import QuicConfiguration
@@ -102,38 +81,59 @@ jobs:
           from aioquic.asyncio.protocol import QuicConnectionProtocol
           from aioquic.h3.events import HeadersReceived
 
-          INDEX_HTML = b"""<!doctype html><html><body>
-          <h1>os-in-browser runner</h1>
-          <p>Served over HTTP/3 from the runner's srflx (hole-punched) address.</p>
-          </body></html>"""
+          INDEX_HTML = b"<p>Hello, world!</p>"
 
 
-          async def harvest_srflx(stun_server="stun:stun.l.google.com:19302"):
+          def extract_srflx(sdp: str):
+              for line in sdp.splitlines():
+                  if "typ srflx" in line:
+                      parts = line.split()
+                      return parts[4], int(parts[5])
+              return None
+
+
+          async def handle_offer(request):
+              body = await request.json()
+              offer = RTCSessionDescription(sdp=body["sdp"], type=body["type"])
+
+              # Bind our own UDP socket first so we control which local port
+              # STUN discovers a mapping for — that's the port aioquic will
+              # later rebind to, keeping the punched hole valid.
               sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
               sock.bind(("0.0.0.0", 0))
               local_port = sock.getsockname()[1]
 
               pc = RTCPeerConnection(
-                  configuration=RTCConfiguration(iceServers=[RTCIceServer(urls=[stun_server])])
+                  configuration=RTCConfiguration(
+                      iceServers=[RTCIceServer(urls=["stun:stun.l.google.com:19302"])]
+                  )
               )
-              pc.createDataChannel("probe")
-              offer = await pc.createOffer()
-              await pc.setLocalDescription(offer)
+              await pc.setRemoteDescription(offer)
+              answer = await pc.createAnswer()
+              await pc.setLocalDescription(answer)
 
               while pc.iceGatheringState != "complete":
                   await asyncio.sleep(0.1)
 
-              srflx = None
-              for line in pc.localDescription.sdp.splitlines():
-                  if "typ srflx" in line:
-                      parts = line.split()
-                      srflx = (parts[4], int(parts[5]))
-                      break
-
-              await pc.close()
+              srflx = extract_srflx(pc.localDescription.sdp)
               if not srflx:
-                  raise RuntimeError("No srflx candidate discovered")
-              return srflx[0], srflx[1], sock, local_port
+                  sock.close()
+                  return web.json_response({"error": "no srflx candidate"}, status=500)
+
+              srflx_ip, srflx_port = srflx
+              print(f"[+] srflx candidate: {srflx_ip}:{srflx_port} (local port {local_port})")
+
+              # Keep pc alive in app state so the browser's ICE keepalives
+              # (its datachannel) still have a live remote peer to talk to —
+              # do NOT close it here.
+              request.app["peers"].append(pc)
+
+              asyncio.create_task(start_quic(sock, local_port))
+
+              return web.json_response({
+                  "answer": {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type},
+                  "srflx": f"{srflx_ip}:{srflx_port}",
+              })
 
 
           class H3Protocol(QuicConnectionProtocol):
@@ -152,60 +152,38 @@ jobs:
                   self.transmit()
 
 
-          async def main():
-              ap = argparse.ArgumentParser()
-              ap.add_argument("--signaling-url", required=True)
-              ap.add_argument("--cert", required=True)
-              ap.add_argument("--key", required=True)
-              args = ap.parse_args()
-
-              srflx_ip, srflx_port, sock, local_port = await harvest_srflx()
-              print(f"[+] srflx candidate: {srflx_ip}:{srflx_port} (local port {local_port})")
-
-              async with aiohttp.ClientSession() as session:
-                  await session.post(f"{args.signaling_url}/srflx", data=f"{srflx_ip}:{srflx_port}")
-
+          async def start_quic(sock, local_port):
               quic_config = QuicConfiguration(alpn_protocols=H3_ALPN, is_client=False)
-              quic_config.load_cert_chain(args.cert, args.key)
-
-              # IMPORTANT: reuse the exact local_port STUN used, so the NAT
-              # mapping the browser is punching towards stays valid.
-              sock.close()
-
+              quic_config.load_cert_chain("cert.pem", "key.pem")
+              sock.close()  # aioquic rebinds fresh, but on the SAME port
               await serve("0.0.0.0", local_port, configuration=quic_config, create_protocol=H3Protocol)
-              print(f"[+] HTTP/3 serving on 0.0.0.0:{local_port} (public: {srflx_ip}:{srflx_port})")
-              await asyncio.Event().wait()
+              print(f"[+] HTTP/3 serving on 0.0.0.0:{local_port}")
 
+
+          app = web.Application()
+          app["peers"] = []
+          app.router.add_post("/offer", handle_offer)
+          app.router.add_static("/", pathlib.Path("www"), show_index=True)
 
           if __name__ == "__main__":
-              asyncio.run(main())
+              web.run_app(app, host="0.0.0.0", port=8080)
           PYEOF
 
-      - name: Start signaling relay
+      - name: Start server
         run: |
-          python3 signaling.py &
-          echo $! > signaling.pid
+          python3 server.py &
           sleep 2
 
-      - name: Start cloudflared quick tunnel (this IS the share ID)
+      - name: Start cloudflared quick tunnel
         run: |
           cloudflared tunnel --url http://localhost:8080 --no-autoupdate > tunnel.log 2>&1 &
-          echo $! > tunnel.pid
           for i in $(seq 1 15); do
             URL=$(grep -o 'https://[a-zA-Z0-9.-]*trycloudflare.com' tunnel.log | head -n1)
             [ -n "$URL" ] && break
             sleep 1
           done
-          if [ -z "$URL" ]; then
-            echo "Tunnel URL never appeared" >&2
-            cat tunnel.log
-            exit 1
-          fi
-          echo "$URL" > tunnel_url.txt
-          echo "::notice title=Share URL (open this in the browser)::$URL"
+          [ -n "$URL" ] || { echo "Tunnel URL never appeared" >&2; cat tunnel.log; exit 1; }
+          echo "::notice title=Click this URL::$URL"
 
-      - name: Run hole-punch + HTTP/3 server
-        run: |
-          python3 runner.py \
-            --signaling-url "$(cat tunnel_url.txt)" \
-            --cert cert.pem --key key.pem
+      - name: Keep runner alive
+        run: sleep 1800
