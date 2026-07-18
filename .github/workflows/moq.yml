@@ -13,7 +13,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install deps
-        run: pip install "aioquic>=0.9.20" aiohttp cryptography
+        run: pip install "aioquic>=0.9.20" aiohttp cryptography aioice
 
       - name: Install cloudflared
         run: |
@@ -29,7 +29,7 @@ jobs:
       - name: Write server
         run: |
           cat > server.py << 'PYEOF'
-          import asyncio, base64, hashlib, socket, struct
+          import asyncio, base64, hashlib, socket
           from aiohttp import web
           from aioquic.asyncio.protocol import QuicConnectionProtocol
           from aioquic.asyncio.server import QuicServer
@@ -39,9 +39,13 @@ jobs:
           from cryptography import x509
           from cryptography.hazmat.primitives.serialization import Encoding
 
+          # Real STUN wire-protocol implementation from aioice (the same
+          # engine aiortc uses under the hood for ICE) instead of hand-rolled
+          # struct packing/parsing.
+          from aioice.stun import Message, Class, Method
+
           LOCAL_PORT = 45000
           STUN_SERVER = ("stun.l.google.com", 19302)
-          MAGIC_COOKIE = 0x2112A442
 
           PAGE = b"""<!doctype html><script>
           const log = m => fetch("/log", {method:"POST", body:m});
@@ -117,19 +121,12 @@ jobs:
               return base64.b64encode(hashlib.sha256(cert.public_bytes(Encoding.DER)).digest()).decode()
 
           def build_stun_request():
-              return struct.pack("!HHI", 0x0001, 0, MAGIC_COOKIE) + b"\x00" * 12
+              request = Message(message_method=Method.BINDING, message_class=Class.REQUEST)
+              return request.bytes
 
           def parse_xor_mapped(data):
-              i = 20
-              while i + 4 <= len(data):
-                  t, l = struct.unpack("!HH", data[i:i+4])
-                  v = data[i+4:i+4+l]
-                  if t == 0x0020 and l >= 8:
-                      p = struct.unpack("!H", v[2:4])[0] ^ (MAGIC_COOKIE >> 16)
-                      ip = socket.inet_ntoa(bytes(a ^ b for a, b in zip(v[4:8], struct.pack("!I", MAGIC_COOKIE))))
-                      return ip, p
-                  i += 4 + l + (l % 4)
-              return None
+              response = Message.parse(data)
+              return response.attributes.get("XOR-MAPPED-ADDRESS")
 
           def make_bound_socket(port):
               sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -147,7 +144,12 @@ jobs:
               data, _ = sock.recvfrom(2048)
               sock.setblocking(False)
               sock.settimeout(None)
-              return parse_xor_mapped(data)
+              mapped = parse_xor_mapped(data)
+              if mapped is None:
+                  return None
+              # aioice returns XOR-MAPPED-ADDRESS as (family, ip, port)
+              _, ip, port = mapped
+              return ip, port
 
           punch_state = {"sock": None, "targets": set()}
 
