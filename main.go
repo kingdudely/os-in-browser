@@ -1,18 +1,19 @@
 package main
 
 import (
+	"bufio"
 	"encoding/base64"
 	"encoding/binary"
-	"flag"
 	"fmt"
 	"net"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pion/mediadevices"
 	"github.com/pion/mediadevices/pkg/codec/x264"
-	_ "github.com/pion/mediadevices/pkg/driver/screen" // registers the screen capture driver
+	_ "github.com/pion/mediadevices/pkg/driver/screen"
 	"github.com/pion/mediadevices/pkg/frame"
 	"github.com/pion/mediadevices/pkg/prop"
 	"github.com/pion/sdp/v3"
@@ -28,24 +29,43 @@ const (
 )
 
 func main() {
-	offerFlag := flag.String("offer", "", "base64-encoded share id (compressed srflx address:port)")
-	flag.Parse()
-
-	if *offerFlag == "" {
-		fmt.Fprintln(os.Stderr, "missing -offer argument")
-		os.Exit(1)
-	}
-
-	address, port, err := decodeAddressPort(*offerFlag)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "decode share id:", err)
-		os.Exit(1)
-	}
-
 	cert, err := loadCertificate()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "load certificate:", err)
 		os.Exit(1)
+	}
+
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		offer := strings.TrimSpace(scanner.Text())
+		if offer == "" {
+			continue
+		}
+
+		shareID, err := createAnswer(offer, cert)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "create answer:", err)
+			continue
+		}
+
+		fmt.Println(shareID) // picked up by `read -r <&"${COPROC[0]}"` per offer
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintln(os.Stderr, "stdin read error:", err)
+		os.Exit(1)
+	}
+}
+
+// createAnswer takes a base64 share-id offer, sets up a fresh
+// PeerConnection + screen-capture track for it, and returns the
+// encoded srflx candidate as a share id for the caller to send back.
+// The connection itself keeps running in the background after this
+// returns -- it does not block the caller from processing more offers.
+func createAnswer(offer string, cert webrtc.Certificate) (string, error) {
+	address, port, err := decodeAddressPort(offer)
+	if err != nil {
+		return "", fmt.Errorf("decode share id: %w", err)
 	}
 
 	settingEngine := webrtc.SettingEngine{}
@@ -62,47 +82,45 @@ func main() {
 		Certificates: []webrtc.Certificate{cert},
 	})
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "new peer connection:", err)
-		os.Exit(1)
+		return "", fmt.Errorf("new peer connection: %w", err)
 	}
-	defer pc.Close()
 
 	if err := addDataChannels(pc); err != nil {
-		fmt.Fprintln(os.Stderr, "add data channels:", err)
-		os.Exit(1)
+		pc.Close()
+		return "", fmt.Errorf("add data channels: %w", err)
 	}
 
 	track, err := setupScreenCapture()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "setup screen capture:", err)
-		os.Exit(1)
+		pc.Close()
+		return "", fmt.Errorf("setup screen capture: %w", err)
 	}
 
 	if _, err := pc.AddTransceiverFromTrack(track, webrtc.RTPTransceiverInit{
 		Direction: webrtc.RTPTransceiverDirectionSendonly,
 	}); err != nil {
-		fmt.Fprintln(os.Stderr, "add video track:", err)
-		os.Exit(1)
+		pc.Close()
+		return "", fmt.Errorf("add video track: %w", err)
 	}
 
 	offerSDP, err := buildOfferSDP(address, port)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "build offer sdp:", err)
-		os.Exit(1)
+		pc.Close()
+		return "", fmt.Errorf("build offer sdp: %w", err)
 	}
 
 	if err := pc.SetRemoteDescription(webrtc.SessionDescription{
 		Type: webrtc.SDPTypeOffer,
 		SDP:  offerSDP,
 	}); err != nil {
-		fmt.Fprintln(os.Stderr, "set remote description:", err)
-		os.Exit(1)
+		pc.Close()
+		return "", fmt.Errorf("set remote description: %w", err)
 	}
 
 	answer, err := pc.CreateAnswer(nil)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "create answer:", err)
-		os.Exit(1)
+		pc.Close()
+		return "", fmt.Errorf("create answer: %w", err)
 	}
 
 	found := make(chan *webrtc.ICECandidate, 1)
@@ -116,43 +134,35 @@ func main() {
 	})
 
 	if err := pc.SetLocalDescription(answer); err != nil {
-		fmt.Fprintln(os.Stderr, "set local description:", err)
-		os.Exit(1)
+		pc.Close()
+		return "", fmt.Errorf("set local description: %w", err)
 	}
 
 	var candidate *webrtc.ICECandidate
 	select {
 	case candidate = <-found:
 	case <-time.After(30 * time.Second):
-		fmt.Fprintln(os.Stderr, "timed out waiting for srflx candidate")
-		os.Exit(1)
+		pc.Close()
+		return "", fmt.Errorf("timed out waiting for srflx candidate")
 	}
 
 	shareID, err := encodeAddressPort(candidate.Address, candidate.Port)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "encode share id:", err)
-		os.Exit(1)
+		pc.Close()
+		return "", fmt.Errorf("encode share id: %w", err)
 	}
-	fmt.Println(shareID)
 
-	// Keep the process alive for the lifetime of the connection.
-	closed := make(chan struct{})
+	// Close this connection in the background once it fails/closes,
+	// without blocking the caller (main's read loop).
 	var once sync.Once
+	closeConn := func() { once.Do(func() { pc.Close() }) }
 	pc.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
 		if s == webrtc.PeerConnectionStateFailed || s == webrtc.PeerConnectionStateClosed || s == webrtc.PeerConnectionStateDisconnected {
-			once.Do(func() { close(closed) })
+			closeConn()
 		}
 	})
 
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-
-	select {
-	case <-closed:
-		fmt.Fprintln(os.Stderr, "peer connection closed")
-	case s := <-sig:
-		fmt.Fprintln(os.Stderr, "received signal:", s)
-	}
+	return shareID, nil
 }
 
 // decodeAddressPort mirrors the browser Client's share-id codec: the

@@ -31,12 +31,11 @@ jobs:
         uses: actions/checkout@main
 
       - name: Start server
-        env:
-          arguments: ${{ github.event.inputs.offer }}
+        id: start-server
         run: |
           case "$RUNNER_OS" in
             macOS)
-              ./dist/darwin
+              coproc { ./dist/darwin; }
               ;;
 
             Linux)
@@ -46,12 +45,12 @@ jobs:
                 openbox \
                 dbus-x11 \
                 xvfb
-              
-              xvfb-run -a -s "-screen 0 1920x1080x24" bash -c "dbus-launch startlxqt & ./dist/linux"
+
+              coproc { xvfb-run -a -s "-screen 0 1920x1080x24" bash -c 'dbus-launch startlxqt >/tmp/lxqt.log 2>&1 & exec ./dist/linux'; }
               ;;
 
             Windows)
-              ./dist/windows.exe
+              coproc { ./dist/windows.exe; }
               ;;
 
             *)
@@ -59,3 +58,11 @@ jobs:
               exit 1
               ;;
           esac
+
+          echo "${{ github.event.inputs.offer }}" >&"${COPROC[1]}"
+          read -r <&"${COPROC[0]}"
+          echo "answer=${REPLY}" >> "${GITHUB_OUTPUT}"
+      - name: Get answer
+        run: |
+          echo "${{ steps.start-server.outputs.answer }}"
+          sleep 676767
