@@ -31,8 +31,8 @@ jobs:
           cat > server.py << 'PYEOF'
           import asyncio, base64, hashlib, socket, struct
           from aiohttp import web
-          from aioquic.asyncio import serve
           from aioquic.asyncio.protocol import QuicConnectionProtocol
+          from aioquic.asyncio.server import QuicServer
           from aioquic.quic.configuration import QuicConfiguration
           from aioquic.h3.connection import H3_ALPN, H3Connection
           from aioquic.h3.events import HeadersReceived, WebTransportStreamDataReceived, DatagramReceived
@@ -131,27 +131,23 @@ jobs:
                   i += 4 + l + (l % 4)
               return None
 
-          def self_stun(port):
+          def make_bound_socket(port):
               sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
               sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-              sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
               sock.bind(("0.0.0.0", port))
+              return sock
+
+          def self_stun(sock):
+              # Uses the SAME socket that will later be handed to aioquic --
+              # no second bind, no SO_REUSEPORT coordination needed. Since
+              # it's the literal same fd, the NAT mapping it creates is
+              # guaranteed to be the mapping QUIC serves from.
               sock.settimeout(5)
               sock.sendto(build_stun_request(), STUN_SERVER)
               data, _ = sock.recvfrom(2048)
-              sock.close()
-              return parse_xor_mapped(data)
-
-          def make_punch_socket(port):
-              # Dedicated send-only socket sharing the same local port as the
-              # QUIC listener (via SO_REUSEPORT), instead of reaching into
-              # aioquic's private transport internals to send junk packets.
-              sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-              sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-              sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-              sock.bind(("0.0.0.0", port))
               sock.setblocking(False)
-              return sock
+              sock.settimeout(None)
+              return parse_xor_mapped(data)
 
           punch_state = {"sock": None, "targets": set()}
 
@@ -216,17 +212,24 @@ jobs:
               return web.json_response({"ok": True})
 
           async def main():
+              sock = make_bound_socket(LOCAL_PORT)
+
               print("[+] self-STUNning...")
-              pub_ip, pub_port = self_stun(LOCAL_PORT)
+              pub_ip, pub_port = self_stun(sock)
               print(f"[+] our public mapping: {pub_ip}:{pub_port}")
 
-              punch_state["sock"] = make_punch_socket(LOCAL_PORT)
+              punch_state["sock"] = sock
               asyncio.create_task(punch_loop())
 
               quic_config = QuicConfiguration(alpn_protocols=H3_ALPN, is_client=False)
               quic_config.load_cert_chain("cert.pem", "key.pem")
-              await serve("0.0.0.0", LOCAL_PORT, configuration=quic_config, create_protocol=H3Protocol)
-              print(f"[+] QUIC/WebTransport listening on 0.0.0.0:{LOCAL_PORT}")
+
+              loop = asyncio.get_event_loop()
+              await loop.create_datagram_endpoint(
+                  lambda: QuicServer(configuration=quic_config, create_protocol=H3Protocol),
+                  sock=sock,
+              )
+              print(f"[+] QUIC/WebTransport listening on 0.0.0.0:{LOCAL_PORT} (same socket used for self-STUN + punching)")
 
               app = web.Application()
               app["pub_ip"], app["pub_port"] = pub_ip, pub_port
