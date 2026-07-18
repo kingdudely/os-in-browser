@@ -1,4 +1,4 @@
-name: WebTransport Direct Hole-Punch Test
+name: WebTransport Direct Hole-Punch Test v2
 
 on:
   workflow_dispatch: {}
@@ -56,7 +56,6 @@ jobs:
                   found ? resolve(found) : reject(new Error("no ipv4 srflx candidate"));
                   return;
                 }
-                // force ipv4 -- server's punch socket is ipv4 only
                 if (e.candidate.type === "srflx" && e.candidate.address.includes(".")) {
                   found = { ip: e.candidate.address, port: e.candidate.port };
                 }
@@ -64,6 +63,23 @@ jobs:
               pc.createOffer().then(o => pc.setLocalDescription(o));
               setTimeout(() => reject(new Error("gather timeout")), 8000);
             });
+          }
+          async function dialWithRetry(url, opts, attempts, delayMs) {
+            for (let i = 1; i <= attempts; i++) {
+              log(`dial attempt ${i}/${attempts}...`);
+              const t = new WebTransport(url, opts);
+              try {
+                await Promise.race([
+                  t.ready,
+                  new Promise((_, rej) => setTimeout(() => rej(new Error("attempt timeout")), delayMs)),
+                ]);
+                return t;
+              } catch (e) {
+                log(`attempt ${i} failed: ${e}`);
+                try { t.close(); } catch (_) {}
+              }
+            }
+            throw new Error("all dial attempts failed");
           }
           async function main() {
             log("gathering our ipv4 public ip:port via STUN...");
@@ -75,13 +91,11 @@ jobs:
               method: "POST", headers: {"Content-Type": "application/json"},
               body: JSON.stringify({ ip, port }),
             });
-            log("registered, server is punching toward us...");
-            await new Promise(r => setTimeout(r, 1500));
+            log("registered, server is punching toward us continuously...");
             const digest = Uint8Array.from(atob(info.certHash), c => c.charCodeAt(0));
-            log("opening WebTransport...");
-            const t = new WebTransport("https://" + info.serverIp + ":" + info.serverPort + "/wt",
-              { serverCertificateHashes: [{ algorithm: "sha-256", digest }] });
-            await t.ready;
+            const url = "https://" + info.serverIp + ":" + info.serverPort + "/wt";
+            const opts = { serverCertificateHashes: [{ algorithm: "sha-256", digest }] };
+            const t = await dialWithRetry(url, opts, 6, 3000);
             log("WebTransport established!");
             const s = await t.createBidirectionalStream();
             const w = s.writable.getWriter(); const r = s.readable.getReader();
@@ -120,6 +134,7 @@ jobs:
           def self_stun(port):
               sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
               sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+              sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
               sock.bind(("0.0.0.0", port))
               sock.settimeout(5)
               sock.sendto(build_stun_request(), STUN_SERVER)
@@ -127,16 +142,32 @@ jobs:
               sock.close()
               return parse_xor_mapped(data)
 
-          quic_server_ref = {"server": None}
+          def make_punch_socket(port):
+              # Dedicated send-only socket sharing the same local port as the
+              # QUIC listener (via SO_REUSEPORT), instead of reaching into
+              # aioquic's private transport internals to send junk packets.
+              sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+              sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+              sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+              sock.bind(("0.0.0.0", port))
+              sock.setblocking(False)
+              return sock
 
-          def punch_toward(ip, port, count=5):
-              server = quic_server_ref["server"]
-              if server is None:
-                  print("[!] quic server not ready, cannot punch")
-                  return
-              for _ in range(count):
-                  server._transport.sendto(b"\x00punch", (ip, port))
-              print(f"[+] sent {count} punch packets toward {ip}:{port}")
+          punch_state = {"sock": None, "targets": set()}
+
+          async def punch_loop():
+              # Keep punching every 500ms toward every registered client so
+              # the NAT mapping stays fresh regardless of client-side retry
+              # timing -- removes the fragile one-shot 1.5s guess entirely.
+              while True:
+                  sock = punch_state["sock"]
+                  if sock is not None:
+                      for target in list(punch_state["targets"]):
+                          try:
+                              sock.sendto(b"\x00punch", target)
+                          except Exception as e:
+                              print(f"[!] punch send failed: {e}")
+                  await asyncio.sleep(0.5)
 
           class H3Protocol(QuicConnectionProtocol):
               def __init__(self, *a, **kw):
@@ -180,8 +211,8 @@ jobs:
           async def handle_register_client(request):
               body = await request.json()
               ip, port = body["ip"], int(body["port"])
-              print(f"[+] client registered at {ip}:{port}")
-              punch_toward(ip, port)
+              print(f"[+] client registered at {ip}:{port}, adding to punch loop")
+              punch_state["targets"].add((ip, port))
               return web.json_response({"ok": True})
 
           async def main():
@@ -189,10 +220,12 @@ jobs:
               pub_ip, pub_port = self_stun(LOCAL_PORT)
               print(f"[+] our public mapping: {pub_ip}:{pub_port}")
 
+              punch_state["sock"] = make_punch_socket(LOCAL_PORT)
+              asyncio.create_task(punch_loop())
+
               quic_config = QuicConfiguration(alpn_protocols=H3_ALPN, is_client=False)
               quic_config.load_cert_chain("cert.pem", "key.pem")
-              server = await serve("0.0.0.0", LOCAL_PORT, configuration=quic_config, create_protocol=H3Protocol)
-              quic_server_ref["server"] = server
+              await serve("0.0.0.0", LOCAL_PORT, configuration=quic_config, create_protocol=H3Protocol)
               print(f"[+] QUIC/WebTransport listening on 0.0.0.0:{LOCAL_PORT}")
 
               app = web.Application()
@@ -207,7 +240,7 @@ jobs:
               await site.start()
               print("[+] HTTP signaling server on :8080 -- open the cloudflared URL now")
 
-              await asyncio.Event().wait()  # block forever, keeps logs flowing to the job
+              await asyncio.Event().wait()
 
           if __name__ == "__main__":
               asyncio.run(main())
