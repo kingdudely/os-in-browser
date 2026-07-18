@@ -1,0 +1,101 @@
+name: Symmetric NAT Test
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  test-nat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Write NAT test script
+        run: |
+          cat > nat_test.py << 'PYEOF'
+          import socket, struct
+
+          MAGIC_COOKIE = 0x2112A442
+
+          # Multiple independent STUN servers on different IPs. If our
+          # external port differs across these, the NAT is allocating a
+          # new mapping per-destination -- i.e. symmetric. If the port is
+          # the same across all of them, it's cone-type (good -- hole
+          # punching can work).
+          STUN_SERVERS = [
+              ("stun.l.google.com", 19302),
+              ("stun1.l.google.com", 19302),
+              ("stun.cloudflare.com", 3478),
+              ("stun.nextcloud.com", 3478),
+              ("stun.antisip.com", 3478),
+          ]
+
+          def build_stun_request():
+              return struct.pack("!HHI", 0x0001, 0, MAGIC_COOKIE) + b"\x00" * 12
+
+          def parse_xor_mapped(data):
+              i = 20
+              while i + 4 <= len(data):
+                  t, l = struct.unpack("!HH", data[i:i+4])
+                  v = data[i+4:i+4+l]
+                  if t == 0x0020 and l >= 8:
+                      p = struct.unpack("!H", v[2:4])[0] ^ (MAGIC_COOKIE >> 16)
+                      ip = socket.inet_ntoa(bytes(a ^ b for a, b in zip(v[4:8], struct.pack("!I", MAGIC_COOKIE))))
+                      return ip, p
+                  i += 4 + l + (l % 4)
+              return None
+
+          def query(sock, server):
+              try:
+                  sock.settimeout(5)
+                  sock.sendto(build_stun_request(), server)
+                  data, _ = sock.recvfrom(2048)
+                  return parse_xor_mapped(data)
+              except Exception as e:
+                  return ("ERROR", str(e))
+
+          def main():
+              LOCAL_PORT = 45000
+              sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+              sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+              sock.bind(("0.0.0.0", LOCAL_PORT))
+
+              print(f"[+] querying {len(STUN_SERVERS)} STUN servers from local port {LOCAL_PORT}\n")
+
+              results = []
+              for server in STUN_SERVERS:
+                  result = query(sock, server)
+                  results.append((server, result))
+                  print(f"  {server[0]:30s} -> {result}")
+
+              sock.close()
+
+              ports = [r[1][1] for r in results if r[1] and r[1][0] != "ERROR"]
+              ips = [r[1][0] for r in results if r[1] and r[1][0] != "ERROR"]
+
+              print()
+              if len(ports) < 2:
+                  print("[!] not enough successful responses to draw a conclusion")
+                  return
+
+              if len(set(ports)) == 1:
+                  print(f"[+] RESULT: external port is CONSISTENT ({ports[0]}) across all destinations.")
+                  print("    NAT looks like cone-type -- hole punching via self-STUN should work.")
+              else:
+                  print(f"[!] RESULT: external port VARIES across destinations: {ports}")
+                  print("    NAT is SYMMETRIC -- a STUN-learned mapping is only valid for the")
+                  print("    destination it was learned against. Punching toward a third party")
+                  print("    (the browser client) using a mapping learned from a STUN server")
+                  print("    will not work. A relay (TURN-style) is required instead.")
+
+              if len(set(ips)) > 1:
+                  print(f"[!] note: public IP also varies across destinations: {set(ips)} -- unusual, worth a second look.")
+
+          if __name__ == "__main__":
+              main()
+          PYEOF
+
+      - name: Run NAT test
+        run: python3 -u nat_test.py
