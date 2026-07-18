@@ -1,4 +1,4 @@
-name: WebTransport Direct Hole-Punch Test (no WebRTC signaling exchange)
+name: WebTransport Direct Hole-Punch Test
 
 on:
   workflow_dispatch: {}
@@ -21,114 +21,21 @@ jobs:
           chmod +x cloudflared
           sudo mv cloudflared /usr/local/bin/
 
-      - name: Generate short-lived ECDSA cert for WebTransport
+      - name: Generate short-lived ECDSA cert
         run: |
           openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
             -keyout key.pem -out cert.pem -days 13 -nodes -subj "/CN=wt-test"
 
-      - name: Write landing page (STUN-only ICE gather, no SDP exchange, then WebTransport dial)
-        run: |
-          mkdir -p www
-          cat > www/index.html << 'HTMLEOF'
-          <!doctype html><html><body>
-          <h1>Direct hole-punch WebTransport test</h1>
-          <pre id="log">starting...</pre>
-          <script>
-          const log = (m) => { document.getElementById("log").textContent += "\n" + m; console.log(m); };
-
-          // Use a bare RTCPeerConnection purely as a STUN client to learn
-          // our own public ip:port. No offer/answer exchange happens with
-          // the server -- this never leaves the browser except as a STUN
-          // request straight to the public STUN server.
-          function gatherSrflx() {
-            return new Promise((resolve, reject) => {
-              const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
-              pc.createDataChannel("stun-probe"); // needed to trigger ICE gathering
-              let found = null;
-              pc.onicecandidate = (e) => {
-                if (!e.candidate) {
-                  pc.close();
-                  if (found) resolve(found);
-                  else reject(new Error("no srflx candidate gathered"));
-                  return;
-                }
-                if (e.candidate.type === "srflx") {
-                  found = { ip: e.candidate.address, port: e.candidate.port };
-                }
-              };
-              pc.createOffer().then(offer => pc.setLocalDescription(offer));
-              setTimeout(() => reject(new Error("ICE gathering timed out")), 8000);
-            });
-          }
-
-          async function main() {
-            log("gathering our own public ip:port via STUN...");
-            const { ip, port } = await gatherSrflx();
-            log(`our public mapping: ${ip}:${port}`);
-
-            log("fetching server info + registering ourselves...");
-            const infoRes = await fetch("/server-info").then(r => r.json());
-            const { serverIp, serverPort, certHash } = infoRes;
-            log(`server is at ${serverIp}:${serverPort}`);
-
-            await fetch("/register-client", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ ip, port }),
-            });
-            log("told server our ip:port, server is now punching toward us...");
-
-            // Give the server a moment to fire its punch packets and open
-            // a matching NAT mapping before we dial.
-            await new Promise(r => setTimeout(r, 1500));
-
-            const digest = Uint8Array.from(atob(certHash), c => c.charCodeAt(0));
-            log("opening WebTransport session...");
-            const transport = new WebTransport(`https://${serverIp}:${serverPort}/wt`, {
-              serverCertificateHashes: [{ algorithm: "sha-256", digest }],
-            });
-
-            await transport.ready;
-            log("WebTransport session established!");
-
-            const stream = await transport.createBidirectionalStream();
-            const writer = stream.writable.getWriter();
-            const reader = stream.readable.getReader();
-            await writer.write(new TextEncoder().encode("ping-stream"));
-            const { value } = await reader.read();
-            log(`stream echo reply: ${new TextDecoder().decode(value)}`);
-
-            const dgWriter = transport.datagrams.writable.getWriter();
-            const dgReader = transport.datagrams.readable.getReader();
-            await dgWriter.write(new TextEncoder().encode("ping-datagram"));
-            const { value: dgValue } = await dgReader.read();
-            log(`datagram echo reply: ${new TextDecoder().decode(dgValue)}`);
-
-            log("TEST PASSED: direct UDP hole-punch + WebTransport round trip OK, no WebRTC data path used");
-          }
-          main().catch(e => log("ERROR: " + e));
-          </script>
-          </body></html>
-          HTMLEOF
-
-      - name: Write server (self-STUN, persistent QUIC socket, client-directed punch, WebTransport echo)
+      - name: Write server
         run: |
           cat > server.py << 'PYEOF'
-          import asyncio
-          import base64
-          import hashlib
-          import pathlib
-          import socket
-          import struct
-
+          import asyncio, base64, hashlib, socket, struct
           from aiohttp import web
-
           from aioquic.asyncio import serve
           from aioquic.asyncio.protocol import QuicConnectionProtocol
           from aioquic.quic.configuration import QuicConfiguration
           from aioquic.h3.connection import H3_ALPN, H3Connection
           from aioquic.h3.events import HeadersReceived, WebTransportStreamDataReceived, DatagramReceived
-
           from cryptography import x509
           from cryptography.hazmat.primitives.serialization import Encoding
 
@@ -136,178 +43,177 @@ jobs:
           STUN_SERVER = ("stun.l.google.com", 19302)
           MAGIC_COOKIE = 0x2112A442
 
+          PAGE = b"""<!doctype html><script>
+          const log = m => fetch("/log", {method:"POST", body:m});
+          function gatherSrflx() {
+            return new Promise((resolve, reject) => {
+              const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+              pc.createDataChannel("probe");
+              let found = null;
+              pc.onicecandidate = e => {
+                if (!e.candidate) {
+                  pc.close();
+                  found ? resolve(found) : reject(new Error("no ipv4 srflx candidate"));
+                  return;
+                }
+                // force ipv4 -- server's punch socket is ipv4 only
+                if (e.candidate.type === "srflx" && e.candidate.address.includes(".")) {
+                  found = { ip: e.candidate.address, port: e.candidate.port };
+                }
+              };
+              pc.createOffer().then(o => pc.setLocalDescription(o));
+              setTimeout(() => reject(new Error("gather timeout")), 8000);
+            });
+          }
+          async function main() {
+            log("gathering our ipv4 public ip:port via STUN...");
+            const { ip, port } = await gatherSrflx();
+            log("our public mapping: " + ip + ":" + port);
+            const info = await fetch("/server-info").then(r => r.json());
+            log("server is at " + info.serverIp + ":" + info.serverPort);
+            await fetch("/register-client", {
+              method: "POST", headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({ ip, port }),
+            });
+            log("registered, server is punching toward us...");
+            await new Promise(r => setTimeout(r, 1500));
+            const digest = Uint8Array.from(atob(info.certHash), c => c.charCodeAt(0));
+            log("opening WebTransport...");
+            const t = new WebTransport("https://" + info.serverIp + ":" + info.serverPort + "/wt",
+              { serverCertificateHashes: [{ algorithm: "sha-256", digest }] });
+            await t.ready;
+            log("WebTransport established!");
+            const s = await t.createBidirectionalStream();
+            const w = s.writable.getWriter(); const r = s.readable.getReader();
+            await w.write(new TextEncoder().encode("ping-stream"));
+            const { value } = await r.read();
+            log("stream reply: " + new TextDecoder().decode(value));
+            const dw = t.datagrams.writable.getWriter(); const dr = t.datagrams.readable.getReader();
+            await dw.write(new TextEncoder().encode("ping-datagram"));
+            const { value: dv } = await dr.read();
+            log("datagram reply: " + new TextDecoder().decode(dv));
+            log("TEST PASSED: direct UDP hole-punch + WebTransport OK, no WebRTC data path used");
+          }
+          main().catch(e => log("ERROR: " + e));
+          </script>"""
 
-          def cert_sha256_b64(path="cert.pem"):
+          def cert_hash_b64(path="cert.pem"):
               with open(path, "rb") as f:
                   cert = x509.load_pem_x509_certificate(f.read())
-              der = cert.public_bytes(Encoding.DER)
-              return base64.b64encode(hashlib.sha256(der).digest()).decode()
+              return base64.b64encode(hashlib.sha256(cert.public_bytes(Encoding.DER)).digest()).decode()
 
+          def build_stun_request():
+              return struct.pack("!HHI", 0x0001, 0, MAGIC_COOKIE) + b"\x00" * 12
 
-          def build_stun_binding_request():
-              msg_type = 0x0001  # Binding Request
-              msg_len = 0
-              transaction_id = b"\x00" * 12  # fixed is fine for a one-shot probe
-              return struct.pack("!HHI", msg_type, msg_len, MAGIC_COOKIE) + transaction_id
-
-
-          def parse_xor_mapped_address(data, transaction_id):
-              # Skip 20-byte STUN header, walk attributes looking for
-              # XOR-MAPPED-ADDRESS (0x0020) or legacy MAPPED-ADDRESS (0x0001).
+          def parse_xor_mapped(data):
               i = 20
               while i + 4 <= len(data):
-                  attr_type, attr_len = struct.unpack("!HH", data[i:i + 4])
-                  val = data[i + 4:i + 4 + attr_len]
-                  if attr_type == 0x0020 and attr_len >= 8:
-                      family = val[1]
-                      xport = struct.unpack("!H", val[2:4])[0] ^ (MAGIC_COOKIE >> 16)
-                      if family == 0x01:
-                          xip_bytes = bytes(a ^ b for a, b in zip(val[4:8], struct.pack("!I", MAGIC_COOKIE)))
-                          ip = socket.inet_ntoa(xip_bytes)
-                          return ip, xport
-                  elif attr_type == 0x0001 and attr_len >= 8:
-                      port = struct.unpack("!H", val[2:4])[0]
-                      ip = socket.inet_ntoa(val[4:8])
-                      return ip, port
-                  i += 4 + attr_len + (attr_len % 4)
+                  t, l = struct.unpack("!HH", data[i:i+4])
+                  v = data[i+4:i+4+l]
+                  if t == 0x0020 and l >= 8:
+                      p = struct.unpack("!H", v[2:4])[0] ^ (MAGIC_COOKIE >> 16)
+                      ip = socket.inet_ntoa(bytes(a ^ b for a, b in zip(v[4:8], struct.pack("!I", MAGIC_COOKIE))))
+                      return ip, p
+                  i += 4 + l + (l % 4)
               return None
 
-
-          def self_stun(local_port):
-              """Bind a UDP socket at local_port, ask a public STUN server what
-              our own reflexive ip:port is, then hand the bound port back so
-              aioquic can reuse it. This ensures the NAT mapping created by
-              our own outbound STUN probe is the SAME mapping our QUIC
-              listener will use -- no socket-swap between discovery and
-              serving."""
+          def self_stun(port):
               sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
               sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-              sock.bind(("0.0.0.0", local_port))
+              sock.bind(("0.0.0.0", port))
               sock.settimeout(5)
-              req = build_stun_binding_request()
-              sock.sendto(req, STUN_SERVER)
+              sock.sendto(build_stun_request(), STUN_SERVER)
               data, _ = sock.recvfrom(2048)
-              result = parse_xor_mapped_address(data, req[4:16])
               sock.close()
-              return result
+              return parse_xor_mapped(data)
 
+          quic_server_ref = {"server": None}
+
+          def punch_toward(ip, port, count=5):
+              server = quic_server_ref["server"]
+              if server is None:
+                  print("[!] quic server not ready, cannot punch")
+                  return
+              for _ in range(count):
+                  server._transport.sendto(b"\x00punch", (ip, port))
+              print(f"[+] sent {count} punch packets toward {ip}:{port}")
 
           class H3Protocol(QuicConnectionProtocol):
-              def __init__(self, *args, **kwargs):
-                  super().__init__(*args, **kwargs)
+              def __init__(self, *a, **kw):
+                  super().__init__(*a, **kw)
                   self._http = H3Connection(self._quic, enable_webtransport=True)
                   self._sessions = set()
 
               def quic_event_received(self, event):
-                  for h3_event in self._http.handle_event(event):
-                      if isinstance(h3_event, HeadersReceived):
-                          headers = dict(h3_event.headers)
-                          if headers.get(b":method") == b"CONNECT" and headers.get(b":protocol") == b"webtransport":
-                              self._sessions.add(h3_event.stream_id)
-                              self._http.send_headers(h3_event.stream_id, [(b":status", b"200")])
-                              print(f"[+] WebTransport session established on stream {h3_event.stream_id}")
+                  for e in self._http.handle_event(event):
+                      if isinstance(e, HeadersReceived):
+                          h = dict(e.headers)
+                          if h.get(b":method") == b"CONNECT" and h.get(b":protocol") == b"webtransport":
+                              self._sessions.add(e.stream_id)
+                              self._http.send_headers(e.stream_id, [(b":status", b"200")])
+                              print(f"[+] WebTransport session up on stream {e.stream_id}")
                           else:
-                              self._http.send_headers(h3_event.stream_id, [(b":status", b"404")], end_stream=True)
-                      elif isinstance(h3_event, WebTransportStreamDataReceived):
-                          print(f"[+] stream data received: {h3_event.data!r}")
-                          self._http.send_data(h3_event.stream_id, b"pong-stream", end_stream=False)
-                      elif isinstance(h3_event, DatagramReceived):
-                          print(f"[+] datagram received: {h3_event.data!r}")
-                          for session_id in self._sessions:
-                              self._http.send_datagram(session_id, b"pong-datagram")
+                              self._http.send_headers(e.stream_id, [(b":status", b"404")], end_stream=True)
+                      elif isinstance(e, WebTransportStreamDataReceived):
+                          print(f"[+] stream data: {e.data!r}")
+                          self._http.send_data(e.stream_id, b"pong-stream", end_stream=False)
+                      elif isinstance(e, DatagramReceived):
+                          print(f"[+] datagram: {e.data!r}")
+                          for sid in self._sessions:
+                              self._http.send_datagram(sid, b"pong-datagram")
                   self.transmit()
 
+          async def handle_page(request):
+              return web.Response(body=PAGE, content_type="text/html")
 
-          # Populated once the QUIC server is up so /register-client can
-          # send punch packets out of the SAME socket QUIC is listening on.
-          quic_server_ref = {"server": None}
-
-
-          def punch_toward(client_ip, client_port, count=5):
-              server = quic_server_ref["server"]
-              if server is None:
-                  print("[!] QUIC server not ready yet, cannot punch")
-                  return
-              transport = server._transport  # underlying asyncio DatagramTransport
-              for i in range(count):
-                  # Junk payload -- these packets are not valid QUIC and will
-                  # be dropped by the client, but that's fine: their only
-                  # job is to make the runner's NAT create/refresh a mapping
-                  # pointed at (client_ip, client_port) before the client's
-                  # real QUIC Initial arrives.
-                  transport.sendto(b"\x00punch", (client_ip, client_port))
-              print(f"[+] sent {count} punch packets toward {client_ip}:{client_port}")
-
+          async def handle_log(request):
+              print("[client]", (await request.text()))
+              return web.Response(text="ok")
 
           async def handle_server_info(request):
               return web.json_response({
                   "serverIp": request.app["pub_ip"],
                   "serverPort": request.app["pub_port"],
-                  "certHash": cert_sha256_b64(),
+                  "certHash": cert_hash_b64(),
               })
-
 
           async def handle_register_client(request):
               body = await request.json()
-              client_ip, client_port = body["ip"], int(body["port"])
-              print(f"[+] client registered at {client_ip}:{client_port}")
-              punch_toward(client_ip, client_port)
+              ip, port = body["ip"], int(body["port"])
+              print(f"[+] client registered at {ip}:{port}")
+              punch_toward(ip, port)
               return web.json_response({"ok": True})
 
-
-          async def run_http_signaling(pub_ip, pub_port):
-              app = web.Application()
-              app["pub_ip"] = pub_ip
-              app["pub_port"] = pub_port
-              app.router.add_get("/server-info", handle_server_info)
-              app.router.add_post("/register-client", handle_register_client)
-              app.router.add_static("/", pathlib.Path("www"), show_index=True)
-              runner = web.AppRunner(app)
-              await runner.setup()
-              site = web.TCPSite(runner, "0.0.0.0", 8080)
-              await site.start()
-              print("[+] HTTP signaling server on :8080")
-
-
           async def main():
-              print("[+] self-STUNning to learn our own public ip:port...")
-              result = self_stun(LOCAL_PORT)
-              if result is None:
-                  print("[!] STUN failed, aborting")
-                  return
-              pub_ip, pub_port = result
+              print("[+] self-STUNning...")
+              pub_ip, pub_port = self_stun(LOCAL_PORT)
               print(f"[+] our public mapping: {pub_ip}:{pub_port}")
 
               quic_config = QuicConfiguration(alpn_protocols=H3_ALPN, is_client=False)
               quic_config.load_cert_chain("cert.pem", "key.pem")
-
-              # Bind to the SAME local port we just self-STUN'd from, right
-              # after closing that socket, so the cloud NAT's port mapping
-              # (assuming it's not symmetric / per-socket) carries over.
-              server = await serve(
-                  "0.0.0.0", LOCAL_PORT,
-                  configuration=quic_config,
-                  create_protocol=H3Protocol,
-              )
+              server = await serve("0.0.0.0", LOCAL_PORT, configuration=quic_config, create_protocol=H3Protocol)
               quic_server_ref["server"] = server
               print(f"[+] QUIC/WebTransport listening on 0.0.0.0:{LOCAL_PORT}")
 
-              await run_http_signaling(pub_ip, pub_port)
+              app = web.Application()
+              app["pub_ip"], app["pub_port"] = pub_ip, pub_port
+              app.router.add_get("/", handle_page)
+              app.router.add_post("/log", handle_log)
+              app.router.add_get("/server-info", handle_server_info)
+              app.router.add_post("/register-client", handle_register_client)
+              runner = web.AppRunner(app)
+              await runner.setup()
+              site = web.TCPSite(runner, "0.0.0.0", 8080)
+              await site.start()
+              print("[+] HTTP signaling server on :8080 -- open the cloudflared URL now")
 
-              await asyncio.sleep(900)
-
+              await asyncio.Event().wait()  # block forever, keeps logs flowing to the job
 
           if __name__ == "__main__":
               asyncio.run(main())
           PYEOF
 
-      - name: Start server
-        run: |
-          python3 server.py > server.log 2>&1 &
-          sleep 3
-          cat server.log
-
-      - name: Start cloudflared quick tunnel
+      - name: Start cloudflared tunnel
         run: |
           cloudflared tunnel --url http://localhost:8080 --no-autoupdate > tunnel.log 2>&1 &
           for i in $(seq 1 15); do
@@ -318,5 +224,5 @@ jobs:
           [ -n "$URL" ] || { echo "Tunnel URL never appeared" >&2; cat tunnel.log; exit 1; }
           echo "::notice title=Click this URL::$URL"
 
-      - name: Keep runner alive
-        run: sleep 900
+      - name: Run server (foreground, logs stream live)
+        run: python3 server.py
