@@ -45,7 +45,7 @@ jobs:
           # Real STUN wire-protocol implementation from aioice (the same
           # engine aiortc uses under the hood for ICE) instead of hand-rolled
           # struct packing/parsing.
-          from aioice.stun import Message, Class, Method
+          from aioice.stun import Message, Class, Method, parse_message
 
           LOCAL_PORT = 45000
           STUN_SERVER = ("stun.l.google.com", 19302)
@@ -125,10 +125,10 @@ jobs:
 
           def build_stun_request():
               request = Message(message_method=Method.BINDING, message_class=Class.REQUEST)
-              return request.bytes
+              return bytes(request)
 
           def parse_xor_mapped(data):
-              response = Message.parse(data)
+              response = parse_message(data)
               return response.attributes.get("XOR-MAPPED-ADDRESS")
 
           def make_bound_socket(port):
@@ -150,8 +150,8 @@ jobs:
               mapped = parse_xor_mapped(data)
               if mapped is None:
                   return None
-              # aioice returns XOR-MAPPED-ADDRESS as (family, ip, port)
-              _, ip, port = mapped
+              # aioice's unpack_address returns a plain (ip, port) tuple
+              ip, port = mapped
               return ip, port
 
           punch_state = {"targets": set()}
