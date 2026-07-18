@@ -225,4 +225,4 @@ jobs:
           echo "::notice title=Click this URL::$URL"
 
       - name: Run server (foreground, logs stream live)
-        run: python3 server.py
+        run: python3 -u server.py
