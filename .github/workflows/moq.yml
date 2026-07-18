@@ -15,6 +15,9 @@ jobs:
       - name: Install deps
         run: pip install "aioquic>=0.9.20" aiohttp cryptography aioice
 
+      - name: Install nmap (nping)
+        run: sudo apt-get update && sudo apt-get install -y nmap
+
       - name: Install cloudflared
         run: |
           curl -L -o cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
@@ -151,21 +154,37 @@ jobs:
               _, ip, port = mapped
               return ip, port
 
-          punch_state = {"sock": None, "targets": set()}
+          punch_state = {"targets": set()}
+
+          async def punch_once(ip, port):
+              # nping crafts a raw UDP packet with the given source port
+              # directly -- it never calls bind(), so it can't collide with
+              # the socket aioquic already owns on LOCAL_PORT. This is the
+              # same tool used by the proven ValdikSS GitHub Actions NAT
+              # traversal recipe.
+              proc = await asyncio.create_subprocess_exec(
+                  "sudo", "nping", "--udp", "-c", "1",
+                  "--source-port", str(LOCAL_PORT),
+                  "--dest-port", str(port),
+                  "--data-string", "punch",
+                  "--quiet", ip,
+                  stdout=asyncio.subprocess.DEVNULL,
+                  stderr=asyncio.subprocess.DEVNULL,
+              )
+              await proc.wait()
 
           async def punch_loop():
-              # Keep punching every 500ms toward every registered client so
-              # the NAT mapping stays fresh regardless of client-side retry
-              # timing -- removes the fragile one-shot 1.5s guess entirely.
+              # Keep punching every 2s toward every registered client so the
+              # NAT mapping stays fresh regardless of client-side retry
+              # timing -- matches the keep-alive cadence used by proven
+              # GitHub Actions NAT traversal setups (WireGuard/OpenVPN).
               while True:
-                  sock = punch_state["sock"]
-                  if sock is not None:
-                      for target in list(punch_state["targets"]):
-                          try:
-                              sock.sendto(b"\x00punch", target)
-                          except Exception as e:
-                              print(f"[!] punch send failed: {e}")
-                  await asyncio.sleep(0.5)
+                  for target in list(punch_state["targets"]):
+                      try:
+                          await punch_once(*target)
+                      except Exception as e:
+                          print(f"[!] punch send failed: {e}")
+                  await asyncio.sleep(2)
 
           class H3Protocol(QuicConnectionProtocol):
               def __init__(self, *a, **kw):
@@ -220,7 +239,6 @@ jobs:
               pub_ip, pub_port = self_stun(sock)
               print(f"[+] our public mapping: {pub_ip}:{pub_port}")
 
-              punch_state["sock"] = sock
               asyncio.create_task(punch_loop())
 
               quic_config = QuicConfiguration(alpn_protocols=H3_ALPN, is_client=False)
