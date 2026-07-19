@@ -29,11 +29,11 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@main
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@main
         with:
-          go-version: "1.23"
+          go-version: "1.26"
           cache: true
 
       - name: Install Ubuntu dependencies
@@ -48,7 +48,7 @@ jobs:
 
       - name: Install Windows MSYS2 toolchain
         if: matrix.os == 'windows-latest'
-        uses: msys2/setup-msys2@v2
+        uses: msys2/setup-msys2@main
         with:
           msystem: MINGW64
           update: true
@@ -67,7 +67,7 @@ jobs:
           go build -o "dist/${GOOS}${{ matrix.ext }}"
 
       - name: Upload binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@main
         with:
           name: ${{ matrix.goos }}
           path: dist/${{ matrix.goos }}${{ matrix.ext }}
@@ -76,10 +76,10 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@main
 
       - name: Download all binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@main
         with:
           path: dist
           merge-multiple: true
