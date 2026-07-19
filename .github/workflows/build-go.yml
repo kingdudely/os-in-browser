@@ -35,6 +35,7 @@ jobs:
           case "${RUNNER_OS}" in
             Windows)
               EXTENSION=".exe"
+              choco install -y pkgconfiglite x264 mingw
               ;;
             macOS)
               EXTENSION=""
