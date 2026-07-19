@@ -16,7 +16,7 @@ import (
 	_ "github.com/pion/mediadevices/pkg/driver/screen"
 	"github.com/pion/mediadevices/pkg/frame"
 	"github.com/pion/mediadevices/pkg/prop"
-	"github.com/pion/sdp/v3"
+	"github.com/pion/sdp/v4"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -202,15 +202,9 @@ func buildOfferSDP(address string, port uint16) (string, error) {
 	}
 	session.WithValueAttribute("group", "BUNDLE 0 1 2")
 
-	candidate := sdp.ICECandidate{
-		Foundation: "0",
-		Component:  1,
-		Priority:   1686052607,
-		Address:    address,
-		Protocol:   "udp",
-		Port:       port,
-		Typ:        "srflx",
-	}
+	// RFC 5245 candidate-attribute value (no "candidate:" prefix --
+	// WithCandidate adds the "a=candidate:" framing itself).
+	candidateStr := fmt.Sprintf("0 1 udp 1686052607 %s %d typ srflx", address, port)
 
 	rtpMedia := func(codecType string, mid int, payloadType uint8, codecName string, clockRate uint32, channels uint16) *sdp.MediaDescription {
 		return sdp.NewJSEPMediaDescription(codecType, nil).
@@ -222,7 +216,7 @@ func buildOfferSDP(address string, port uint16) (string, error) {
 			WithPropertyAttribute("setup:actpass").
 			WithPropertyAttribute("recvonly").
 			WithPropertyAttribute("rtcp-mux").
-			WithICECandidate(candidate).
+			WithCandidate(candidateStr).
 			WithCodec(payloadType, codecName, clockRate, channels, "")
 	}
 
@@ -241,7 +235,7 @@ func buildOfferSDP(address string, port uint16) (string, error) {
 		WithICECredentials(usernameFragment, password).
 		WithFingerprint("sha-256", "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00").
 		WithPropertyAttribute("setup:actpass").
-		WithICECandidate(candidate).
+		WithCandidate(candidateStr).
 		WithValueAttribute("sctp-port", "5000").
 		WithValueAttribute("max-message-size", "262144")
 
