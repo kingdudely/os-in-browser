@@ -1,68 +1,97 @@
-name: Remote Desktop
+name: Build main.go
 
-on: 
+on:
   workflow_dispatch:
-    inputs:
-      offer:
-        description: "Offer"
-        type: string
-        required: true
-      os:
-        description: "Operating system"
-        type: choice
-        required: true
-        default: "windows-latest"
-        options:
-          - windows-latest
-          - ubuntu-latest
-          - macos-latest
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
-  remote:
-    runs-on: ${{ github.event.inputs.os }}
-    timeout-minutes: 360
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
-    defaults:
-      run:
-        shell: bash
+    runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Copy repository into PC
-        uses: actions/checkout@main
+      - uses: actions/checkout@v4
 
-      - name: Start server
-        id: start-server
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Install Windows MSYS2 toolchain
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-x264
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-gcc
+
+      - name: Build
+        id: build
+        env:
+          CGO_ENABLED: 1
         run: |
-          case "$RUNNER_OS" in
-            macOS)
-              coproc { ./dist/darwin; }
-              ;;
-
-            Linux)
-              sudo apt-get update
-              sudo apt-get install -y --no-install-recommends \
-                lxqt \
-                openbox \
-                dbus-x11 \
-                xvfb
-
-              coproc { xvfb-run -a -s "-screen 0 1920x1080x24" bash -c 'dbus-launch startlxqt >/tmp/lxqt.log 2>&1 & exec ./dist/linux'; }
-              ;;
-
+          case "${RUNNER_OS}" in
             Windows)
-              coproc { ./dist/windows.exe; }
+              EXTENSION=".exe"
               ;;
-
+            macOS)
+              EXTENSION=""
+              brew install x264 pkg-config
+              ;;
+            Linux)
+              EXTENSION=""
+              sudo apt-get update
+              sudo apt-get install -y libx11-dev libxext-dev libxtst-dev libx264-dev pkg-config
+              ;;
             *)
-              echo "Error: Unsupported OS"
+              echo "::error::Unsupported operating system"
               exit 1
               ;;
           esac
 
-          echo "${{ github.event.inputs.offer }}" >&"${COPROC[1]}"
-          read -r <&"${COPROC[0]}"
-          echo "answer=${REPLY}" >> "${GITHUB_OUTPUT}"
-      - name: Get answer
+          mkdir -p dist
+          OUTPUT_PATH="dist/$(go env GOOS)${EXTENSION}"
+          echo "path=${OUTPUT_PATH}" >> "${GITHUB_OUTPUT}"
+          go build -o "${OUTPUT_PATH}"
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          path: ${{ steps.build.outputs.path }}
+
+  commit:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Commit binaries
         run: |
-          echo "${{ steps.start-server.outputs.answer }}"
-          sleep 676767
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dist/*
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Add cross-platform binaries to dist/"
+          git push
