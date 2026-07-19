@@ -15,16 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            goos: linux
-            ext: ""
-          - os: macos-latest
-            goos: darwin
-            ext: ""
-          - os: windows-latest
-            goos: windows
-            ext: ".exe"
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     runs-on: ${{ matrix.os }}
 
@@ -38,7 +29,7 @@ jobs:
 
       - name: Install Windows MSYS2 toolchain
         if: runner.os == 'Windows'
-        uses: msys2/setup-msys2@main
+        uses: msys2/setup-msys2@latest
         with:
           msystem: MINGW64
           update: true
@@ -47,15 +38,21 @@ jobs:
             mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-gcc
 
-      - name: Install dependencies
+      - name: Build
+        id: build
+        env:
+          CGO_ENABLED: 1
         run: |
           case "${RUNNER_OS}" in
             Windows)
+              EXTENSION=".exe"
               ;;
             macOS)
+              EXTENSION=""
               brew install x264 pkg-config
               ;;
             Linux)
+              EXTENSION=""
               sudo apt-get update
               sudo apt-get install -y libx11-dev libxext-dev libxtst-dev libx264-dev pkg-config
               ;;
@@ -65,20 +62,15 @@ jobs:
               ;;
           esac
 
-      - name: Build
-        env:
-          GOARCH: "amd64"
-          CGO_ENABLED: 1
-          GOOS: ${{ matrix.goos }}
-        run: |
           mkdir -p dist
-          go build -o "dist/${GOOS}${{ matrix.ext }}"
+          OUTPUT_PATH="dist/$(go env GOOS)${EXTENSION}"
+          echo "path=${OUTPUT_PATH}" >> "${GITHUB_OUTPUT}"
+          go build -o "${OUTPUT_PATH}"
 
       - name: Upload binary
         uses: actions/upload-artifact@main
         with:
-          name: ${{ matrix.goos }}
-          path: dist/${{ matrix.goos }}${{ matrix.ext }}
+          path: ${{ steps.build.outputs.path }}
 
   commit:
     needs: build
