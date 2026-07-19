@@ -36,18 +36,8 @@ jobs:
           go-version: "1.26"
           cache: true
 
-      - name: Install Ubuntu dependencies
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libx11-dev libxext-dev libxtst-dev libx264-dev pkg-config
-
-      - name: Install macOS dependencies
-        if: matrix.os == 'macos-latest'
-        run: brew install x264 pkg-config
-
       - name: Install Windows MSYS2 toolchain
-        if: matrix.os == 'windows-latest'
+        if: runner.os == 'windows-latest'
         uses: msys2/setup-msys2@main
         with:
           msystem: MINGW64
@@ -56,6 +46,24 @@ jobs:
             mingw-w64-x86_64-x264
             mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-gcc
+
+      - name: Install dependencies
+        run: |
+          case "${RUNNER_OS}" in
+            Windows)
+              ;;
+            macOS)
+              brew install x264 pkg-config
+              ;;
+            Linux)
+              sudo apt-get update
+              sudo apt-get install -y libx11-dev libxext-dev libxtst-dev libx264-dev pkg-config
+              ;;
+            *)
+              echo "::error::Unsupported operating system"
+              exit 1
+              ;;
+          esac
 
       - name: Build
         env:
