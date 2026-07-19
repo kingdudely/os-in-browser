@@ -41,4 +41,5 @@ jobs:
 
       - name: Report result
         shell: bash
-        run: echo "CONFIRMED: shell: msys2 {0} works after setup-msys2 action"
+        run: |
+          echo "CONFIRMED: shell: msys2 {0} works after setup-msys2 action"
