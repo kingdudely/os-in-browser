@@ -15,21 +15,24 @@ jobs:
           - os: ubuntu-latest
             goos: linux
             ext: ""
+            shell: bash
           - os: macos-latest
             goos: darwin
             ext: ""
+            shell: bash
           - os: windows-latest
             goos: windows
             ext: ".exe"
+            shell: "msys2 {0}"
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@main
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@main
+      - uses: actions/setup-go@v5
         with:
-          go-version: "1.26"
+          go-version: "1.23"
           cache: true
 
       - name: Install Ubuntu dependencies
@@ -44,7 +47,7 @@ jobs:
 
       - name: Install Windows MSYS2 toolchain
         if: matrix.os == 'windows-latest'
-        uses: msys2/setup-msys2@main
+        uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
           update: true
@@ -53,33 +56,18 @@ jobs:
             mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-gcc
 
-      - name: Windows libssp workaround
-        if: matrix.os == 'windows-latest'
-        shell: msys2 {0}
-        run: |
-          MINGW_LIB=$(dirname $(which ar))/../lib
-          ar rcs "$MINGW_LIB/libssp.a" || true
-
-      - name: Build (Ubuntu/macOS)
-        if: matrix.os != 'windows-latest'
-        shell: bash
+      - name: Build
+        shell: ${{ matrix.shell }}
+        env:
+          GOARCH: "amd64"
+          CGO_ENABLED: 1
+          GOOS: ${{ matrix.goos }}
         run: |
           mkdir -p dist
-          GOARCH=amd64 CGO_ENABLED=1 GOOS=${{ matrix.goos }} \
-            go build -o "dist/${{ matrix.goos }}${{ matrix.ext }}" .
-
-      - name: Build (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: msys2 {0}
-        run: |
-          mkdir -p dist
-          export PATH="/mingw64/bin:$PATH"
-          export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig"
-          GOARCH=amd64 CGO_ENABLED=1 GOOS=windows \
-            go build -o "dist/${{ matrix.goos }}${{ matrix.ext }}" .
+          go build -o "dist/${GOOS}${{ matrix.ext }}"
 
       - name: Upload binary
-        uses: actions/upload-artifact@main
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.goos }}
           path: dist/${{ matrix.goos }}${{ matrix.ext }}
@@ -88,10 +76,10 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@main
+      - uses: actions/checkout@v4
 
       - name: Download all binaries
-        uses: actions/download-artifact@main
+        uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true

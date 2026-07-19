@@ -1,0 +1,44 @@
+name: Verify msys2 shell registration
+
+on:
+  workflow_dispatch:
+
+jobs:
+  without-setup-action:
+    runs-on: windows-latest
+    steps:
+      - name: Try msys2 shell without registering it
+        id: try_msys2
+        continue-on-error: true
+        shell: msys2 {0}
+        run: echo "this should not run"
+
+      - name: Report result
+        shell: bash
+        run: |
+          if [ "${{ steps.try_msys2.outcome }}" == "failure" ]; then
+            echo "CONFIRMED: shell: msys2 {0} failed without setup-msys2 action"
+          else
+            echo "UNEXPECTED: shell: msys2 {0} succeeded without setup-msys2 action"
+            exit 1
+          fi
+
+  with-setup-action:
+    runs-on: windows-latest
+    steps:
+      - name: Register msys2 shell
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+
+      - name: Try msys2 shell after registering it
+        id: try_msys2
+        shell: msys2 {0}
+        run: |
+          echo "MSYSTEM=$MSYSTEM"
+          uname -a
+
+      - name: Report result
+        shell: bash
+        run: echo "CONFIRMED: shell: msys2 {0} works after setup-msys2 action"
