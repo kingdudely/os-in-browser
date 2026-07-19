@@ -7,21 +7,29 @@ jobs:
   without-setup-action:
     runs-on: windows-latest
     steps:
-      - name: Try msys2 shell without registering it
-        id: try_msys2
+      - name: Call preinstalled msys2 bash directly by path
+        shell: "C:\\msys64\\usr\\bin\\bash.exe -l {0}"
+        run: |
+          echo "CONFIRMED: preinstalled bash.exe works when called by full path"
+          echo "MSYSTEM=$MSYSTEM"
+          uname -a
+          which gcc || echo "gcc not found (none installed yet, expected)"
+
+      - name: Try shell msys2 {0} without registering it
+        id: try_alias
         continue-on-error: true
         shell: msys2 {0}
         run: echo "this should not run"
 
       - name: Report result
-        shell: bash
+        shell: pwsh
         run: |
-          if [ "${{ steps.try_msys2.outcome }}" == "failure" ]; then
-            echo "CONFIRMED: shell: msys2 {0} failed without setup-msys2 action"
-          else
-            echo "UNEXPECTED: shell: msys2 {0} succeeded without setup-msys2 action"
+          if ("${{ steps.try_alias.outcome }}" -eq "failure") {
+            Write-Host "CONFIRMED: bash.exe by path works, but the 'msys2 {0}' shell KEYWORD is not registered without the setup-msys2 action"
+          } else {
+            Write-Host "UNEXPECTED: shell: msys2 {0} succeeded without setup-msys2 action"
             exit 1
-          fi
+          }
 
   with-setup-action:
     runs-on: windows-latest
@@ -32,12 +40,12 @@ jobs:
           msystem: MINGW64
           update: false
 
-      - name: Try msys2 shell after registering it
-        id: try_msys2
+      - name: Try shell msys2 {0} after registering it
         shell: msys2 {0}
         run: |
           echo "MSYSTEM=$MSYSTEM"
           uname -a
+          which gcc || echo "gcc not installed (expected, none requested)"
 
       - name: Report result
         shell: bash
