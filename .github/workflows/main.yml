@@ -31,7 +31,7 @@ jobs:
         uses: actions/checkout@main
 
       - name: Start server
-        id: start-server
+        id: server
         run: |
           case "$RUNNER_OS" in
             macOS)
@@ -62,7 +62,13 @@ jobs:
           echo "${{ github.event.inputs.offer }}" >&"${COPROC[1]}"
           read -r <&"${COPROC[0]}"
           printf '%s' "${REPLY}" > "${RUNNER_TEMP}/answer.txt"
-          echo "pid=${COPROC_PID}" >> "${GITHUB_OUTPUT}"
+          wait "$COPROC_PID"
+
+      - name: Wait for answer
+        run: |
+          until [ -f "${RUNNER_TEMP}/answer.txt" ]; do
+            sleep 1
+          done
 
       - name: Upload answer
         uses: actions/upload-artifact@main
@@ -71,4 +77,4 @@ jobs:
           archive: false
 
       - name: Keep alive
-        run: wait "${{ steps.start-server.outputs.pid }}"
+        wait: server
