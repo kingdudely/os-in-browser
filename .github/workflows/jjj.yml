@@ -8,5 +8,4 @@ jobs:
     steps:
       - shell: bash
         run: |
-          echo "${CC}"
-          pacman -S mingw-w64-x86_64-x264 mingw-w64-x86_64-pkg-config
+          ls C:\msys64\mingw64\bin
