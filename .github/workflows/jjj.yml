@@ -8,4 +8,4 @@ jobs:
     steps:
       - shell: bash
         run: |
-          ls C:\msys64\mingw64\bin
+          ls "/c/msys64/mingw64/bin"
