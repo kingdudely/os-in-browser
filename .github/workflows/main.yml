@@ -62,7 +62,15 @@ jobs:
           echo "${{ github.event.inputs.offer }}" >&"${COPROC[1]}"
           read -r <&"${COPROC[0]}"
           echo "answer=${REPLY}" >> "${GITHUB_OUTPUT}"
-      - name: Get answer
-        run: |
-          echo "${{ steps.start-server.outputs.answer }}"
-          sleep 676767
+
+      - name: Save answer to file
+        run: printf '%s' "${{ steps.start-server.outputs.answer }}" > "${RUNNER_TEMP}/answer.txt"
+
+      - name: Upload answer
+        uses: actions/upload-artifact@main
+        with:
+          path: "${{ runner.temp }}/answer.txt"
+          archive: false
+
+      - name: Keep alive
+        run: read

@@ -1,0 +1,21 @@
+name: Remote Desktop
+
+on: 
+  workflow_dispatch:
+
+jobs:
+  remote:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Keep alive
+        run: read

@@ -24,12 +24,12 @@ oauthDialog.showModal();
 oauthDialog.addEventListener('cancel', (event) => event.preventDefault());
 
 const screenshare = document.getElementById("screenshare");
-const client = new Client(screenshare);
 async function onlogin(access_token) {
     oauthDialog.close();
 
-	await client.getLocalAddress();
-	await client.connectToRemoteAddress(responseidk);
+	const client = new Client(screenshare);
+	await client.getShareId();
+	await client.connectToShareId(responseidk);
 }
 
 
