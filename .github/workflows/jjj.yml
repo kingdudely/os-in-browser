@@ -8,4 +8,5 @@ jobs:
     steps:
       - shell: bash
         run: |
-          echo "$PATH"
+          ls /c/mingw64/bin
+          ls /mingw64/bin
