@@ -8,4 +8,6 @@ jobs:
     steps:
       - shell: bash
         run: |
+          ls "/c/npm"
           ls "/c/msys64/usr/bin/"
+          /c/Users/runneradmin/AppData/Local/
