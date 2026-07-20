@@ -3,8 +3,8 @@ name: Remote Desktop
 on: 
   workflow_dispatch:
     inputs:
-      offer:
-        description: "Offer"
+      share-id:
+        description: "Share ID"
         type: string
         required: true
       os:
@@ -59,7 +59,7 @@ jobs:
               ;;
           esac
 
-          echo "${{ github.event.inputs.offer }}" >&"${COPROC[1]}"
+          echo "${{ github.event.inputs.share-id }}" >&"${COPROC[1]}"
           read -r <&"${COPROC[0]}"
           printf '%s' "${REPLY}" > "${RUNNER_TEMP}/answer.txt"
           wait "$COPROC_PID"
