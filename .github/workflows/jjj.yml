@@ -8,4 +8,4 @@ jobs:
     steps:
       - shell: bash
         run: |
-          ls "/c/"
+          ls "/c/msys64/usr/bin/"
