@@ -8,5 +8,7 @@ jobs:
     steps:
       - shell: bash
         run: |
-          ls /c/mingw64/bin
-          ls /mingw64/bin
+          which pacman || echo "pacman not in PATH"
+          pacman --version || true
+          which pacman.exe || echo "pacman not in PATH"
+          pacman.exe --version || true
