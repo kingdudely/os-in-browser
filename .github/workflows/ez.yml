@@ -1,21 +1,24 @@
-name: Remote Desktop
+name: Test wait PID
 
-on: 
+on:
   workflow_dispatch:
 
 jobs:
-  remote:
-    strategy:
-      matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
-
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 360
-
+  test:
+    runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash
 
     steps:
-      - name: Keep alive
-        run: read
+      - name: Start background process
+        id: start
+        run: |
+          sleep 300 &
+          echo "pid=$!" >> "$GITHUB_OUTPUT"
+
+      - name: Try wait in another step
+        run: |
+          echo "Trying to wait on PID: ${{ steps.start.outputs.pid }}"
+          wait "${{ steps.start.outputs.pid }}"
+          echo "wait returned successfully"
