@@ -35,7 +35,11 @@ jobs:
           case "${RUNNER_OS}" in
             Windows)
               EXTENSION=".exe"
-              choco install -y pkgconfiglite x264 mingw
+              export PATH="/c/msys64/mingw64/bin:$PATH"
+
+              /c/msys64/usr/bin/pacman.exe --noconfirm -S \
+                mingw-w64-x86_64-pkgconf \
+                mingw-w64-x86_64-x264
               ;;
             macOS)
               EXTENSION=""
