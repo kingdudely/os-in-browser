@@ -6,6 +6,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - run: |
+      - shell: bash
+        run: |
           echo "${CC}"
           pacman -S mingw-w64-x86_64-x264 mingw-w64-x86_64-pkg-config
