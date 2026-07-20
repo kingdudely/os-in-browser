@@ -10,4 +10,4 @@ jobs:
         run: |
           ls "/c/npm"
           ls "/c/msys64/usr/bin/"
-          /c/Users/runneradmin/AppData/Local/
+          ls "/c/Users/runneradmin/AppData/Local/"
