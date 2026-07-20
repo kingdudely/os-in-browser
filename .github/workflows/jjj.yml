@@ -8,9 +8,4 @@ jobs:
     steps:
       - shell: bash
         run: |
-          echo "::error::npm"
-          ls "/c/npm"
-          echo "::error::bin"
-          ls "/c/msys64/usr/bin/"
-          echo "::error::local"
-          ls "/c/Users/runneradmin/AppData/Local/"
+          echo "$PATH"
