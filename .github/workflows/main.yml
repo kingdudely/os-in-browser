@@ -36,7 +36,7 @@ jobs:
         run: |
           case "$RUNNER_OS" in
             macOS)
-              ./dist/darwin
+              ./dist/darwin "${{ github.event.inputs.share-id }}"
               ;;
 
             Linux)
@@ -47,11 +47,11 @@ jobs:
                 dbus-x11 \
                 xvfb
 
-              xvfb-run -a -s "-screen 0 1920x1080x24" bash -c 'dbus-launch startlxqt >/tmp/lxqt.log 2>&1 & exec ./dist/linux'
+              xvfb-run -a -s "-screen 0 1920x1080x24" bash -c 'dbus-launch startlxqt >/tmp/lxqt.log 2>&1 & exec ./dist/linux "${{ github.event.inputs.share-id }}"'
               ;;
 
             Windows)
-              ./dist/windows.exe
+              ./dist/windows.exe "${{ github.event.inputs.share-id }}"
               ;;
 
             *)
