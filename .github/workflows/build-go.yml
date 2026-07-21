@@ -31,6 +31,7 @@ jobs:
         id: build
         env:
           CGO_ENABLED: 1
+          EXTENSION: ""
         run: |
           case "${RUNNER_OS}" in
             Windows)
@@ -39,11 +40,9 @@ jobs:
               pacman --noconfirm -Sy --needed mingw-w64-x86_64-pkgconf mingw-w64-x86_64-x264
               ;;
             macOS)
-              EXTENSION=""
               brew install x264 pkg-config
               ;;
             Linux)
-              EXTENSION=""
               sudo apt-get update
               sudo apt-get install -y libx11-dev libxext-dev libxtst-dev libx264-dev pkg-config
               ;;
