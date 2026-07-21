@@ -17,7 +17,8 @@ if (code) {
 	// return
 }
 
-import Client from "./client.js";
+import Client from "./Client.js";
+import ApiClient from "./ApiClient.js";
 const sleep = (milliseconds) => await new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 const oauthDialog = document.getElementById("oauth-dialog");
@@ -25,38 +26,33 @@ oauthDialog.showModal();
 oauthDialog.addEventListener('cancel', (event) => event.preventDefault());
 
 const screenshare = document.getElementById("screenshare");
-async function onlogin(access_token) {
+
+async function onlogin(accessToken) {
 	oauthDialog.close();
 
+	const GitHub = new ApiClient("https://api.github.com", {
+		"Authorization": `token ${accessToken}`
+	});
 	const client = new Client(screenshare);
 	const shareId = await client.getShareId();
+	
+	const repoEndpoint = `/repos/kingdudely/os-in-browser`
 
-	const owner = "kingdudely";
-	const repo = "os-in-browser";
-	const headers = {
-		"Authorization": `token ${access_token}`,
-		"Content-Type": "application/json"
-	};
+	const branch = (await GitHub.get(repoEndpoint)).default_branch;
 
-	const { default_branch } = await (await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers })).json();
-
-	await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/workflows/main.yml/dispatches`, {
-		headers,
-		"body": JSON.stringify({
-			"ref": default_branch,
-			"inputs": {
-				"os": "windows-latest",
-				"share-id": shareId
-			}
-		}),
-		"method": "POST",
+	await GitHub.post(`${repoEndpoint}/actions/workflows/main.yml/dispatches`, {
+		"ref": branch,
+		"inputs": {
+			"os": "windows-latest",
+			"share-id": shareId
+		}
 	});
 
 	// clearTimeout
 	const timeout = setTimeout(() => window.alert("Taking a little too long to load, maybe try refreshing?"), 30_000);
 	let answerDownloadUrl;
 	while (true) {
-		const { artifacts } = await (await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/artifacts`, { headers })).json();
+		const { artifacts } = await GitHub.get(`${repoEndpoint}/actions/artifacts`);
 		answerDownloadUrl = artifacts?.find((artifact) => artifact.name === "answer.txt")?.archive_download_url;
 		if (answerDownloadUrl) {
 			clearTimeout(timeout);
@@ -74,11 +70,11 @@ document.getElementById("credential-file").addEventListener("change", async (eve
 	const credentialFile = event.target.files[0];
 	if (!credentialFile) return;
 
-	const access_token = new URLSearchParams(await credentialFile.text()).get("access_token");
-	if (!access_token) {
+	const accessToken = new URLSearchParams(await credentialFile.text()).get("accessToken");
+	if (!accessToken) {
 		alert("Invalid credential file");
 		return;
 	}
 
-	onlogin(access_token);
+	onlogin(accessToken);
 });
