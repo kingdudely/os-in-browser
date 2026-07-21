@@ -300,9 +300,7 @@ func setupScreenCapture() (mediadevices.Track, error) {
 	params.Preset = x264.PresetUltrafast
 
 	stream, err := mediadevices.GetDisplayMedia(mediadevices.MediaStreamConstraints{
-		Video: func(c *mediadevices.MediaTrackConstraints) {
-			c.FrameFormat = prop.FrameFormatOneOf{frame.FormatI420}
-		},
+		Video:  func(c *mediadevices.MediaTrackConstraints) {},
 		Codec: mediadevices.NewCodecSelector(mediadevices.WithVideoEncoders(&params)),
 	})
 	if err != nil {
