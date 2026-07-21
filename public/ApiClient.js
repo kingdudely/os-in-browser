@@ -1,4 +1,4 @@
-class ApiClient {
+export default class ApiClient {
 	constructor(baseApiHostname, headers) {
 		this.headers = Object.fromEntries(new Headers(headers));
 		this.baseApiHostname = baseApiHostname;
