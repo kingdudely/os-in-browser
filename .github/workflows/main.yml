@@ -35,7 +35,7 @@ jobs:
         run: |
           case "$RUNNER_OS" in
             macOS)
-              coproc { ./dist/darwin; }
+              coproc ./dist/darwin
               ;;
 
             Linux)
@@ -46,11 +46,11 @@ jobs:
                 dbus-x11 \
                 xvfb
 
-              coproc { xvfb-run -a -s "-screen 0 1920x1080x24" bash -c 'dbus-launch startlxqt >/tmp/lxqt.log 2>&1 & exec ./dist/linux'; }
+              coproc xvfb-run -a -s "-screen 0 1920x1080x24" bash -c 'dbus-launch startlxqt >/tmp/lxqt.log 2>&1 & exec ./dist/linux'
               ;;
 
             Windows)
-              coproc { ./dist/windows.exe; }
+              coproc ./dist/windows.exe
               ;;
 
             *)
