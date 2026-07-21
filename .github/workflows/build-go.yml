@@ -40,14 +40,37 @@ jobs:
               EXTENSION=".exe"
               export PATH="/c/msys64/mingw64/bin:/c/msys64/usr/bin:$PATH"
               pacman --noconfirm -Sy --needed mingw-w64-x86_64-pkgconf mingw-w64-x86_64-libx264
+
+              # MinGW ships a real static archive for libx264 — link it in directly
+              # instead of relying on the dll being present at runtime.
+              export CGO_CFLAGS="-I/c/msys64/mingw64/include"
+              export CGO_LDFLAGS="-static -L/c/msys64/mingw64/lib -lx264"
               ;;
+
             macOS)
               brew install x264 pkg-config
+              X264_PREFIX="$(brew --prefix x264)"
+
+              # macOS has no static libSystem, so we can't fully static-link —
+              # but we CAN statically embed just libx264 while leaving libSystem
+              # dynamic (which is always present on any Mac, so that's fine).
+              # -force_load ensures the linker doesn't strip "unreferenced"
+              # symbols out of the static archive.
+              export CGO_CFLAGS="-I${X264_PREFIX}/include"
+              export CGO_LDFLAGS="-Wl,-force_load,${X264_PREFIX}/lib/libx264.a"
               ;;
+
             Linux)
               sudo apt-get update
-              sudo apt-get install -y libx11-dev libxext-dev libxtst-dev libx264-dev pkg-config
+              sudo apt-get install -y --no-install-recommends \
+                libx11-dev libxext-dev libxtst-dev libx264-dev pkg-config
+
+              X264_STATIC_LIB="$(dpkg -L libx264-dev | grep -E 'libx264\.a$' | head -n1)"
+
+              export CGO_CFLAGS="$(pkg-config --cflags x264)"
+              export CGO_LDFLAGS="${X264_STATIC_LIB}"
               ;;
+
             *)
               echo "::error::Unsupported operating system"
               exit 1
@@ -58,6 +81,28 @@ jobs:
           OUTPUT_PATH="dist/$(go env GOOS)${EXTENSION}"
           echo "path=${OUTPUT_PATH}" >> "${GITHUB_OUTPUT}"
           go build -o "${OUTPUT_PATH}"
+
+      - name: Verify no dynamic libx264 dependency
+        run: |
+          case "${RUNNER_OS}" in
+            macOS)
+              if otool -L "${{ steps.build.outputs.path }}" | grep -qi x264; then
+                echo "::error::binary still dynamically links libx264"
+                exit 1
+              fi
+              ;;
+            Linux)
+              if ldd "${{ steps.build.outputs.path }}" 2>/dev/null | grep -qi x264; then
+                echo "::error::binary still dynamically links libx264"
+                exit 1
+              fi
+              ;;
+            Windows)
+              # dumpbin isn't guaranteed on PATH here; skip strict check,
+              # rely on -static having done its job.
+              echo "skipping dynamic-link check on Windows"
+              ;;
+          esac
 
       - name: Upload binary
         uses: actions/upload-artifact@main
