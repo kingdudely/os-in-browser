@@ -29,15 +29,6 @@ jobs:
           go-version: "1.26"
           cache: true
 
-      - name: Setup MSYS2 for Windows
-        if: runner.os == 'Windows'
-        uses: msys2/setup-msys2@v2
-        with:
-          release: false
-          cache: true
-          msystem: MINGW64
-          install: mingw-w64-x86_64-pkgconf mingw-w64-x86_64-x264
-
       - name: Build
         id: build
         env:
@@ -47,7 +38,8 @@ jobs:
           case "${RUNNER_OS}" in
             Windows)
               EXTENSION=".exe"
-              export PATH="/c/msys64/mingw64/bin:$PATH"
+              export PATH="/c/msys64/mingw64/bin:/c/msys64/usr/bin:$PATH"
+              pacman --noconfirm -Sy --needed mingw-w64-x86_64-pkgconf mingw-w64-x86_64-libx264
               ;;
             macOS)
               brew install x264 pkg-config
