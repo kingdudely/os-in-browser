@@ -34,6 +34,7 @@ jobs:
         uses: msys2/setup-msys2@v2
         with:
           release: false
+          cache: true
           msystem: MINGW64
           install: mingw-w64-x86_64-pkgconf mingw-w64-x86_64-x264
 
