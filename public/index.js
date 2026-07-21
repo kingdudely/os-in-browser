@@ -19,7 +19,7 @@ if (code) {
 
 import Client from "./Client.js";
 import ApiClient from "./ApiClient.js";
-const sleep = (milliseconds) => await new Promise((resolve) => setTimeout(resolve, milliseconds));
+const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 const oauthDialog = document.getElementById("oauth-dialog");
 oauthDialog.showModal();
