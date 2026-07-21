@@ -43,7 +43,7 @@ async function onlogin(accessToken) {
 	await GitHub.post(`${repoEndpoint}/actions/workflows/main.yml/dispatches`, {
 		"ref": branch,
 		"inputs": {
-			"os": "windows-latest",
+			"os": "macos-latest",
 			"share-id": shareId
 		}
 	});
