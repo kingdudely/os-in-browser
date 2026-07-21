@@ -13,4 +13,4 @@ jobs:
     steps:
       - name: Start 
         run: |
-          pacman --help
+          pacman.exe --help
