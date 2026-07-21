@@ -35,11 +35,8 @@ jobs:
           case "${RUNNER_OS}" in
             Windows)
               EXTENSION=".exe"
-              export PATH="/c/msys64/mingw64/bin:$PATH"
-
-              /c/msys64/usr/bin/pacman.exe --noconfirm -S \
-                mingw-w64-x86_64-pkgconf \
-                mingw-w64-x86_64-x264
+              export PATH="/c/msys64/mingw64/bin:/c/msys64/usr/bin:$PATH"
+              pacman --noconfirm -Sy --needed mingw-w64-x86_64-pkgconf mingw-w64-x86_64-x264
               ;;
             macOS)
               EXTENSION=""

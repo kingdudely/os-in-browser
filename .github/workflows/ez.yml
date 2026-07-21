@@ -5,20 +5,13 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     defaults:
       run:
         shell: bash
 
     steps:
-      - name: Start background process
-        id: start
+      - name: Start 
         run: |
-          sleep 300 &
-          echo "pid=$!" >> "$GITHUB_OUTPUT"
-
-      - name: Try wait in another step
-        run: |
-          echo "Trying to wait on PID: ${{ steps.start.outputs.pid }}"
-          wait "${{ steps.start.outputs.pid }}"
-          echo "wait returned successfully"
+          export PATH="/c/msys64/mingw64/bin:/c/msys64/usr/bin:$PATH"
+          pacman --help
