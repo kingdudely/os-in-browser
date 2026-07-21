@@ -35,29 +35,37 @@ jobs:
           CGO_ENABLED: 1
           EXTENSION: ""
         run: |
+          mkdir -p dist
+
           case "${RUNNER_OS}" in
             Windows)
               EXTENSION=".exe"
               export PATH="/c/msys64/mingw64/bin:/c/msys64/usr/bin:$PATH"
               pacman --noconfirm -Sy --needed mingw-w64-x86_64-pkgconf mingw-w64-x86_64-libx264
 
-              # MinGW ships a real static archive for libx264 — link it in directly
-              # instead of relying on the dll being present at runtime.
-              export CGO_CFLAGS="-I/c/msys64/mingw64/include"
-              export CGO_LDFLAGS="-static -L/c/msys64/mingw64/lib -lx264"
+              OUTPUT_PATH="dist/$(go env GOOS)${EXTENSION}"
+              go build -o "${OUTPUT_PATH}"
+
+              # ship the dll next to the exe — Windows checks the exe's own
+              # directory for dependencies automatically, no linker tricks needed
+              cp /c/msys64/mingw64/bin/libx264-*.dll dist/
               ;;
 
             macOS)
               brew install x264 pkg-config
-              X264_PREFIX="$(brew --prefix x264)"
 
-              # macOS has no static libSystem, so we can't fully static-link —
-              # but we CAN statically embed just libx264 while leaving libSystem
-              # dynamic (which is always present on any Mac, so that's fine).
-              # -force_load ensures the linker doesn't strip "unreferenced"
-              # symbols out of the static archive.
-              export CGO_CFLAGS="-I${X264_PREFIX}/include"
-              export CGO_LDFLAGS="-Wl,-force_load,${X264_PREFIX}/lib/libx264.a"
+              OUTPUT_PATH="dist/$(go env GOOS)${EXTENSION}"
+              go build -o "${OUTPUT_PATH}"
+
+              X264_DYLIB="$(find "$(brew --prefix x264)/lib" -name 'libx264.*.dylib' ! -type l | head -n1)"
+              cp "$X264_DYLIB" dist/
+
+              # rewrite the binary's load path from the absolute Homebrew path
+              # to "look next to me" so no brew install is needed at runtime
+              install_name_tool -change \
+                "$X264_DYLIB" \
+                "@executable_path/$(basename "$X264_DYLIB")" \
+                "$OUTPUT_PATH"
               ;;
 
             Linux)
@@ -65,10 +73,14 @@ jobs:
               sudo apt-get install -y --no-install-recommends \
                 libx11-dev libxext-dev libxtst-dev libx264-dev pkg-config
 
-              X264_STATIC_LIB="$(dpkg -L libx264-dev | grep -E 'libx264\.a$' | head -n1)"
+              # bake "look in my own directory first" into the binary
+              export CGO_LDFLAGS="-Wl,-rpath -Wl,\$ORIGIN"
 
-              export CGO_CFLAGS="$(pkg-config --cflags x264)"
-              export CGO_LDFLAGS="${X264_STATIC_LIB}"
+              OUTPUT_PATH="dist/$(go env GOOS)${EXTENSION}"
+              go build -o "${OUTPUT_PATH}"
+
+              X264_SO="$(ldconfig -p | grep libx264.so | awk '{print $NF}' | head -n1)"
+              cp "$X264_SO" dist/
               ;;
 
             *)
@@ -77,38 +89,35 @@ jobs:
               ;;
           esac
 
-          mkdir -p dist
-          OUTPUT_PATH="dist/$(go env GOOS)${EXTENSION}"
           echo "path=${OUTPUT_PATH}" >> "${GITHUB_OUTPUT}"
-          go build -o "${OUTPUT_PATH}"
 
-      - name: Verify no dynamic libx264 dependency
+      - name: Verify binary finds its bundled libx264
         run: |
           case "${RUNNER_OS}" in
             macOS)
-              if otool -L "${{ steps.build.outputs.path }}" | grep -qi x264; then
-                echo "::error::binary still dynamically links libx264"
+              otool -L "${{ steps.build.outputs.path }}"
+              if ! otool -L "${{ steps.build.outputs.path }}" | grep -q "@executable_path"; then
+                echo "::error::binary is not pointed at the bundled dylib"
                 exit 1
               fi
               ;;
             Linux)
-              if ldd "${{ steps.build.outputs.path }}" 2>/dev/null | grep -qi x264; then
-                echo "::error::binary still dynamically links libx264"
+              ldd "${{ steps.build.outputs.path }}"
+              if ! readelf -d "${{ steps.build.outputs.path }}" | grep -qi '\$ORIGIN'; then
+                echo "::error::binary does not have \$ORIGIN rpath baked in"
                 exit 1
               fi
               ;;
             Windows)
-              # dumpbin isn't guaranteed on PATH here; skip strict check,
-              # rely on -static having done its job.
-              echo "skipping dynamic-link check on Windows"
+              echo "skipping — Windows resolves the dll from the exe's own folder automatically"
               ;;
           esac
 
-      - name: Upload binary
+      - name: Upload dist directory
         uses: actions/upload-artifact@main
         with:
           name: ${{ runner.os }}
-          path: ${{ steps.build.outputs.path }}
+          path: dist/
 
   commit:
     needs: build
@@ -132,5 +141,5 @@ jobs:
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "Add cross-platform binaries to dist/"
+          git commit -m "Add cross-platform binaries + libx264 to dist/"
           git push
