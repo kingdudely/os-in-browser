@@ -1,14 +1,14 @@
 name: Build main.go
 
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
 on:
   workflow_dispatch:
 
 permissions:
   contents: write
-
-defaults:
-  run:
-    shell: bash
 
 jobs:
   build:
@@ -68,7 +68,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@main
+      - name: Checkout
+        uses: actions/checkout@main
 
       - name: Download all binaries
         uses: actions/download-artifact@main

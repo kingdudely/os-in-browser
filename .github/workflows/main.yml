@@ -1,5 +1,9 @@
 name: Remote Desktop
 
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
 on: 
   workflow_dispatch:
     inputs:
@@ -22,12 +26,8 @@ jobs:
     runs-on: ${{ github.event.inputs.os }}
     timeout-minutes: 360
 
-    defaults:
-      run:
-        shell: bash
-
     steps:
-      - name: Copy repository into PC
+      - name: Checkout
         uses: actions/checkout@main
 
       - name: Start server
