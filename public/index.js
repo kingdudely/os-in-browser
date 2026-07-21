@@ -49,7 +49,7 @@ async function onlogin(accessToken) {
 	});
 
 	// clearTimeout
-	const timeout = setTimeout(() => window.alert("Taking a little too long to load, maybe try refreshing?"), 30_000);
+	const timeout = setTimeout(() => window.alert("Taking a little too long to connect, maybe try refreshing?"), 30_000);
 	let answerDownloadUrl;
 	while (true) {
 		const { artifacts } = await GitHub.get(`${repoEndpoint}/actions/artifacts`);
