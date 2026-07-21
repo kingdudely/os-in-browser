@@ -62,6 +62,7 @@ jobs:
       - name: Upload binary
         uses: actions/upload-artifact@main
         with:
+          name: ${{ runner.os }}
           path: ${{ steps.build.outputs.path }}
 
   commit:
