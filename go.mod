@@ -1,4 +1,4 @@
-module github.com/kingdudely/os-in-browser-runner
+module github.com/kingdudely/os-in-browser
 
 go 1.26.5
 
