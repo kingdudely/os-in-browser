@@ -37,7 +37,6 @@ jobs:
           msystem: MINGW64
           install: mingw-w64-x86_64-pkgconf mingw-w64-x86_64-x264
 
-
       - name: Build
         id: build
         env:
