@@ -70,7 +70,7 @@ document.getElementById("credential-file").addEventListener("change", async (eve
 	const credentialFile = event.target.files[0];
 	if (!credentialFile) return;
 
-	const accessToken = new URLSearchParams(await credentialFile.text()).get("accessToken");
+	const accessToken = new URLSearchParams(await credentialFile.text()).get("access_token");
 	if (!accessToken) {
 		alert("Invalid credential file");
 		return;
