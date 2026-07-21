@@ -30,15 +30,13 @@ jobs:
       - name: Copy repository into PC
         uses: actions/checkout@main
 
-      - name: Debug shell
-        run: echo "$0" && bash --version
-
       - name: Start server
         id: server
+        background: true
         run: |
           case "$RUNNER_OS" in
             macOS)
-              coproc ./dist/darwin
+              ./dist/darwin
               ;;
 
             Linux)
@@ -49,11 +47,11 @@ jobs:
                 dbus-x11 \
                 xvfb
 
-              coproc xvfb-run -a -s "-screen 0 1920x1080x24" bash -c 'dbus-launch startlxqt >/tmp/lxqt.log 2>&1 & exec ./dist/linux'
+              xvfb-run -a -s "-screen 0 1920x1080x24" bash -c 'dbus-launch startlxqt >/tmp/lxqt.log 2>&1 & exec ./dist/linux'
               ;;
 
             Windows)
-              coproc ./dist/windows.exe
+              ./dist/windows.exe
               ;;
 
             *)
@@ -62,22 +60,17 @@ jobs:
               ;;
           esac
 
-          echo "${{ github.event.inputs.share-id }}" >&"${COPROC[1]}"
-          read -r <&"${COPROC[0]}"
-          printf '%s' "${REPLY}" > "${RUNNER_TEMP}/answer.txt"
-          wait "$COPROC_PID"
-
       - name: Wait for answer
         run: |
-          until [ -f "${RUNNER_TEMP}/answer.txt" ]; do
+          until [ -f "answer.txt" ]; do
             sleep 1
           done
 
       - name: Upload answer
         uses: actions/upload-artifact@main
         with:
-          path: "${{ runner.temp }}/answer.txt"
+          path: answer.txt
           archive: false
 
-      - name: Keep alive
+      - name: Wait until connection is closed
         wait: server
