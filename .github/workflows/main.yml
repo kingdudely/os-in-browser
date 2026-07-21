@@ -30,9 +30,11 @@ jobs:
       - name: Copy repository into PC
         uses: actions/checkout@main
 
+      - name: Debug shell
+        run: echo "$0" && bash --version
+
       - name: Start server
         id: server
-        shell: bash
         run: |
           case "$RUNNER_OS" in
             macOS)
