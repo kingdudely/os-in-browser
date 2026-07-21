@@ -26,11 +26,6 @@ jobs:
 
       - name: Generate certificate and fingerprint
         run: |
-          if [[ -f key.pem && -f certificate.pem && -f public/fingerprint.txt ]]; then
-            echo "Already generated"
-            exit 0
-          fi
-
           openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
             -keyout key.pem -out certificate.pem \
             -nodes -subj "/CN=WebRTC-Workflow" -days 36500

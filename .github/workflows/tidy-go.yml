@@ -26,9 +26,8 @@ jobs:
 
       - name: Create go.mod and go.sum
         run: |
-          if [ ! -f go.mod ]; then
-            go mod init github.com/kingdudely/os-in-browser-runner
-          fi
+          rm -f go.mod go.sum
+          go mod init github.com/kingdudely/os-in-browser
           go mod tidy
 
       - name: Commit go.mod and go.sum
