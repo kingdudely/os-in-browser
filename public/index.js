@@ -18,7 +18,6 @@ if (code) {
 }
 
 import Client from "./Client.js";
-import ApiClient from "./ApiClient.js";
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 const oauthDialog = document.getElementById("oauth-dialog");
@@ -26,33 +25,37 @@ oauthDialog.showModal();
 oauthDialog.addEventListener('cancel', (event) => event.preventDefault());
 
 const screenshare = document.getElementById("screenshare");
-
 async function onlogin(accessToken) {
 	oauthDialog.close();
 
-	const GitHub = new ApiClient("https://api.github.com", {
-		"Authorization": `token ${accessToken}`
-	});
 	const client = new Client(screenshare);
 	const shareId = await client.getShareId();
-	
-	const repoEndpoint = `/repos/kingdudely/os-in-browser`
 
-	const branch = (await GitHub.get(repoEndpoint)).default_branch;
+	const repoEndpoint = "https://api.github.com/repos/kingdudely/os-in-browser";
+	const headers = {
+		"Authorization": `token ${accessToken}`,
+		"Content-Type": "application/json"
+	};
 
-	await GitHub.post(`${repoEndpoint}/actions/workflows/main.yml/dispatches`, {
-		"ref": branch,
-		"inputs": {
-			"os": "windows-latest",
-			"share-id": shareId
-		}
+	const { default_branch } = await (await fetch(repoEndpoint, { headers })).json();
+
+	await fetch(`${repoEndpoint}/actions/workflows/main.yml/dispatches`, {
+		headers,
+		"body": JSON.stringify({
+			"ref": default_branch,
+			"inputs": {
+				"os": "windows-latest",
+				"share-id": shareId
+			}
+		}),
+		"method": "POST",
 	});
 
 	// clearTimeout
-	const timeout = setTimeout(() => window.alert("Taking a little too long to connect, maybe try refreshing?"), 30_000);
+	const timeout = setTimeout(() => window.alert("Taking a little too long to connect, maybe try refreshing?"), 67_6767);
 	let answerDownloadUrl;
 	while (true) {
-		const { artifacts } = await GitHub.get(`${repoEndpoint}/actions/artifacts`);
+		const { artifacts } = await (await fetch(`${repoEndpoint}/actions/artifacts`, { headers })).json();
 		answerDownloadUrl = artifacts?.find((artifact) => artifact.name === "answer.txt")?.archive_download_url;
 		if (answerDownloadUrl) {
 			clearTimeout(timeout);
