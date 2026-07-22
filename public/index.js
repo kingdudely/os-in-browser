@@ -38,24 +38,24 @@ async function onlogin(accessToken) {
 	};
 
 	const { default_branch } = await (await fetch(repoEndpoint, { headers })).json();
-
-	await fetch(`${repoEndpoint}/actions/workflows/main.yml/dispatches`, {
+	const { workflow_run_id } = await (await fetch(`${repoEndpoint}/actions/workflows/main.yml/dispatches`, {
 		headers,
 		"body": JSON.stringify({
 			"ref": default_branch,
+			return_run_details: true,
 			"inputs": {
 				"os": "windows-latest",
 				"share-id": shareId
 			}
 		}),
 		"method": "POST",
-	});
+	})).json();
 
 	// clearTimeout
 	const timeout = setTimeout(() => window.alert("Taking a little too long to connect, maybe try refreshing?"), 67_6767);
 	let answerDownloadUrl;
 	while (true) {
-		const { artifacts } = await (await fetch(`${repoEndpoint}/actions/artifacts`, { headers })).json();
+		const { artifacts } = await (await fetch(`${repoEndpoint}/actions/runs/${runId}/artifacts`, { headers })).json();
 		answerDownloadUrl = artifacts?.find((artifact) => artifact.name === "answer.txt")?.archive_download_url;
 		if (answerDownloadUrl) {
 			clearTimeout(timeout);
