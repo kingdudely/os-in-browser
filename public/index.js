@@ -55,7 +55,7 @@ async function onlogin(accessToken) {
 	const timeout = setTimeout(() => window.alert("Taking a little too long to connect, maybe try refreshing?"), 67_6767);
 	let answerDownloadUrl;
 	while (true) {
-		const { artifacts } = await (await fetch(`${repoEndpoint}/actions/runs/${runId}/artifacts`, { headers })).json();
+		const { artifacts } = await (await fetch(`${repoEndpoint}/actions/runs/${workflow_run_id}/artifacts`, { headers })).json();
 		answerDownloadUrl = artifacts?.find((artifact) => artifact.name === "answer.txt")?.archive_download_url;
 		if (answerDownloadUrl) {
 			clearTimeout(timeout);
