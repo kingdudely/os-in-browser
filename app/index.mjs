@@ -14,7 +14,6 @@ const peer = new RTCPeerConnection({
 });
 
 console.log("B")
-async function main(){
 const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
 stream.getTracks().forEach((track) => peer.addTrack(track, stream));
 console.log("c")
@@ -107,7 +106,3 @@ console.log("A")
 
 await writeFile('answer.txt', peer.localDescription.sdp);
 console.log("A")
-
-}
-
-main();
