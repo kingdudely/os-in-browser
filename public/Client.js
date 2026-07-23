@@ -1,5 +1,5 @@
 import codeMap from "./code-map.json" with { type: "json" };
-const workflowFingerprint = await (await fetch("fingerprint.txt")).text();
+const workflowFingerprint = (await (await fetch("fingerprint.txt")).text()).trim();
 const usernameFragment = "myufraghere1234";
 const password = "mypasswordthatisverylong12345";
 const sharedBytes = new Uint8Array(18);
