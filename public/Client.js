@@ -63,6 +63,7 @@ export default class Client extends RTCPeerConnection {
 		videoElement.muted = true; // Add system audio... one day. :(
 
 		this.addEventListener("track", (event) => {
+			console.log("Track received:", event.track.kind, event.track.enabled);
 			videoElement.srcObject = event.streams[0];
 			// .catch(() => {})
 			videoElement.play().catch(console.warn);
