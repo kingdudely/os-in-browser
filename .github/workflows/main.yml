@@ -52,7 +52,6 @@ jobs:
 
       - name: Start server
         id: server
-        background: true
         env:
           NODE_OPTIONS: --unhandled-rejections=strict
           OFFER: ${{ github.event.inputs.offer }}
@@ -69,6 +68,3 @@ jobs:
         with:
           path: answer.txt
           archive: false
-
-      - name: Wait for server
-        wait: server
