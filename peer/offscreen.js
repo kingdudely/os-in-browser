@@ -1,5 +1,3 @@
-import Peer from "../docs/peer.js";
-
 const host = await chrome.runtime.connectNative("host");
 
 function sendToHost(msg) {
@@ -20,21 +18,26 @@ function sendToHost(msg) {
     });
 }
 
-const VIEWER_SHARE_ID = await sendToHost({ type: "get_viewer_share_id" });
+const VIEWER_SHARE_ID = // get from host
 
-const peer = new Peer();
+const peer = new RTCPeerConnection({
+    iceServers: [
+        { urls: "stun:stun.l.google.com:19302" }
+    ]
+});
 peer.addTransceiver("audio", { direction: "sendonly" });
 peer.addTransceiver("video", { direction: "sendonly" });
 
-await peer.connectToShareId(VIEWER_SHARE_ID);
+await peer.setRemoteDescription({ "type": "answer", "sdp": VIEWER_SHARE_ID });
 
 const screenshare = await navigator.mediaDevices.getDisplayMedia({
     video: { cursor: "always", displaySurface: "monitor" },
     audio: { systemAudio: "include" }
 });
 
-const videoTrack = screenshare.getVideoTracks()[0];
-peer.addTrack(videoTrack, screenshare);
+// const videoTrack = screenshare.getVideoTracks()[0];
+// peer.addTrack(videoTrack, screenshare);
+screenshare.getTracks().forEach((track) => peer.addTrack(track, screenshare));
 
 const pointerMovementChannel = peer.createDataChannel("pointer-movement", {
     ordered: false,
@@ -63,8 +66,6 @@ const pointerScrollChannel = peer.createDataChannel("pointer-scroll", {
 });
 
 pointerMovementChannel.addEventListener("message", async (event) => {
-    const view = new DataView(event.data);
-
     if (event.data.byteLength === 4) {
         // relative movement (pointer lock)
         const dx = view.getInt16(0, true);
