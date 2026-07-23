@@ -1,5 +1,9 @@
 name: Remote Desktop
 
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
 on: 
   workflow_dispatch:
     inputs:
@@ -12,52 +16,57 @@ on:
           - windows-latest
           - ubuntu-latest
           - macos-latest
-      username:
-        description: "Username"
+      offer:
+        description: "Offer"
         type: string
-        required: false
-      password:
-        description: "Password"
-        type: string
-        required: false
+        required: true
 
 jobs:
   remote:
     runs-on: ${{ github.event.inputs.os }}
     timeout-minutes: 360
-    defaults:
-      run:
-        shell: bash
 
     steps:
       - name: Copy repository into PC
         uses: actions/checkout@main
 
-      - name: Setup cloudflared
-        uses: AnimMouse/setup-cloudflared@main
-
       - name: Linux setup
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb xterm
+          sudo apt-get install -y --no-install-recommends \
+            lxqt \
+            openbox \
+            dbus-x11 \
+            xvfb
 
           read -r DISPLAY_NUMBER < <(exec Xvfb -displayfd 1)
 
           export DISPLAY=":$DISPLAY_NUMBER"
           echo "DISPLAY=$DISPLAY" >> "$GITHUB_ENV"
 
-          xterm -maximized &
+          startlxqt &
 
       - name: Install server dependencies
         run: npm install
 
       - name: Start server
+        background: true
         env:
           NODE_OPTIONS: --unhandled-rejections=strict
-        run: |
-          export USERNAME=$(jq -r '.inputs.username // ""' "$GITHUB_EVENT_PATH")
-          export PASSWORD=$(jq -r '.inputs.password // ""' "$GITHUB_EVENT_PATH")
-          echo "::add-mask::${USERNAME}"
-          echo "::add-mask::${PASSWORD}"
-          npm start # -- --username="${USERNAME}" --password="${PASSWORD}"
+          OFFER: ${{ github.event.inputs.offer }}
+        run: npm start
+
+      - name: Wait for answer.txt
+          until [ -f answer.txt ]; do
+            sleep 1
+          done
+
+      - name: Upload answer.txt
+        uses: actions/upload-artifact@v7
+        with:
+          path: answer.txt
+          archive: false
+
+      - name: Wait for server
+        wait: server

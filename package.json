@@ -2,7 +2,7 @@
 	"name": "os-in-browser",
 	"version": "1.0.0",
 	"description": "Run an OS in the browser using GitHub actions!",
-	"main": "index.js",
+	"main": "index.mjs",
 	"keywords": [],
 	"author": "kingdudely",
 	"license": "ISC",
@@ -11,11 +11,9 @@
 		"start": "electron ."
 	},
 	"dependencies": {
-		"express": "^5.2.1",
-		"express-basic-auth": "^1.2.1",
 		"@nut-tree-fork/nut-js": "^4.2.6"
 	},
 	"devDependencies": {
-		"electron": "^43.1.0"
+		"electron": "^43.2.0"
 	}
 }

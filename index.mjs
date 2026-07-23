@@ -17,7 +17,7 @@ app.whenReady().then(() => {
 	}, { useSystemPicker: false });
 
 	const win = new BrowserWindow({
-		show: true,
+		show: false,
 		webPreferences: {
 			nodeIntegration: true,
 			contextIsolation: false,
