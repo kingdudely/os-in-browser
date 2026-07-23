@@ -67,6 +67,7 @@ export default class Client extends RTCPeerConnection {
 			videoElement.play().catch(() => { });
 		});
 
+		this.addTransceiver("audio", { direction: "recvonly" }); // bruh
 		this.addTransceiver("video", { direction: "recvonly" });
 
 		const pointerMovementChannel = this.createDataChannel("pointer-movement", {
