@@ -79,8 +79,13 @@ keyboardTypeChannel.addEventListener("message", async (event) => {
 	}
 });
 
+console.log("A")
 await peer.setRemoteDescription({ type: "offer", sdp: OFFER });
+console.log("A")
+
 await peer.setLocalDescription();
+console.log("A")
+
 
 await new Promise((resolve) => {
 	if (peer.iceGatheringState === "complete") {
@@ -94,5 +99,8 @@ await new Promise((resolve) => {
 		});
 	}
 });
+console.log("A")
+
 
 await writeFile('answer.txt', peer.localDescription.sdp);
+console.log("A")
