@@ -25,10 +25,7 @@ app.whenReady().then(() => {
 		}
 	});
 
-	win.webContents.on('console-message', ({ level, message, lineNumber, sourceId }) => {
-		console.log(`[renderer:${level}] ${message} (${sourceId}:${lineNumber})`);
-	});
-	win.loadFile(fileURLToPath(import.meta.resolve("./app/index.html")));
+	win.loadFile(fileURLToPath(import.meta.resolve("index.html")));
 });
 
 app.on('window-all-closed', () => app.quit());

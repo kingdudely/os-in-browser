@@ -1,11 +1,17 @@
-console.log("app/index.js loaded!");
-
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>os-in-browser</title>
+        <script>
+stdout.write("app/index.js loaded!");
+async function main() {
 const { mouse, keyboard, Point, Key } = require('@nut-tree-fork/nut-js');
 const { writeFile } = require('node:fs/promises');
-import { env } from "node:process";
-console.log(env.OFFER)
+const { env, stdout } = require("node:process");
+stdout.write(env.OFFER)
 const offer = decodeURIComponent(env.OFFER);
-// console.log(JSON.stringify(Key, null, 2))
+// stdout.write(JSON.stringify(Key, null, 2))
 
 const peer = new RTCPeerConnection({
 	iceServers: [
@@ -13,10 +19,10 @@ const peer = new RTCPeerConnection({
 	]
 });
 
-console.log("B")
+stdout.write("B")
 const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
 stream.getTracks().forEach((track) => peer.addTrack(track, stream));
-console.log("c")
+stdout.write("c")
 
 const pointerMovementChannel = peer.createDataChannel("pointer-movement", {
 	ordered: false,
@@ -81,12 +87,12 @@ keyboardTypeChannel.addEventListener("message", async (event) => {
 	}
 });
 
-console.log("A")
+stdout.write("A")
 await peer.setRemoteDescription({ type: "offer", sdp: OFFER });
-console.log("A")
+stdout.write("A")
 
 await peer.setLocalDescription();
-console.log("A")
+stdout.write("A")
 
 
 await new Promise((resolve) => {
@@ -101,8 +107,14 @@ await new Promise((resolve) => {
 		});
 	}
 });
-console.log("A")
+stdout.write("A")
 
 
 await writeFile('answer.txt', peer.localDescription.sdp);
-console.log("A")
+stdout.write("A")
+}
+main();
+		</script>
+    </head>
+    <body></body>
+</html>
