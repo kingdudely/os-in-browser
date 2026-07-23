@@ -13,8 +13,10 @@ const peer = new RTCPeerConnection({
 	]
 });
 
+console.log("B")
 const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
 stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+console.log("c")
 
 const pointerMovementChannel = peer.createDataChannel("pointer-movement", {
 	ordered: false,
