@@ -25,7 +25,7 @@ app.whenReady().then(() => {
 		}
 	});
 
-	win.loadFile(fileURLToPath(import.meta.resolve("index.html")));
+	win.loadFile(fileURLToPath(import.meta.resolve("./index.html")));
 });
 
 app.on('window-all-closed', () => app.quit());
