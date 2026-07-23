@@ -2,7 +2,7 @@
 	"name": "os-in-browser",
 	"version": "1.0.0",
 	"description": "Run an OS in the browser using GitHub actions!",
-	"main": "index.mjs",
+	"main": "index.js",
 	"keywords": [],
 	"author": "kingdudely",
 	"license": "ISC",

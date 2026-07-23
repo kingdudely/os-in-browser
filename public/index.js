@@ -18,7 +18,7 @@ if (code) {
 	// return
 }
 
-import onlogin from "./onlogin.mjs";
+import onlogin from "./onlogin.js";
 
 document.getElementById("credential-file").addEventListener("change", async (event) => {
 	const credentialFile = event.target.files[0];
