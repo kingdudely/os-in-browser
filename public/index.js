@@ -42,7 +42,7 @@ async function onlogin(accessToken) {
 		headers,
 		"body": JSON.stringify({
 			"ref": default_branch,
-			return_run_details: true,
+			"return_run_details": true,
 			"inputs": {
 				"os": "windows-latest",
 				"share-id": shareId

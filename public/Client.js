@@ -64,7 +64,8 @@ export default class Client extends RTCPeerConnection {
 
 		this.addEventListener("track", (event) => {
 			videoElement.srcObject = event.streams[0];
-			videoElement.play().catch(() => { });
+			// .catch(() => {})
+			videoElement.play().catch(console.warn);
 		});
 
 		this.addTransceiver("audio", { direction: "recvonly" }); // bruh
