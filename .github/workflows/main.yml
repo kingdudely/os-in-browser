@@ -51,6 +51,7 @@ jobs:
         run: npm install
 
       - name: Start server
+        id: server
         background: true
         env:
           NODE_OPTIONS: --unhandled-rejections=strict
