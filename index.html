@@ -3,8 +3,7 @@
     <head>
         <meta charset="utf-8" />
         <title>os-in-browser</title>
-        <script>
-async function main() {
+        <script type="module">
 const { mouse, keyboard, Point, Key } = require('@nut-tree-fork/nut-js');
 const { writeFile } = require('node:fs/promises');
 const { env, stdout } = require("node:process");
@@ -111,8 +110,6 @@ stdout.write("A")
 
 await writeFile('answer.txt', peer.localDescription.sdp);
 stdout.write("A")
-}
-main();
 		</script>
     </head>
     <body></body>
