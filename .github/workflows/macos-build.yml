@@ -1,0 +1,207 @@
+name: libwebrtc macOS C++ build
+
+on:
+  workflow_dispatch:
+    inputs:
+      commitHash:
+        description: 'webrtc-sdk/webrtc commit hash (blank = branch default)'
+        default: ''
+      configuration:
+        description: 'build configuration'
+        default: 'release'
+        required: true
+        type: choice
+        options:
+          - release
+          - debug
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos-cpp:
+    name: Build liblibwebrtc.dylib for macOS (x64 + arm64)
+    runs-on: macos-26
+    env:
+      MODE: ${{ github.event.inputs.configuration || 'release' }}
+      COMMIT: ${{ github.event.inputs.commitHash }}
+    steps:
+      - name: Checkout libwebrtc
+        uses: actions/checkout@v5
+        with:
+          submodules: true
+          path: libwebrtc
+
+      - name: Select Xcode
+        run: sudo xcode-select --switch /Applications/Xcode_26.0.app/Contents/Developer
+
+      - name: Set DEBUG flag
+        run: |
+          if [ "$MODE" = "debug" ]; then
+            echo "DEBUG=true" >> "$GITHUB_ENV"
+          else
+            echo "DEBUG=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Clone depot_tools
+        run: git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git
+
+      - name: Sync webrtc-sdk/webrtc source
+        run: |
+          export PATH="$PWD/depot_tools:$PATH"
+          mkdir -p checkout
+          cd checkout
+          cat > .gclient <<'EOF'
+          solutions = [
+            {
+              "name"        : "src",
+              "url"         : "https://github.com/webrtc-sdk/webrtc.git@m137_release",
+              "deps_file"   : "DEPS",
+              "managed"     : False,
+              "custom_deps" : {},
+              "custom_vars" : {},
+            },
+          ]
+          target_os = ["mac"]
+          EOF
+          git clone https://github.com/webrtc-sdk/webrtc.git src
+          cd src
+          if [ -n "$COMMIT" ]; then
+            git fetch
+            git checkout -f "$COMMIT"
+            git clean -df
+          fi
+          cd ..
+          gclient sync --with_branch_heads --jobs=8
+
+      - name: Copy libwebrtc wrapper into src
+        run: |
+          rm -rf checkout/src/libwebrtc
+          cp -R libwebrtc checkout/src/libwebrtc
+
+      - name: Add WEBRTC_MAC / WEBRTC_POSIX defines to libwebrtc BUILD.gn
+        run: |
+          cd checkout/src/libwebrtc
+          python3 - <<'PYEOF'
+          import re
+
+          path = "BUILD.gn"
+          with open(path) as f:
+              content = f.read()
+
+          marker = '''  if (is_linux) {
+            defines += [
+              "WEBRTC_LINUX",
+              "WEBRTC_POSIX",
+            ]
+          }
+          '''
+          # normalize potential indentation differences by matching loosely
+          pattern = re.compile(r'(  if \(is_linux\) \{\s*defines \+= \[\s*"WEBRTC_LINUX",\s*"WEBRTC_POSIX",\s*\]\s*\}\n)')
+          replacement = r'''\1
+            if (is_mac) {
+              defines += [
+                "WEBRTC_MAC",
+                "WEBRTC_POSIX",
+              ]
+            }
+          '''
+          new_content, n = pattern.subn(replacement, content)
+          if n == 0:
+              raise SystemExit("Could not locate is_linux defines block in BUILD.gn — inspect the file manually")
+          with open(path, "w") as f:
+              f.write(new_content)
+          print("Patched BUILD.gn, replacements made:", n)
+          PYEOF
+
+      - name: Add libwebrtc to webrtc default build group
+        run: |
+          cd checkout/src
+          python3 - <<'PYEOF'
+          path = "BUILD.gn"
+          with open(path) as f:
+              content = f.read()
+          old = 'deps = [ ":webrtc" ]'
+          new = 'deps = [ ":webrtc", "//libwebrtc" ]'
+          if old not in content:
+              raise SystemExit("Could not find default group deps line — inspect BUILD.gn manually")
+          content = content.replace(old, new, 1)
+          with open(path, "w") as f:
+              f.write(content)
+          print("Patched root BUILD.gn default group")
+          PYEOF
+
+      - name: Print ninja version
+        run: |
+          export PATH="$PWD/depot_tools:$PATH"
+          ninja --version
+
+      - name: gn gen + ninja build (macOS-x64)
+        run: |
+          export PATH="$PWD/depot_tools:$PATH"
+          cd checkout/src
+          gn gen out/macOS-x64 --args="
+            target_os=\"mac\"
+            target_cpu=\"x64\"
+            mac_deployment_target=\"10.14\"
+            is_component_build=false
+            is_debug=$DEBUG
+            rtc_enable_symbol_export=true
+            rtc_libvpx_build_vp9=true
+            rtc_include_tests=false
+            rtc_build_examples=false
+            rtc_use_h264=false
+            rtc_enable_protobuf=false
+            enable_libaom=true
+            rtc_include_dav1d_in_internal_decoder_factory=true
+            use_rtti=true
+            treat_warnings_as_errors=false"
+          ninja -C out/macOS-x64 libwebrtc -j 10
+
+      - name: gn gen + ninja build (macOS-arm64)
+        run: |
+          export PATH="$PWD/depot_tools:$PATH"
+          cd checkout/src
+          gn gen out/macOS-arm64 --args="
+            target_os=\"mac\"
+            target_cpu=\"arm64\"
+            mac_deployment_target=\"10.14\"
+            is_component_build=false
+            is_debug=$DEBUG
+            rtc_enable_symbol_export=true
+            rtc_libvpx_build_vp9=true
+            rtc_include_tests=false
+            rtc_build_examples=false
+            rtc_use_h264=false
+            rtc_enable_protobuf=false
+            enable_libaom=true
+            rtc_include_dav1d_in_internal_decoder_factory=true
+            use_rtti=true
+            treat_warnings_as_errors=false"
+          ninja -C out/macOS-arm64 libwebrtc -j 10
+
+      - name: Create universal dylib and package with headers
+        run: |
+          cd checkout/src
+          mkdir -p out/macOS-lib/include
+          lipo -create -output out/macOS-lib/liblibwebrtc.dylib \
+            out/macOS-x64/liblibwebrtc.dylib \
+            out/macOS-arm64/liblibwebrtc.dylib
+          install_name_tool -id @rpath/liblibwebrtc.dylib out/macOS-lib/liblibwebrtc.dylib
+          cp -R libwebrtc/include/* out/macOS-lib/include/
+          lipo -info out/macOS-lib/liblibwebrtc.dylib
+
+      - name: Zip artifact
+        run: |
+          cd checkout/src/out/macOS-lib
+          zip -r "${{ github.workspace }}/libwebrtc-macos-cpp-${{ env.MODE }}.zip" liblibwebrtc.dylib include
+
+      - name: Generate shasum
+        run: |
+          shasum -a 256 libwebrtc-macos-cpp-${{ env.MODE }}.zip > libwebrtc-macos-cpp-${{ env.MODE }}.zip.shasum
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libwebrtc-macos-cpp-${{ env.MODE }}
+          path: libwebrtc-macos-cpp-${{ env.MODE }}.zip*
