@@ -19,7 +19,7 @@ const peer = new RTCPeerConnection({
 });
 
 stdout.write("Bfauzzezcheecks")
-const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+const stream = await navigator.mediaDevices.getDisplayMedia();
 stream.getTracks().forEach((track) => peer.addTrack(track, stream));
 stdout.write("c")
 
