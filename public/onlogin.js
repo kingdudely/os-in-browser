@@ -1,5 +1,4 @@
-import nutKeys from "./nutKeys.json" with { type: "json" };
-import nutButtons from "./nutButtons.json" with { type: "json" };
+import codeMap from "./code-map.json" with { type: "json" };
 
 function triggerImmersiveMode() {
 	if (document.fullscreenEnabled && !document.fullscreenElement) {
@@ -88,27 +87,17 @@ export default async function onlogin(accessToken) {
 		if (pointerClickChannel.readyState !== "open") return;
 		triggerImmersiveMode();
 
-		if (!(event.button in nutButtons)) {
-			console.warn(`${event.button} does not have a corresponding Nut.JS button`);
-			return;
-		}
-
 		sharedView.setUint8(0, 1); // isDown
-		sharedView.setUint8(1, nutButtons[event.button]);
+		sharedView.setUint8(1, event.button);
 		pointerClickChannel.send(sharedBytes.subarray(0, 2));
 	});
 
 	window.addEventListener("pointerup", (event) => {
 		event.preventDefault();
 		if (pointerClickChannel.readyState !== "open") return;
-		
-		if (!(event.button in nutButtons)) {
-			console.warn(`${event.button} does not have a corresponding Nut.JS button`);
-			return;
-		}
 
 		sharedView.setUint8(0, 0); // isDown
-		sharedView.setUint8(1, nutButtons[event.button]);
+		sharedView.setUint8(1, event.button);
 		pointerClickChannel.send(sharedBytes.subarray(0, 2));
 	});
 
@@ -124,13 +113,13 @@ export default async function onlogin(accessToken) {
 		if (keyboardTypeChannel.readyState !== "open" || event.repeat) return;
 		triggerImmersiveMode();
 
-		if (!(event.code in nutKeys)) {
-			console.warn(`${event.code} does not have a corresponding Nut.JS key`);
+		if (!(event.code in codeMap)) {
+			console.warn(`"${event.code}" does not have a corresponding value in code-map.json`);
 			return;
 		}
 
 		sharedView.setUint8(0, 1); // isDown
-		sharedView.setUint8(1, nutKeys[event.code]);
+		sharedView.setUint8(1, codeMap[event.code]);
 
 		keyboardTypeChannel.send(sharedBytes.subarray(0, 2));
 	});
@@ -139,13 +128,13 @@ export default async function onlogin(accessToken) {
 		event.preventDefault();
 		if (keyboardTypeChannel.readyState !== "open") return;
 
-		if (!(event.code in nutKeys)) {
-			console.warn(`${event.code} does not have a corresponding Nut.JS key`);
+		if (!(event.code in codeMap)) {
+			console.warn(`"${event.code}" does not have a corresponding value in code-map.json`);
 			return;
 		}
 
 		sharedView.setUint8(0, 0); // isDown
-		sharedView.setUint8(1, nutKeys[event.code]);
+		sharedView.setUint8(1, codeMap[event.code]);
 
 		keyboardTypeChannel.send(sharedBytes.subarray(0, 2));
 	})
