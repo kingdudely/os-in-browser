@@ -1,207 +1,349 @@
-name: libwebrtc macOS C++ build
+name: Build libwebrtc (macOS, Windows, Ubuntu) - static libs
+
+# This builds https://github.com/webrtc-sdk/libwebrtc (the simplified C++
+# wrapper API around Google's WebRTC, branch m144_release) for all three
+# desktop platforms and uploads a single combined artifact containing:
+#   include/            (identical wrapper headers for all platforms)
+#   lib/macos/libwebrtc.a
+#   lib/windows/libwebrtc.lib
+#   lib/ubuntu/libwebrtc.a
+#
+# The wrapper's BUILD.gn already has real is_mac/is_win/is_linux branches
+# (it links libjpeg_turbo for desktop capture on all three, for example), so
+# target_os="mac" is not a stretch here - it's just undocumented in the
+# README, which only mentions Windows/Linux.
+#
+# To get a single static archive per platform instead of a shared lib, this
+# workflow patches BUILD.gn's `rtc_shared_library("libwebrtc")` target to
+# `rtc_static_library("libwebrtc")` with `complete_static_lib = true`, which
+# bundles all of WebRTC's transitive static libs into one .a/.lib instead of
+# leaving you to link dozens of them by hand. DLL-export defines are also
+# stripped since they don't apply to a static build.
+#
+# This is a HEAVY build (multi-hour checkout + compile, 20-30GB+ disk). Runs
+# manually by default; add push/schedule triggers if you actually want CI.
 
 on:
   workflow_dispatch:
     inputs:
-      commitHash:
-        description: 'webrtc-sdk/webrtc commit hash (blank = branch default)'
-        default: ''
-      configuration:
-        description: 'build configuration'
-        default: 'release'
+      webrtc_branch:
+        description: "webrtc-sdk/webrtc branch to build"
+        default: "m144_release"
         required: true
-        type: choice
-        options:
-          - release
-          - debug
+      build_type:
+        description: "debug or release"
+        default: "release"
+        required: true
 
-permissions:
-  contents: read
+env:
+  WEBRTC_BRANCH: ${{ inputs.webrtc_branch }}
+  DEPOT_TOOLS_WIN_TOOLCHAIN: "0"
 
 jobs:
-  build-macos-cpp:
-    name: Build liblibwebrtc.dylib for macOS (x64 + arm64)
-    runs-on: macos-26
-    env:
-      MODE: ${{ github.event.inputs.configuration || 'release' }}
-      COMMIT: ${{ github.event.inputs.commitHash }}
+  # ---------------------------------------------------------------------
+  # LINUX (Ubuntu)
+  # ---------------------------------------------------------------------
+  build-ubuntu:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
     steps:
-      - name: Checkout libwebrtc
-        uses: actions/checkout@v5
-        with:
-          submodules: true
-          path: libwebrtc
-
-      - name: Select Xcode
-        run: sudo xcode-select --switch /Applications/Xcode_26.0.app/Contents/Developer
-
-      - name: Set DEBUG flag
+      - name: Free up disk space
         run: |
-          if [ "$MODE" = "debug" ]; then
-            echo "DEBUG=true" >> "$GITHUB_ENV"
-          else
-            echo "DEBUG=false" >> "$GITHUB_ENV"
-          fi
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /opt/hostedtoolcache/CodeQL "$AGENT_TOOLSDIRECTORY" || true
+          sudo docker image prune --all --force || true
+          df -h
 
-      - name: Clone depot_tools
-        run: git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git
-
-      - name: Sync webrtc-sdk/webrtc source
+      - name: Install build dependencies
         run: |
-          export PATH="$PWD/depot_tools:$PATH"
-          mkdir -p checkout
-          cd checkout
-          cat > .gclient <<'EOF'
+          sudo apt-get update
+          sudo apt-get install -y git python3 python3-pip pkg-config \
+            build-essential libglib2.0-dev libgtk-3-dev libxtst-dev \
+            libxss-dev libpci-dev libdbus-1-dev libnss3-dev \
+            libasound2-dev libpulse-dev libudev-dev ninja-build curl
+
+      - name: Get depot_tools
+        run: |
+          git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$HOME/depot_tools"
+          echo "$HOME/depot_tools" >> "$GITHUB_PATH"
+
+      - name: Configure gclient checkout
+        run: |
+          mkdir -p "$HOME/libwebrtc_build"
+          cat > "$HOME/libwebrtc_build/.gclient" <<EOF
           solutions = [
             {
               "name"        : "src",
-              "url"         : "https://github.com/webrtc-sdk/webrtc.git@m137_release",
+              "url"         : "https://github.com/webrtc-sdk/webrtc.git@${WEBRTC_BRANCH}",
               "deps_file"   : "DEPS",
               "managed"     : False,
               "custom_deps" : {},
-              "custom_vars" : {},
+              "custom_vars": {},
+            },
+          ]
+          target_os = ["linux"]
+          EOF
+
+      - name: gclient sync (this takes a long time)
+        working-directory: ${{ github.workspace }}
+        run: |
+          cd "$HOME/libwebrtc_build"
+          export PATH="$HOME/depot_tools:$PATH"
+          gclient sync -D --force
+
+      - name: Clone libwebrtc wrapper and patch
+        run: |
+          cd "$HOME/libwebrtc_build/src"
+          git clone https://github.com/webrtc-sdk/libwebrtc
+          git apply libwebrtc/patches/custom_audio_source_m144.patch || true
+          python3 - <<'PYEOF'
+          path = "BUILD.gn"
+          s = open(path).read()
+          s = s.replace('deps = [ ":webrtc" ]', 'deps = [ ":webrtc", "//libwebrtc" ]')
+          open(path, "w").write(s)
+          PYEOF
+          python3 - <<'PYEOF'
+          path = "libwebrtc/BUILD.gn"
+          s = open(path).read()
+          # shared_library -> static_library, bundling all transitive deps into one archive
+          s = s.replace('rtc_shared_library("libwebrtc") {', 'rtc_static_library("libwebrtc") {\n  complete_static_lib = true')
+          # drop DLL export/import defines, meaningless for a static build
+          s = s.replace('defines = [ "LIB_WEBRTC_API_DLL" ]', 'defines = []')
+          s = s.replace('"LIB_WEBRTC_API_EXPORTS",\n', '')
+          open(path, "w").write(s)
+          PYEOF
+
+      - name: gn gen
+        run: |
+          cd "$HOME/libwebrtc_build/src"
+          export PATH="$HOME/depot_tools:$PATH"
+          IS_DEBUG=$([ "${{ inputs.build_type }}" = "debug" ] && echo true || echo false)
+          gn gen out/Linux-x64 --args="target_os=\"linux\" target_cpu=\"x64\" is_debug=${IS_DEBUG} rtc_include_tests=false rtc_use_h264=true ffmpeg_branding=\"Chrome\" is_component_build=false use_rtti=true use_custom_libcxx=false rtc_enable_protobuf=false rtc_build_examples=false"
+
+      - name: ninja build
+        run: |
+          cd "$HOME/libwebrtc_build/src"
+          export PATH="$HOME/depot_tools:$PATH"
+          ninja -C out/Linux-x64 libwebrtc
+
+      - name: Collect outputs
+        run: |
+          mkdir -p "${{ github.workspace }}/dist/lib/ubuntu"
+          mkdir -p "${{ github.workspace }}/dist/include"
+          cp "$HOME/libwebrtc_build/src/out/Linux-x64/libwebrtc.a" "${{ github.workspace }}/dist/lib/ubuntu/"
+          cp -r "$HOME/libwebrtc_build/src/libwebrtc/include/." "${{ github.workspace }}/dist/include/"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libwebrtc-ubuntu
+          path: ${{ github.workspace }}/dist
+          retention-days: 14
+
+  # ---------------------------------------------------------------------
+  # WINDOWS
+  # ---------------------------------------------------------------------
+  build-windows:
+    runs-on: windows-2022
+    timeout-minutes: 360
+    steps:
+      - name: Get depot_tools
+        shell: cmd
+        run: |
+          git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git %USERPROFILE%\depot_tools
+          echo %USERPROFILE%\depot_tools>>%GITHUB_PATH%
+
+      - name: Configure gclient checkout
+        shell: cmd
+        run: |
+          mkdir %USERPROFILE%\libwebrtc_build
+          (
+            echo solutions = [
+            echo   {
+            echo     "name"        : 'src',
+            echo     "url"         : 'https://github.com/webrtc-sdk/webrtc.git@%WEBRTC_BRANCH%',
+            echo     "deps_file"   : 'DEPS',
+            echo     "managed"     : False,
+            echo     "custom_deps" : {},
+            echo     "custom_vars": {},
+            echo   },
+            echo ]
+            echo target_os  = ['win']
+          ) > %USERPROFILE%\libwebrtc_build\.gclient
+
+      - name: gclient sync (this takes a long time)
+        shell: cmd
+        run: |
+          set PATH=%USERPROFILE%\depot_tools;%PATH%
+          cd %USERPROFILE%\libwebrtc_build
+          gclient sync -D --force
+
+      - name: Clone libwebrtc wrapper and patch
+        shell: bash
+        run: |
+          cd "$USERPROFILE/libwebrtc_build/src"
+          git clone https://github.com/webrtc-sdk/libwebrtc
+          git apply libwebrtc/patches/custom_audio_source_m144.patch || true
+          python3 - <<'PYEOF'
+          path = "BUILD.gn"
+          s = open(path).read()
+          s = s.replace('deps = [ ":webrtc" ]', 'deps = [ ":webrtc", "//libwebrtc" ]')
+          open(path, "w").write(s)
+          PYEOF
+          python3 - <<'PYEOF'
+          path = "libwebrtc/BUILD.gn"
+          s = open(path).read()
+          s = s.replace('rtc_shared_library("libwebrtc") {', 'rtc_static_library("libwebrtc") {\n  complete_static_lib = true')
+          s = s.replace('defines = [ "LIB_WEBRTC_API_DLL" ]', 'defines = []')
+          s = s.replace('"LIB_WEBRTC_API_EXPORTS",\n', '')
+          open(path, "w").write(s)
+          PYEOF
+
+      - name: gn gen
+        shell: cmd
+        run: |
+          set DEPOT_TOOLS_WIN_TOOLCHAIN=0
+          set GYP_MSVS_VERSION=2022
+          set GYP_GENERATORS=ninja,msvs-ninja
+          set GYP_MSVS_OVERRIDE_PATH=C:\Program Files\Microsoft Visual Studio\2022\Enterprise
+          set PATH=%USERPROFILE%\depot_tools;%PATH%
+          cd %USERPROFILE%\libwebrtc_build\src
+          if "${{ inputs.build_type }}"=="debug" (set ISDBG=true) else (set ISDBG=false)
+          gn gen out/Windows-x64 --args="target_os=\"win\" target_cpu=\"x64\" is_component_build=false is_clang=true is_debug=%ISDBG% rtc_use_h264=true ffmpeg_branding=\"Chrome\" rtc_include_tests=false rtc_build_examples=false libwebrtc_desktop_capture=true" --ide=vs2022
+
+      - name: ninja build
+        shell: cmd
+        run: |
+          set PATH=%USERPROFILE%\depot_tools;%PATH%
+          cd %USERPROFILE%\libwebrtc_build\src
+          ninja -C out/Windows-x64 libwebrtc
+
+      - name: Collect outputs
+        shell: cmd
+        run: |
+          mkdir "${{ github.workspace }}\dist\lib\windows"
+          mkdir "${{ github.workspace }}\dist\include"
+          copy "%USERPROFILE%\libwebrtc_build\src\out\Windows-x64\libwebrtc.lib" "${{ github.workspace }}\dist\lib\windows\"
+          xcopy /E /I "%USERPROFILE%\libwebrtc_build\src\libwebrtc\include" "${{ github.workspace }}\dist\include"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libwebrtc-windows
+          path: ${{ github.workspace }}\dist
+          retention-days: 14
+
+  # ---------------------------------------------------------------------
+  # macOS (undocumented in the README, but BUILD.gn has real is_mac support)
+  # ---------------------------------------------------------------------
+  build-macos:
+    runs-on: macos-14
+    timeout-minutes: 360
+    steps:
+      - name: Install prerequisites
+        run: |
+          brew install ninja python@3.11 || true
+
+      - name: Get depot_tools
+        run: |
+          git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$HOME/depot_tools"
+          echo "$HOME/depot_tools" >> "$GITHUB_PATH"
+
+      - name: Configure gclient checkout
+        run: |
+          mkdir -p "$HOME/libwebrtc_build"
+          cat > "$HOME/libwebrtc_build/.gclient" <<EOF
+          solutions = [
+            {
+              "name"        : "src",
+              "url"         : "https://github.com/webrtc-sdk/webrtc.git@${WEBRTC_BRANCH}",
+              "deps_file"   : "DEPS",
+              "managed"     : False,
+              "custom_deps" : {},
+              "custom_vars": {},
             },
           ]
           target_os = ["mac"]
           EOF
-          git clone https://github.com/webrtc-sdk/webrtc.git src
-          cd src
-          if [ -n "$COMMIT" ]; then
-            git fetch
-            git checkout -f "$COMMIT"
-            git clean -df
-          fi
-          cd ..
-          gclient sync --with_branch_heads --jobs=8
 
-      - name: Copy libwebrtc wrapper into src
+      - name: gclient sync (this takes a long time)
         run: |
-          rm -rf checkout/src/libwebrtc
-          cp -R libwebrtc checkout/src/libwebrtc
+          cd "$HOME/libwebrtc_build"
+          export PATH="$HOME/depot_tools:$PATH"
+          gclient sync -D --force
 
-      - name: Add WEBRTC_MAC / WEBRTC_POSIX defines to libwebrtc BUILD.gn
+      - name: Clone libwebrtc wrapper and patch
         run: |
-          cd checkout/src/libwebrtc
-          python3 - <<'PYEOF'
-          import re
-
-          path = "BUILD.gn"
-          with open(path) as f:
-              content = f.read()
-
-          marker = '''  if (is_linux) {
-            defines += [
-              "WEBRTC_LINUX",
-              "WEBRTC_POSIX",
-            ]
-          }
-          '''
-          # normalize potential indentation differences by matching loosely
-          pattern = re.compile(r'(  if \(is_linux\) \{\s*defines \+= \[\s*"WEBRTC_LINUX",\s*"WEBRTC_POSIX",\s*\]\s*\}\n)')
-          replacement = r'''\1
-            if (is_mac) {
-              defines += [
-                "WEBRTC_MAC",
-                "WEBRTC_POSIX",
-              ]
-            }
-          '''
-          new_content, n = pattern.subn(replacement, content)
-          if n == 0:
-              raise SystemExit("Could not locate is_linux defines block in BUILD.gn — inspect the file manually")
-          with open(path, "w") as f:
-              f.write(new_content)
-          print("Patched BUILD.gn, replacements made:", n)
-          PYEOF
-
-      - name: Add libwebrtc to webrtc default build group
-        run: |
-          cd checkout/src
+          cd "$HOME/libwebrtc_build/src"
+          git clone https://github.com/webrtc-sdk/libwebrtc
+          git apply libwebrtc/patches/custom_audio_source_m144.patch || true
           python3 - <<'PYEOF'
           path = "BUILD.gn"
-          with open(path) as f:
-              content = f.read()
-          old = 'deps = [ ":webrtc" ]'
-          new = 'deps = [ ":webrtc", "//libwebrtc" ]'
-          if old not in content:
-              raise SystemExit("Could not find default group deps line — inspect BUILD.gn manually")
-          content = content.replace(old, new, 1)
-          with open(path, "w") as f:
-              f.write(content)
-          print("Patched root BUILD.gn default group")
+          s = open(path).read()
+          s = s.replace('deps = [ ":webrtc" ]', 'deps = [ ":webrtc", "//libwebrtc" ]')
+          open(path, "w").write(s)
+          PYEOF
+          python3 - <<'PYEOF'
+          path = "libwebrtc/BUILD.gn"
+          s = open(path).read()
+          s = s.replace('rtc_shared_library("libwebrtc") {', 'rtc_static_library("libwebrtc") {\n  complete_static_lib = true')
+          s = s.replace('defines = [ "LIB_WEBRTC_API_DLL" ]', 'defines = []')
+          s = s.replace('"LIB_WEBRTC_API_EXPORTS",\n', '')
+          open(path, "w").write(s)
           PYEOF
 
-      - name: Print ninja version
+      - name: gn gen (arm64)
         run: |
-          export PATH="$PWD/depot_tools:$PATH"
-          ninja --version
+          cd "$HOME/libwebrtc_build/src"
+          export PATH="$HOME/depot_tools:$PATH"
+          IS_DEBUG=$([ "${{ inputs.build_type }}" = "debug" ] && echo true || echo false)
+          gn gen out/Mac-arm64 --args="target_os=\"mac\" target_cpu=\"arm64\" is_debug=${IS_DEBUG} rtc_include_tests=false rtc_use_h264=true ffmpeg_branding=\"Chrome\" is_component_build=false rtc_build_examples=false libwebrtc_desktop_capture=true"
 
-      - name: gn gen + ninja build (macOS-x64)
+      - name: ninja build (arm64)
         run: |
-          export PATH="$PWD/depot_tools:$PATH"
-          cd checkout/src
-          gn gen out/macOS-x64 --args="
-            target_os=\"mac\"
-            target_cpu=\"x64\"
-            mac_deployment_target=\"10.14\"
-            is_component_build=false
-            is_debug=$DEBUG
-            rtc_enable_symbol_export=true
-            rtc_libvpx_build_vp9=true
-            rtc_include_tests=false
-            rtc_build_examples=false
-            rtc_use_h264=false
-            rtc_enable_protobuf=false
-            enable_libaom=true
-            rtc_include_dav1d_in_internal_decoder_factory=true
-            use_rtti=true
-            treat_warnings_as_errors=false"
-          ninja -C out/macOS-x64 libwebrtc -j 10
+          cd "$HOME/libwebrtc_build/src"
+          export PATH="$HOME/depot_tools:$PATH"
+          ninja -C out/Mac-arm64 libwebrtc
 
-      - name: gn gen + ninja build (macOS-arm64)
+      - name: Collect outputs
         run: |
-          export PATH="$PWD/depot_tools:$PATH"
-          cd checkout/src
-          gn gen out/macOS-arm64 --args="
-            target_os=\"mac\"
-            target_cpu=\"arm64\"
-            mac_deployment_target=\"10.14\"
-            is_component_build=false
-            is_debug=$DEBUG
-            rtc_enable_symbol_export=true
-            rtc_libvpx_build_vp9=true
-            rtc_include_tests=false
-            rtc_build_examples=false
-            rtc_use_h264=false
-            rtc_enable_protobuf=false
-            enable_libaom=true
-            rtc_include_dav1d_in_internal_decoder_factory=true
-            use_rtti=true
-            treat_warnings_as_errors=false"
-          ninja -C out/macOS-arm64 libwebrtc -j 10
+          mkdir -p "${{ github.workspace }}/dist/lib/macos"
+          mkdir -p "${{ github.workspace }}/dist/include"
+          cp "$HOME/libwebrtc_build/src/out/Mac-arm64/libwebrtc.a" "${{ github.workspace }}/dist/lib/macos/"
+          cp -r "$HOME/libwebrtc_build/src/libwebrtc/include/." "${{ github.workspace }}/dist/include/"
 
-      - name: Create universal dylib and package with headers
-        run: |
-          cd checkout/src
-          mkdir -p out/macOS-lib/include
-          lipo -create -output out/macOS-lib/liblibwebrtc.dylib \
-            out/macOS-x64/liblibwebrtc.dylib \
-            out/macOS-arm64/liblibwebrtc.dylib
-          install_name_tool -id @rpath/liblibwebrtc.dylib out/macOS-lib/liblibwebrtc.dylib
-          cp -R libwebrtc/include/* out/macOS-lib/include/
-          lipo -info out/macOS-lib/liblibwebrtc.dylib
-
-      - name: Zip artifact
-        run: |
-          cd checkout/src/out/macOS-lib
-          zip -r "${{ github.workspace }}/libwebrtc-macos-cpp-${{ env.MODE }}.zip" liblibwebrtc.dylib include
-
-      - name: Generate shasum
-        run: |
-          shasum -a 256 libwebrtc-macos-cpp-${{ env.MODE }}.zip > libwebrtc-macos-cpp-${{ env.MODE }}.zip.shasum
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: libwebrtc-macos-cpp-${{ env.MODE }}
-          path: libwebrtc-macos-cpp-${{ env.MODE }}.zip*
+          name: libwebrtc-macos
+          path: ${{ github.workspace }}/dist
+          retention-days: 14
+
+  # ---------------------------------------------------------------------
+  # Merge all three platform artifacts into one combined artifact:
+  #   include/            (single copy, taken from ubuntu build - identical wrapper headers)
+  #   lib/macos/libwebrtc.a
+  #   lib/windows/libwebrtc.lib
+  #   lib/ubuntu/libwebrtc.a
+  # ---------------------------------------------------------------------
+  package:
+    needs: [build-ubuntu, build-windows, build-macos]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: libwebrtc-*
+          path: downloaded
+
+      - name: Assemble combined package
+        run: |
+          mkdir -p combined/lib
+          cp -r downloaded/libwebrtc-ubuntu/include combined/include
+          cp -r downloaded/libwebrtc-ubuntu/lib/ubuntu combined/lib/ubuntu
+          cp -r downloaded/libwebrtc-windows/lib/windows combined/lib/windows
+          cp -r downloaded/libwebrtc-macos/lib/macos combined/lib/macos
+          echo "Final layout:"
+          find combined -maxdepth 3
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libwebrtc-all-platforms
+          path: combined
+          retention-days: 30
