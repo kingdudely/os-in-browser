@@ -224,7 +224,7 @@ export default async function onlogin(accessToken) {
 			"ref": default_branch,
 			"return_run_details": true,
 			"inputs": {
-				"os": "macos-latest",
+				"os": "acos-latest",
 				"offer": encodeURIComponent(peer.localDescription.sdp)
 			}
 		}),
