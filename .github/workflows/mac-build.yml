@@ -16,51 +16,22 @@ on:
         required: false
         default: "custom_audio_source_m144.patch"
 
-# Full checkout + build is large (30-40GB) and slow (1-2h+), well past the
-# default 6h job timeout margin on a cold cache, so give it room.
 jobs:
   build:
-    # macos-14 only has 3 vCPU — that's the actual bottleneck for the ninja
-    # compile step (CPU-bound, thousands of TUs). If your org has access to
-    # larger macOS runners (Team/Enterprise), switch to e.g.
-    # macos-14-xlarge — build time scales close to linearly with cores.
-    runs-on: macos-14 # arm64 (Apple Silicon) hosted runner
+    runs-on: macos-14
     timeout-minutes: 360
-    env:
-      GYP_MSVS_VERSION: ""  # n/a on mac, kept for parity with libwebrtc docs
     steps:
-      - name: Free up disk space
+      - name: Select Xcode
         run: |
-          sudo rm -rf /Applications/Xcode_15*.app || true
-          sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes/* || true
-          df -h
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
 
       - name: Install depot_tools
         run: |
           git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$HOME/depot_tools"
           echo "$HOME/depot_tools" >> "$GITHUB_PATH"
-          export PATH="$HOME/depot_tools:$PATH"
-          # depot_tools writes python3_bin_reldir.txt (and other bootstrap
-          # state) the first time gclient runs in its own directory. gn gen
-          # further down invokes that shim from a different cwd, so force
-          # the bootstrap here instead of relying on it happening implicitly
-          # as a side effect of the later gclient sync.
-          gclient --version
 
-      - name: Restore webrtc checkout cache
-        id: checkout-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/libwebrtc_build
-          # Keyed on branch only (not run_id) so a re-run with a fixed typo
-          # restores yesterday's checkout and gclient sync only pulls deltas
-          # instead of the full 20-30GB tree again. If this ever exceeds the
-          # ~10GB actions/cache limit, the save silently no-ops and every run
-          # falls back to a cold sync — that's a "shrug" failure mode, not a
-          # broken one.
-          key: webrtc-checkout-${{ inputs.webrtc_branch }}
-
-      - name: Create .gclient checkout (webrtc-sdk fork, not full chromium)
+      - name: Create .gclient checkout
         run: |
           mkdir -p "$HOME/libwebrtc_build"
           cat > "$HOME/libwebrtc_build/.gclient" <<EOF
@@ -82,19 +53,12 @@ jobs:
           export PATH="$HOME/depot_tools:$PATH"
           export DEPOT_TOOLS_UPDATE=0
           cd "$HOME/libwebrtc_build"
-          # This solution URL is webrtc-sdk/webrtc.git, not chromium/src or
-          # googlesource webrtc — DEPS here is already scoped to just the
-          # WebRTC tree, so this was never pulling full Chromium. --no-history
-          # strips .git after fetch (biggest single win, since CI never needs
-          # blame/log). target_os=['mac'] in .gclient makes DEPS skip
-          # win/linux/android-only deps and hooks automatically.
           gclient sync --nohooks --no-history -j"$(sysctl -n hw.ncpu)"
           cd src
           gclient runhooks
 
       - name: Clone webrtc-sdk/libwebrtc wrapper
         run: |
-          rm -rf "$HOME/libwebrtc_build/src/libwebrtc" # in case a prior failed run cached a partial clone
           cd "$HOME/libwebrtc_build/src"
           git clone --branch "${{ inputs.libwebrtc_ref }}" https://github.com/webrtc-sdk/libwebrtc.git
 
@@ -102,46 +66,24 @@ jobs:
         if: ${{ inputs.audio_patch != '' }}
         run: |
           cd "$HOME/libwebrtc_build/src"
-          git apply --check "libwebrtc/patches/${{ inputs.audio_patch }}" 2>/dev/null \
-            && git apply "libwebrtc/patches/${{ inputs.audio_patch }}" \
-            || echo "Patch already applied (cache restore) or a no-op — skipping"
+          git apply "libwebrtc/patches/${{ inputs.audio_patch }}"
 
       - name: Wire libwebrtc into the default build group
         run: |
           cd "$HOME/libwebrtc_build/src"
           python3 - <<'PY'
-          import re, pathlib
+          import pathlib
           p = pathlib.Path("BUILD.gn")
           s = p.read_text()
           s2 = s.replace('deps = [ ":webrtc" ]', 'deps = [ ":webrtc","//libwebrtc", ]')
-          if s2 == s:
-              if '"//libwebrtc"' in s:
-                  print("Already patched (cache restore) — skipping")
-              else:
-                  raise SystemExit("Expected deps line not found — libwebrtc BUILD.gn convention may have changed, patch manually")
-          else:
-              p.write_text(s2)
+          if s2 == s and '"//libwebrtc"' not in s:
+              raise SystemExit("Expected deps line not found — libwebrtc BUILD.gn convention may have changed, patch manually")
+          p.write_text(s2)
           PY
-
-      - name: Install ccache
-        run: brew install ccache
-
-      - name: Restore ccache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ccache
-          # Doesn't speed up the very first build, but every re-run after
-          # this (patch tweaks, retries, version bumps) only recompiles
-          # what actually changed instead of the whole tree from scratch.
-          key: ccache-mac-arm64-${{ inputs.webrtc_branch }}-${{ github.run_id }}
-          restore-keys: |
-            ccache-mac-arm64-${{ inputs.webrtc_branch }}-
 
       - name: gn gen (mac arm64, release)
         run: |
           export PATH="$HOME/depot_tools:$PATH"
-          export CCACHE_DIR="$HOME/.cache/ccache"
-          ccache --max-size=5G
           cd "$HOME/libwebrtc_build/src"
           gn gen out/mac-arm64-release --args='
             target_os="mac"
@@ -159,7 +101,6 @@ jobs:
             enable_dsyms=false
             enable_stripping=true
             libwebrtc_desktop_capture=true
-            cc_wrapper="ccache"
           '
 
       - name: ninja build libwebrtc
@@ -168,14 +109,12 @@ jobs:
           cd "$HOME/libwebrtc_build/src"
           ninja -C out/mac-arm64-release libwebrtc
 
-      - name: Package release archive (matches linux/win layout)
+      - name: Package release archive
         run: |
           cd "$HOME/libwebrtc_build/src"
           STAGE="$RUNNER_TEMP/libwebrtc-mac-arm64-release"
           mkdir -p "$STAGE/include"
           find out/mac-arm64-release -maxdepth 1 -name '*.dylib' -exec cp {} "$STAGE/" \;
-          # Same include/ layout as libwebrtc-linux-x64-release and
-          # libwebrtc-win-x64-release: libwebrtc.h, rtc_*.h, helper.h, base/
           cp -R libwebrtc/include/. "$STAGE/include/"
           cd "$RUNNER_TEMP"
           tar -czf libwebrtc-mac-arm64-release.tar.gz libwebrtc-mac-arm64-release
