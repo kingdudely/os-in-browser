@@ -12,7 +12,7 @@ on:
         required: true
         default: "main"
       audio_patch:
-        description: "Patch file name in libwebrtc/patchs to apply (blank to skip)"
+        description: "Patch file name in libwebrtc/patches to apply (blank to skip)"
         required: false
         default: "custom_audio_source_m144.patch"
 
@@ -20,6 +20,10 @@ on:
 # default 6h job timeout margin on a cold cache, so give it room.
 jobs:
   build:
+    # macos-14 only has 3 vCPU — that's the actual bottleneck for the ninja
+    # compile step (CPU-bound, thousands of TUs). If your org has access to
+    # larger macOS runners (Team/Enterprise), switch to e.g.
+    # macos-14-xlarge — build time scales close to linearly with cores.
     runs-on: macos-14 # arm64 (Apple Silicon) hosted runner
     timeout-minutes: 360
     env:
@@ -78,7 +82,7 @@ jobs:
         if: ${{ inputs.audio_patch != '' }}
         run: |
           cd "$HOME/libwebrtc_build/src"
-          git apply "libwebrtc/patchs/${{ inputs.audio_patch }}"
+          git apply "libwebrtc/patches/${{ inputs.audio_patch }}"
 
       - name: Wire libwebrtc into the default build group
         run: |
@@ -93,9 +97,25 @@ jobs:
           p.write_text(s2)
           PY
 
+      - name: Install ccache
+        run: brew install ccache
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          # Doesn't speed up the very first build, but every re-run after
+          # this (patch tweaks, retries, version bumps) only recompiles
+          # what actually changed instead of the whole tree from scratch.
+          key: ccache-mac-arm64-${{ inputs.webrtc_branch }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-mac-arm64-${{ inputs.webrtc_branch }}-
+
       - name: gn gen (mac arm64, release)
         run: |
           export PATH="$HOME/depot_tools:$PATH"
+          export CCACHE_DIR="$HOME/.cache/ccache"
+          ccache --max-size=5G
           cd "$HOME/libwebrtc_build/src"
           gn gen out/mac-arm64-release --args='
             target_os="mac"
@@ -113,6 +133,7 @@ jobs:
             enable_dsyms=false
             enable_stripping=true
             libwebrtc_desktop_capture=true
+            cc_wrapper="ccache"
           '
 
       - name: ninja build libwebrtc
