@@ -18,7 +18,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-latest-xlarge
     timeout-minutes: 360
     steps:
       - name: Select Xcode
@@ -30,6 +30,10 @@ jobs:
         run: |
           git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$HOME/depot_tools"
           echo "$HOME/depot_tools" >> "$GITHUB_PATH"
+          export PATH="$HOME/depot_tools:$PATH"
+          export DEPOT_TOOLS_UPDATE=0
+          cd "$HOME/depot_tools"
+          gclient --version
 
       - name: Create .gclient checkout
         run: |
