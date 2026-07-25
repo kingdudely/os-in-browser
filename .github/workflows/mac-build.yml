@@ -39,6 +39,26 @@ jobs:
         run: |
           git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$HOME/depot_tools"
           echo "$HOME/depot_tools" >> "$GITHUB_PATH"
+          export PATH="$HOME/depot_tools:$PATH"
+          # depot_tools writes python3_bin_reldir.txt (and other bootstrap
+          # state) the first time gclient runs in its own directory. gn gen
+          # further down invokes that shim from a different cwd, so force
+          # the bootstrap here instead of relying on it happening implicitly
+          # as a side effect of the later gclient sync.
+          gclient --version
+
+      - name: Restore webrtc checkout cache
+        id: checkout-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/libwebrtc_build
+          # Keyed on branch only (not run_id) so a re-run with a fixed typo
+          # restores yesterday's checkout and gclient sync only pulls deltas
+          # instead of the full 20-30GB tree again. If this ever exceeds the
+          # ~10GB actions/cache limit, the save silently no-ops and every run
+          # falls back to a cold sync — that's a "shrug" failure mode, not a
+          # broken one.
+          key: webrtc-checkout-${{ inputs.webrtc_branch }}
 
       - name: Create .gclient checkout (webrtc-sdk fork, not full chromium)
         run: |
@@ -73,8 +93,8 @@ jobs:
           gclient runhooks
 
       - name: Clone webrtc-sdk/libwebrtc wrapper
-        working-directory: ${{ github.workspace }}
         run: |
+          rm -rf "$HOME/libwebrtc_build/src/libwebrtc" # in case a prior failed run cached a partial clone
           cd "$HOME/libwebrtc_build/src"
           git clone --branch "${{ inputs.libwebrtc_ref }}" https://github.com/webrtc-sdk/libwebrtc.git
 
@@ -82,7 +102,9 @@ jobs:
         if: ${{ inputs.audio_patch != '' }}
         run: |
           cd "$HOME/libwebrtc_build/src"
-          git apply "libwebrtc/patches/${{ inputs.audio_patch }}"
+          git apply --check "libwebrtc/patches/${{ inputs.audio_patch }}" 2>/dev/null \
+            && git apply "libwebrtc/patches/${{ inputs.audio_patch }}" \
+            || echo "Patch already applied (cache restore) or a no-op — skipping"
 
       - name: Wire libwebrtc into the default build group
         run: |
@@ -93,8 +115,12 @@ jobs:
           s = p.read_text()
           s2 = s.replace('deps = [ ":webrtc" ]', 'deps = [ ":webrtc","//libwebrtc", ]')
           if s2 == s:
-              raise SystemExit("Expected deps line not found — libwebrtc BUILD.gn convention may have changed, patch manually")
-          p.write_text(s2)
+              if '"//libwebrtc"' in s:
+                  print("Already patched (cache restore) — skipping")
+              else:
+                  raise SystemExit("Expected deps line not found — libwebrtc BUILD.gn convention may have changed, patch manually")
+          else:
+              p.write_text(s2)
           PY
 
       - name: Install ccache
