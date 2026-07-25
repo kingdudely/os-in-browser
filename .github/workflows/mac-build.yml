@@ -33,7 +33,7 @@ jobs:
           export PATH="$HOME/depot_tools:$PATH"
           export DEPOT_TOOLS_UPDATE=0
           cd "$HOME/depot_tools"
-          gclient --version
+          gclient help
 
       - name: Create .gclient checkout
         run: |
