@@ -36,7 +36,7 @@ jobs:
           git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$HOME/depot_tools"
           echo "$HOME/depot_tools" >> "$GITHUB_PATH"
 
-      - name: Create .gclient checkout
+      - name: Create .gclient checkout (webrtc-sdk fork, not full chromium)
         run: |
           mkdir -p "$HOME/libwebrtc_build"
           cat > "$HOME/libwebrtc_build/.gclient" <<EOF
@@ -54,13 +54,18 @@ jobs:
           EOF
 
       - name: gclient sync
-        working-directory: ${{ github.workspace }}
         run: |
           export PATH="$HOME/depot_tools:$PATH"
+          export DEPOT_TOOLS_UPDATE=0
           cd "$HOME/libwebrtc_build"
-          gclient sync --with_branch_heads --nohooks -j4
+          # This solution URL is webrtc-sdk/webrtc.git, not chromium/src or
+          # googlesource webrtc — DEPS here is already scoped to just the
+          # WebRTC tree, so this was never pulling full Chromium. --no-history
+          # strips .git after fetch (biggest single win, since CI never needs
+          # blame/log). target_os=['mac'] in .gclient makes DEPS skip
+          # win/linux/android-only deps and hooks automatically.
+          gclient sync --nohooks --no-history -j"$(sysctl -n hw.ncpu)"
           cd src
-          python3 build/mac_toolchain.py || true # no-op on mac hosts, kept for parity
           gclient runhooks
 
       - name: Clone webrtc-sdk/libwebrtc wrapper
