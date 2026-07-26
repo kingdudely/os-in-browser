@@ -1,0 +1,67 @@
+name: Find Chrome for Testing path
+
+on:
+  workflow_dispatch:
+
+jobs:
+  find-chrome:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Show relevant env vars (GitHub sets these on hosted runners)
+        shell: bash
+        run: |
+          echo "CHROME_BIN=$CHROME_BIN"
+          echo "CHROMEWEBDRIVER=$CHROMEWEBDRIVER"
+          echo "GECKOWEBDRIVER=$GECKOWEBDRIVER"
+
+      - name: Locate Chrome binary (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          echo "--- which/whereis ---"
+          which google-chrome google-chrome-stable chromium chromium-browser 2>/dev/null || true
+          echo "--- common paths ---"
+          for p in /usr/bin/google-chrome /usr/bin/google-chrome-stable /usr/bin/chromium /usr/bin/chromium-browser /opt/hostedtoolcache/chrome*/*/x64/chrome; do
+            [ -e "$p" ] && echo "FOUND: $p"
+          done
+          echo "--- version, if found ---"
+          if [ -n "$CHROME_BIN" ]; then "$CHROME_BIN" --version; fi
+
+      - name: Locate Chrome binary (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          echo "--- common app bundle paths ---"
+          for p in "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+                   "/Applications/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" \
+                   "/Applications/Chromium.app/Contents/MacOS/Chromium"; do
+            [ -e "$p" ] && echo "FOUND: $p"
+          done
+          echo "--- hosted tool cache (setup-chrome/actions cache) ---"
+          find /Users/runner/hostedtoolcache -iname "*chrome*" -maxdepth 4 2>/dev/null || true
+          echo "--- version, if found ---"
+          if [ -n "$CHROME_BIN" ]; then "$CHROME_BIN" --version; fi
+
+      - name: Locate Chrome binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Host "--- common install paths ---"
+          $candidates = @(
+            "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+            "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
+            "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe",
+            "$env:ProgramFiles\Google\Chrome for Testing\chrome.exe"
+          )
+          foreach ($c in $candidates) {
+            if (Test-Path $c) { Write-Host "FOUND: $c" }
+          }
+          Write-Host "--- hosted tool cache ---"
+          if ($env:CHROMEWEBDRIVER) { Write-Host "CHROMEWEBDRIVER=$env:CHROMEWEBDRIVER" }
+          Get-ChildItem -Path "C:\hostedtoolcache\windows" -Filter "*chrome*" -Recurse -ErrorAction SilentlyContinue -Depth 3 | Select-Object FullName
+          Write-Host "--- version, if found ---"
+          if ($env:CHROME_BIN) { & "$env:CHROME_BIN" --version }
