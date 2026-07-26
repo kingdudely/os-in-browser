@@ -1,89 +1,78 @@
-name: Test Hardware Video Encoders
+name: Test Ubuntu Hardware Video Encoder
 
 on:
   workflow_dispatch:
 
 jobs:
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - windows-latest
-          - macos-latest
-
-    runs-on: ${{ matrix.os }}
+  test-hw-encoder:
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Show runner info
-        shell: bash
+      - name: System info
         run: |
-          uname -a || true
-          echo "OS: $RUNNER_OS"
+          uname -a
+          lscpu | grep "Model name" || true
 
-      - name: Test Ubuntu VAAPI
-        if: runner.os == 'Linux'
-        shell: bash
+      - name: Install FFmpeg and hardware tools
         run: |
-          set +e
           sudo apt update
-          sudo apt install ffmpeg
+          sudo apt install -y \
+            ffmpeg \
+            vainfo \
+            mesa-va-drivers \
+            pciutils
 
-          ls -l /dev/dri || true
-
-          ffmpeg \
-            -f lavfi -i testsrc=size=1280x720:rate=30 \
-            -t 1 \
-            -vf format=nv12,hwupload \
-            -c:v h264_vaapi \
-            -f null -
-
-          echo "Exit code: $?"
-
-      - name: Test Windows Media Foundation / QSV / NVENC / AMF
-        if: runner.os == 'Windows'
-        shell: bash
+      - name: Check GPU devices
         run: |
-          set +e
-          choco install -y ffmpeg
-
-          echo "=== h264_nvenc ==="
-          ffmpeg -f lavfi -i testsrc -t 1 -c:v h264_nvenc -f null -
-          echo "Exit: $?"
+          echo "=== /dev/dri ==="
+          ls -la /dev/dri || true
 
           echo
-          echo "=== h264_qsv ==="
-          ffmpeg -f lavfi -i testsrc -t 1 -c:v h264_qsv -f null -
-          echo "Exit: $?"
+          echo "=== PCI video devices ==="
+          lspci | grep -Ei "vga|3d|display" || true
 
-          echo
-          echo "=== h264_amf ==="
-          ffmpeg -f lavfi -i testsrc -t 1 -c:v h264_amf -f null -
-          echo "Exit: $?"
-
-      - name: Test macOS VideoToolbox
-        if: runner.os == 'macOS'
-        shell: bash
+      - name: Check VAAPI
         run: |
-          set +e
-          brew install ffmpeg
+          echo "=== VAINFO ==="
+          vainfo || true
 
-          ffmpeg \
-            -f lavfi -i testsrc=size=1280x720:rate=30 \
-            -t 1 \
-            -c:v h264_videotoolbox \
-            -f null -
-
-          echo "Exit code: $?"
-
-      - name: Check FFmpeg
-        shell: bash
+      - name: Check FFmpeg hardware support
         run: |
+          echo "=== FFmpeg version ==="
           ffmpeg -version
+
           echo
           echo "=== Hardware acceleration methods ==="
           ffmpeg -hide_banner -hwaccels
+
           echo
-          echo "=== Encoders ==="
-          ffmpeg -hide_banner -encoders
+          echo "=== Hardware encoders ==="
+          ffmpeg -hide_banner -encoders | grep -E "vaapi|qsv|nvenc|v4l2m2m" || true
+
+      - name: Test VAAPI H264 encoding
+        run: |
+          set +e
+
+          ffmpeg \
+            -vaapi_device /dev/dri/renderD128 \
+            -f lavfi \
+            -i testsrc=size=1280x720:rate=60 \
+            -vf 'format=nv12,hwupload' \
+            -c:v h264_vaapi \
+            -t 5 \
+            -f null -
+
+          echo "VAAPI exit code: $?"
+
+      - name: Test V4L2 H264 encoding
+        run: |
+          set +e
+
+          ffmpeg \
+            -f lavfi \
+            -i testsrc=size=1280x720:rate=60 \
+            -c:v h264_v4l2m2m \
+            -t 5 \
+            -f null -
+
+          echo "V4L2 exit code: $?"
