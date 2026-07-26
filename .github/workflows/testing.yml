@@ -22,22 +22,13 @@ jobs:
           uname -a || true
           echo "OS: $RUNNER_OS"
 
-      - name: Check FFmpeg
-        shell: bash
-        run: |
-          ffmpeg -version
-          echo
-          echo "=== Hardware acceleration methods ==="
-          ffmpeg -hide_banner -hwaccels
-          echo
-          echo "=== Encoders ==="
-          ffmpeg -hide_banner -encoders
-
       - name: Test Ubuntu VAAPI
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set +e
+          sudo apt update
+          sudo apt install ffmpeg
 
           ls -l /dev/dri || true
 
@@ -55,6 +46,7 @@ jobs:
         shell: bash
         run: |
           set +e
+          choco install -y ffmpeg
 
           echo "=== h264_nvenc ==="
           ffmpeg -f lavfi -i testsrc -t 1 -c:v h264_nvenc -f null -
@@ -75,6 +67,7 @@ jobs:
         shell: bash
         run: |
           set +e
+          brew install ffmpeg
 
           ffmpeg \
             -f lavfi -i testsrc=size=1280x720:rate=30 \
@@ -83,3 +76,14 @@ jobs:
             -f null -
 
           echo "Exit code: $?"
+
+      - name: Check FFmpeg
+        shell: bash
+        run: |
+          ffmpeg -version
+          echo
+          echo "=== Hardware acceleration methods ==="
+          ffmpeg -hide_banner -hwaccels
+          echo
+          echo "=== Encoders ==="
+          ffmpeg -hide_banner -encoders
