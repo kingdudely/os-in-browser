@@ -1,54 +1,43 @@
-name: Check VideoToolbox Support
+name: Check FFmpeg Hardware Encoding
 
-on:
-  workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/videotoolbox-check.yml'
+on: [push, pull_request, workflow_dispatch]
 
 jobs:
-  check-videotoolbox:
-    runs-on: macos-latest
+  check-encoders:
+    runs-on: windows-latest
+
     steps:
-      - name: System info
+      - name: Install FFmpeg
+        run: choco install ffmpeg -y
+
+      - name: Verify FFmpeg Installation
+        run: ffmpeg -version
+
+      - name: List Available Compiled Encoders
         run: |
-          sw_vers
-          uname -a
-          sysctl -n machdep.cpu.brand_string || true
+          echo "=== Supported Hardware Encoders built into FFmpeg ==="
+          ffmpeg -encoders | Select-String "nvenc|amf|qsv|_mf"
 
-      - name: Install ffmpeg
-        run: brew install ffmpeg
-
-      - name: List available hardware encoders
-        run: ffmpeg -hide_banner -encoders | grep -i videotoolbox
-
-      - name: List VideoToolbox hwaccels
-        run: ffmpeg -hide_banner -hwaccels
-
-      - name: Generate test source
+      - name: Test Native Windows Media Foundation Encoding
+        id: test_mf
+        continue-on-error: true
         run: |
-          ffmpeg -f lavfi -i testsrc=duration=5:size=1280x720:rate=30 -c:v libx264 -pix_fmt yuv420p source.mp4
+          # Generate a 1-frame dummy canvas and encode it using Media Foundation
+          ffmpeg -f lavfi -i color=c=blue:s=320x240:d=0.04 -c:v h264_mf -f null -
+          if ($LASTEXITCODE -eq 0) {
+            echo "MF_SUPPORTED=true" >> $env:GITHUB_ENV
+            echo "✅ Windows Media Foundation (h264_mf) is supported and working!"
+          } else {
+            echo "MF_SUPPORTED=false" >> $env:GITHUB_ENV
+            echo "❌ Windows Media Foundation (h264_mf) failed or is unsupported."
+          }
 
-      - name: Encode with h264_videotoolbox
+      - name: Test NVIDIA NVENC Encoding
+        continue-on-error: true
         run: |
-          ffmpeg -y -i source.mp4 -c:v h264_videotoolbox -b:v 2M out_h264_vt.mp4
-          ffprobe -hide_banner out_h264_vt.mp4
-
-      - name: Encode with hevc_videotoolbox
-        run: |
-          ffmpeg -y -i source.mp4 -c:v hevc_videotoolbox -b:v 2M out_hevc_vt.mp4
-          ffprobe -hide_banner out_hevc_vt.mp4
-
-      - name: Confirm hardware acceleration used (verbose log check)
-        run: |
-          ffmpeg -y -v verbose -i source.mp4 -c:v h264_videotoolbox -b:v 2M out_verbose.mp4 2>&1 | tee vt_log.txt
-          echo "---- searching log for videotoolbox confirmation ----"
-          grep -i "videotoolbox" vt_log.txt || echo "No explicit VideoToolbox mention found in log"
-
-      - name: Upload outputs
-        uses: actions/upload-artifact@v4
-        with:
-          name: videotoolbox-test-outputs
-          path: |
-            *.mp4
-            vt_log.txt
+          ffmpeg -f lavfi -i color=c=blue:s=320x240:d=0.04 -c:v h264_nvenc -f null -
+          if ($LASTEXITCODE -eq 0) {
+            echo "🚀 NVIDIA NVENC is supported and working!"
+          } else {
+            echo "ℹ️ NVIDIA NVENC not available (Expected on standard GitHub runners)."
+          }
