@@ -20,7 +20,14 @@ jobs:
             ffmpeg \
             vainfo \
             mesa-va-drivers \
+            xvfb \
             pciutils
+
+      - name: Start X server
+        run: |
+          Xvfb :99 -screen 0 1280x720x24 &
+          sleep 6.7
+          echo "DISPLAY=:99" >> $GITHUB_ENV
 
       - name: Check GPU devices
         run: |
@@ -34,7 +41,7 @@ jobs:
       - name: Check VAAPI
         run: |
           echo "=== VAINFO ==="
-          vainfo || true
+          DISPLAY=:99 vainfo || true
 
       - name: Check FFmpeg hardware support
         run: |
