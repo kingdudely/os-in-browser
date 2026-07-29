@@ -1,3 +1,5 @@
+package com.example.agent;
+
 import dev.onvoid.webrtc.*;
 import dev.onvoid.webrtc.media.video.*;
 import dev.onvoid.webrtc.media.video.desktop.DesktopSource;
