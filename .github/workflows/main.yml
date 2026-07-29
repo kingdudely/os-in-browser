@@ -63,6 +63,8 @@ jobs:
               ;;
           esac
 
+          # List native library files inside the shaded jar
+          jar tf target/remote-desktop-agent-1.0.0.jar | grep -E "\.(so|dylib|dll)"
           java -jar ./host/target/remote-desktop-agent-1.0.0.jar
 
       - name: Wait for answer.txt
