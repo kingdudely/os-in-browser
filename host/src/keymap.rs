@@ -1,6 +1,6 @@
 use enigo::Key;
 
-fn code_index_to_key(index: u8) -> Option<Key> {
+pub fn code_index_to_key(index: u8) -> Option<Key> {
     Some(match index {
         // Letters -> Unicode
         10 => Key::Unicode('a'),
@@ -73,9 +73,20 @@ fn code_index_to_key(index: u8) -> Option<Key> {
         73 => Key::F11,
         74 => Key::F12,
 
+        // These vary by platform in enigo's Key enum — gate per-OS,
+        // fall back to a harmless no-op-ish key elsewhere.
+        #[cfg(target_os = "linux")]
         75 => Key::PrintScr,
+        #[cfg(not(target_os = "linux"))]
+        75 => Key::Print,
+
+        #[cfg(target_os = "linux")]
         76 => Key::ScrollLock,
+        #[cfg(not(target_os = "linux"))]
+        76 => return None,
+
         77 => Key::Pause,
+
         78 => Key::Insert,
         79 => Key::Home,
         80 => Key::PageUp,
@@ -115,15 +126,34 @@ fn code_index_to_key(index: u8) -> Option<Key> {
         114 => Key::F18,
         115 => Key::F19,
         116 => Key::F20,
+        // F21-F24 don't exist on Windows/macOS enigo::Key — drop them there.
+        #[cfg(target_os = "linux")]
         117 => Key::F21,
+        #[cfg(target_os = "linux")]
         118 => Key::F22,
+        #[cfg(target_os = "linux")]
         119 => Key::F23,
+        #[cfg(target_os = "linux")]
         120 => Key::F24,
+        #[cfg(not(target_os = "linux"))]
+        117..=120 => return None,
 
         122 => Key::Help,
+
+        #[cfg(target_os = "linux")]
         123 => Key::Select,
+        #[cfg(not(target_os = "linux"))]
+        123 => return None,
+
+        #[cfg(target_os = "linux")]
         125 => Key::Undo,
+        #[cfg(not(target_os = "linux"))]
+        125 => return None,
+
+        #[cfg(target_os = "linux")]
         129 => Key::Find,
+        #[cfg(not(target_os = "linux"))]
+        129 => return None,
 
         130 => Key::VolumeMute,
         131 => Key::VolumeUp,
@@ -143,7 +173,10 @@ fn code_index_to_key(index: u8) -> Option<Key> {
 
         156 => Key::MediaNextTrack,
         157 => Key::MediaPrevTrack,
+        #[cfg(target_os = "linux")]
         158 => Key::MediaStop,
+        #[cfg(not(target_os = "linux"))]
+        158 => return None,
         159 => Key::MediaPlayPause,
 
         _ => return None,
