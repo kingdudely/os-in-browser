@@ -13,11 +13,39 @@
 
   <dependencies>
     <dependency>
-      <groupId>dev.onvoid.webrtc</groupId>
-      <artifactId>webrtc-java</artifactId>
-      <version>0.14.0</version>
+        <groupId>dev.onvoid.webrtc</groupId>
+        <artifactId>webrtc-java</artifactId>
+        <version>0.14.0</version>
     </dependency>
-  </dependencies>
+
+    <dependency>
+        <groupId>dev.onvoid.webrtc</groupId>
+        <artifactId>webrtc-java</artifactId>
+        <version>0.14.0</version>
+        <classifier>windows-x86_64</classifier>
+    </dependency>
+
+    <dependency>
+        <groupId>dev.onvoid.webrtc</groupId>
+        <artifactId>webrtc-java</artifactId>
+        <version>0.14.0</version>
+        <classifier>macos-x86_64</classifier>
+    </dependency>
+
+    <dependency>
+        <groupId>dev.onvoid.webrtc</groupId>
+        <artifactId>webrtc-java</artifactId>
+        <version>0.14.0</version>
+        <classifier>macos-aarch64</classifier>
+    </dependency>
+
+    <dependency>
+        <groupId>dev.onvoid.webrtc</groupId>
+        <artifactId>webrtc-java</artifactId>
+        <version>0.14.0</version>
+        <classifier>linux-x86_64</classifier>
+    </dependency>
+    </dependencies>
 
   <build>
     <plugins>
