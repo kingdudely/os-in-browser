@@ -30,33 +30,37 @@ jobs:
       - name: Copy repository into PC
         uses: actions/checkout@main
 
-      - name: Linux setup
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            lxqt \
-            openbox \
-            dbus-x11 \
-            xvfb
-
-          read -r DISPLAY_NUMBER < <(exec Xvfb -displayfd 1)
-
-          export DISPLAY=":$DISPLAY_NUMBER"
-          echo "DISPLAY=$DISPLAY" >> "$GITHUB_ENV"
-
-          startlxqt &
-
-      - name: Install server dependencies
-        run: npm install
-
       - name: Start server
         id: server
-        background: true
         env:
-          NODE_OPTIONS: --unhandled-rejections=strict
           OFFER: ${{ github.event.inputs.offer }}
-        run: npm start
+        background: true
+        run: |
+          case "$RUNNER_OS" in
+            macOS)
+              ./host/dist/darwin
+              ;;
+
+            Linux)
+              sudo apt-get update
+              sudo apt-get install -y --no-install-recommends \
+                lxqt \
+                openbox \
+                dbus-x11 \
+                xvfb
+
+              xvfb-run -a -s "-screen 0 1920x1080x24" bash -c 'dbus-launch startlxqt >/tmp/lxqt.log 2>&1 & exec ./host/dist/linux'
+              ;;
+
+            Windows)
+              ./host/dist/windows.exe
+              ;;
+
+            *)
+              echo "Error: Unsupported OS"
+              exit 1
+              ;;
+          esac
 
       - name: Wait for answer.txt
         run: |
@@ -65,7 +69,10 @@ jobs:
           done
 
       - name: Upload answer.txt
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@main
         with:
           path: answer.txt
           archive: false
+
+      - name: Wait until connection is closed
+        wait: server

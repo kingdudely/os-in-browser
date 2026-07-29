@@ -1,0 +1,61 @@
+name: Build host binaries
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: host
+          - os: macos-latest
+            artifact_name: host
+          - os: windows-latest
+            artifact_name: host.exe
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@main
+
+      - name: Build release binary
+        working-directory: ./host
+        run: cargo build --release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@main
+        with:
+          name: ${{ matrix.os }}
+          path: ./host/target/release/${{ matrix.artifact_name }}
+          if-no-files-found: error
+
+  commit:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@main
+
+      - name: Download all artifacts into host/dist
+        uses: actions/download-artifact@main
+        with:
+          path: ./host/dist
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ./host/dist
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update host/dist binaries [skip ci]"
+            git push
+          fi
