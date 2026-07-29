@@ -16,6 +16,9 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+
 /**
  * Reads an SDP offer from the OFFER env var, captures the screen, feeds
  * frames into a video track, wires up 5 negotiated data channels for
@@ -28,10 +31,12 @@ public class Main {
     private static final int HEIGHT = 1080;
 
     public static void main(String[] args) throws Exception {
-        String offerSdp = System.getenv("OFFER");
-        if (offerSdp == null || offerSdp.isEmpty()) {
+        String encodedOfferSdp = System.getenv("OFFER");
+        if (encodedOfferSdp == null || encodedOfferSdp.isEmpty()) {
             throw new IllegalStateException("OFFER env var not set");
         }
+
+        String offerSdp = URLDecoder.decode(encodedOfferSdp, StandardCharsets.UTF_8);
 
         Robot robot = new Robot();
 
