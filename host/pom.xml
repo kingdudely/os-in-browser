@@ -29,13 +29,6 @@
         <groupId>dev.onvoid.webrtc</groupId>
         <artifactId>webrtc-java</artifactId>
         <version>0.14.0</version>
-        <classifier>macos-x86_64</classifier>
-    </dependency>
-
-    <dependency>
-        <groupId>dev.onvoid.webrtc</groupId>
-        <artifactId>webrtc-java</artifactId>
-        <version>0.14.0</version>
         <classifier>macos-aarch64</classifier>
     </dependency>
 
