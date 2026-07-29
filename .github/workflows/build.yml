@@ -1,4 +1,4 @@
-name: Build host binaries
+name: Build host jars
 
 on:
   workflow_dispatch:
@@ -11,46 +11,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            artifact_name: host
-          - os: macos-latest
-            artifact_name: host
-          - os: windows-latest
-            artifact_name: host.exe
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@main
 
-      - name: Install Linux build dependencies
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            pkg-config \
-            libglib2.0-dev \
-            libgtk-3-dev \
-            libnss3-dev \
-            libx11-dev \
-            libxcomposite-dev \
-            libxdamage-dev \
-            libxrandr-dev \
-            libxtst-dev \
-            libasound2-dev \
-            libpulse-dev
-
-      - name: Build release binary
+      - name: Build shaded jar
         working-directory: ./host
-        run: cargo build --release
+        run: mvn -B clean package -Djar.name="${{ matrix.os }}"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@main
         with:
-          name: ${{ matrix.os }}
-          path: ./host/target/release/${{ matrix.artifact_name }}
+          name: ${{ matrix.os }}.jar
+          path: ./host/${{ matrix.os }}.jar
           if-no-files-found: error
 
   commit:
@@ -64,6 +41,7 @@ jobs:
         uses: actions/download-artifact@main
         with:
           path: ./host/dist
+          merge-multiple: true
 
       - name: Commit and push
         run: |
@@ -73,6 +51,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Update host/dist binaries [skip ci]"
+            git commit -m "Update host/dist jars [skip ci]"
             git push
           fi
