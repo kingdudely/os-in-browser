@@ -444,9 +444,9 @@ public class Main {
         KeyEvent.VK_UNDEFINED, // 127
         KeyEvent.VK_UNDEFINED, // 128
         KeyEvent.VK_UNDEFINED, // 129
-        KeyEvent.VK_VOLUME_MUTE, // 130
-        KeyEvent.VK_VOLUME_UP, // 131
-        KeyEvent.VK_VOLUME_DOWN, // 132
+        KeyEvent.VK_UNDEFINED, // 130
+        KeyEvent.VK_UNDEFINED, // 131
+        KeyEvent.VK_UNDEFINED, // 132
         KeyEvent.VK_UNDEFINED, // 133
         KeyEvent.VK_UNDEFINED, // 134
         KeyEvent.VK_UNDEFINED, // 135

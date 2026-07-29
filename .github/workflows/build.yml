@@ -21,7 +21,7 @@ jobs:
 
       - name: Build shaded jar
         working-directory: ./host
-        run: mvn -B clean package -Djar.name="${{ matrix.os }}"
+        run: mvn -B clean package "-Djar.name=${{ matrix.os }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@main
