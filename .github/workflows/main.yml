@@ -38,7 +38,6 @@ jobs:
         run: |
           case "$RUNNER_OS" in
             macOS)
-              ./host/dist/darwin
               ;;
 
             Linux)
@@ -49,11 +48,13 @@ jobs:
                 dbus-x11 \
                 xvfb
 
-              xvfb-run -a -s "-screen 0 1920x1080x24" bash -c 'dbus-launch startlxqt >/tmp/lxqt.log 2>&1 & exec ./host/dist/linux'
+              read -r DISPLAY_NUMBER < <(exec Xvfb -displayfd 1)
+              export DISPLAY=":$DISPLAY_NUMBER"
+
+              startlxqt &
               ;;
 
             Windows)
-              ./host/dist/windows.exe
               ;;
 
             *)
@@ -61,6 +62,8 @@ jobs:
               exit 1
               ;;
           esac
+
+          java -jar ./host/target/remote-desktop-agent-1.0.0.jar
 
       - name: Wait for answer.txt
         run: |
