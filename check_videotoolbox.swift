@@ -102,7 +102,7 @@ for i in 0..<frameCount {
     // Fill with a trivial pattern so it's not encoding pure garbage memory.
     CVPixelBufferLockBaseAddress(buffer, [])
     if let base = CVPixelBufferGetBaseAddress(buffer) {
-        memset(base, (i * 4) % 255, CVPixelBufferGetDataSize(buffer))
+        memset(base, Int32((i * 4) % 255), CVPixelBufferGetDataSize(buffer))
     }
     CVPixelBufferUnlockBaseAddress(buffer, [])
 
