@@ -1,0 +1,75 @@
+name: Test VideoToolbox Hardware Encode
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-videotoolbox:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-latest, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: System info
+        run: |
+          echo "=== Hardware ==="
+          sysctl -n machdep.cpu.brand_string || true
+          sysctl -n hw.ncpu
+          echo "=== macOS version ==="
+          sw_vers
+          echo "=== GPU info ==="
+          system_profiler SPDisplaysDataType
+
+      - name: Install ffmpeg
+        run: brew install ffmpeg
+
+      - name: List available hardware encoders
+        run: |
+          echo "=== VideoToolbox encoders reported by ffmpeg ==="
+          ffmpeg -hide_banner -encoders 2>&1 | grep -i videotoolbox || echo "No videotoolbox encoders listed"
+
+      - name: Generate test source
+        run: |
+          ffmpeg -hide_banner -f lavfi -i testsrc2=size=1920x1080:rate=30:duration=5 \
+            -pix_fmt yuv420p test_source.mp4
+
+      - name: Attempt VideoToolbox H.264 encode
+        id: vt_encode
+        continue-on-error: true
+        run: |
+          set -x
+          time ffmpeg -hide_banner -y -i test_source.mp4 \
+            -c:v h264_videotoolbox -b:v 4M -realtime 1 \
+            -f null - 2>&1 | tee vt_encode_log.txt
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether encode actually used hardware
+        run: |
+          echo "=== ffmpeg output ==="
+          cat vt_encode_log.txt || true
+          echo ""
+          echo "=== Verdict ==="
+          if grep -qi "error" vt_encode_log.txt && ! grep -qi "frame=" vt_encode_log.txt; then
+            echo "RESULT: VideoToolbox encode FAILED — likely blocked (paravirtualized GPU or no hw path)"
+          elif grep -qi "frame=" vt_encode_log.txt; then
+            echo "RESULT: VideoToolbox encode SUCCEEDED — frames were produced"
+          else
+            echo "RESULT: INCONCLUSIVE — inspect log above manually"
+          fi
+
+      - name: Run software x264 baseline for comparison
+        run: |
+          echo "=== x264 ultrafast baseline (for latency comparison) ==="
+          time ffmpeg -hide_banner -y -i test_source.mp4 \
+            -c:v libx264 -preset ultrafast -b:v 4M \
+            -f null - 2>&1 | tail -20
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: videotoolbox-test-${{ matrix.runner }}
+          path: |
+            vt_encode_log.txt
+            test_source.mp4
