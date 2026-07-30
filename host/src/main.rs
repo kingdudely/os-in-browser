@@ -8,6 +8,7 @@ use std::{env, fs, io::Write, sync::Arc, time::Duration};
 use anyhow::{Context, Result};
 use enigo::{Axis, Button, Coordinate, Direction, Enigo, Keyboard, Mouse, Settings};
 use tokio::sync::{mpsc, Mutex};
+use urlencoding::decode;
 
 use libwebrtc::{
     data_channel::{DataBuffer, DataChannel, DataChannelInit},
@@ -32,7 +33,10 @@ const HEIGHT: u32 = 1080;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let offer_sdp = env::var("OFFER").context("OFFER env var not set")?;
+    let offer_sdp_raw = env::var("OFFER").context("OFFER env var not set")?;
+    let offer_sdp = decode(&offer_sdp_raw)
+        .context("failed to URL-decode OFFER env var")?
+        .into_owned();
 
     let factory = PeerConnectionFactory::default();
     let pc = factory
