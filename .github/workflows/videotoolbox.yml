@@ -1,75 +1,53 @@
-name: Test VideoToolbox Hardware Encode
+name: Check VideoToolbox Hardware Usage (Swift)
 
 on:
   workflow_dispatch:
 
 jobs:
-  test-videotoolbox:
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [macos-latest, macos-15-intel]
-    runs-on: ${{ matrix.runner }}
+  check-videotoolbox-swift:
+    runs-on: macos-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: System info
         run: |
-          echo "=== Hardware ==="
+          sw_vers
           sysctl -n machdep.cpu.brand_string || true
           sysctl -n hw.ncpu
-          echo "=== macOS version ==="
-          sw_vers
-          echo "=== GPU info ==="
-          system_profiler SPDisplaysDataType
+          swift --version
 
-      - name: Install ffmpeg
-        run: brew install ffmpeg
-
-      - name: List available hardware encoders
+      - name: Run VideoToolbox hardware check
         run: |
-          echo "=== VideoToolbox encoders reported by ffmpeg ==="
-          ffmpeg -hide_banner -encoders 2>&1 | grep -i videotoolbox || echo "No videotoolbox encoders listed"
+          swift check_videotoolbox.swift
 
-      - name: Generate test source
+      - name: Also try requiring hardware explicitly (should fail loudly if unavailable)
         run: |
-          ffmpeg -hide_banner -f lavfi -i testsrc2=size=1920x1080:rate=30:duration=5 \
-            -pix_fmt yuv420p test_source.mp4
+          cat > check_videotoolbox_require_hw.swift << 'EOF'
+          import Foundation
+          import VideoToolbox
+          import CoreMedia
 
-      - name: Attempt VideoToolbox H.264 encode
-        id: vt_encode
-        continue-on-error: true
-        run: |
-          set -x
-          time ffmpeg -hide_banner -y -i test_source.mp4 \
-            -c:v h264_videotoolbox -b:v 4M -realtime 1 \
-            -f null - 2>&1 | tee vt_encode_log.txt
-          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
-
-      - name: Check whether encode actually used hardware
-        run: |
-          echo "=== ffmpeg output ==="
-          cat vt_encode_log.txt || true
-          echo ""
-          echo "=== Verdict ==="
-          if grep -qi "error" vt_encode_log.txt && ! grep -qi "frame=" vt_encode_log.txt; then
-            echo "RESULT: VideoToolbox encode FAILED — likely blocked (paravirtualized GPU or no hw path)"
-          elif grep -qi "frame=" vt_encode_log.txt; then
-            echo "RESULT: VideoToolbox encode SUCCEEDED — frames were produced"
-          else
-            echo "RESULT: INCONCLUSIVE — inspect log above manually"
-          fi
-
-      - name: Run software x264 baseline for comparison
-        run: |
-          echo "=== x264 ultrafast baseline (for latency comparison) ==="
-          time ffmpeg -hide_banner -y -i test_source.mp4 \
-            -c:v libx264 -preset ultrafast -b:v 4M \
-            -f null - 2>&1 | tail -20
-
-      - name: Upload logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: videotoolbox-test-${{ matrix.runner }}
-          path: |
-            vt_encode_log.txt
-            test_source.mp4
+          var session: VTCompressionSession?
+          let spec: [CFString: Any] = [
+              kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder: true,
+              kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: true
+          ]
+          let status = VTCompressionSessionCreate(
+              allocator: kCFAllocatorDefault,
+              width: 1920, height: 1080,
+              codecType: kCMVideoCodecType_H264,
+              encoderSpecification: spec as CFDictionary,
+              imageBufferAttributes: nil,
+              compressedDataAllocator: nil,
+              outputCallback: nil,
+              refcon: nil,
+              compressionSessionOut: &session
+          )
+          if status == noErr {
+              print("Session created with REQUIRE_HARDWARE=true — hardware encoder is genuinely available.")
+          } else {
+              print("Session creation FAILED with REQUIRE_HARDWARE=true, status: \(status)")
+              print("This confirms no real hardware encoder is reachable in this environment.")
+          }
+          EOF
+          swift check_videotoolbox_require_hw.swift
