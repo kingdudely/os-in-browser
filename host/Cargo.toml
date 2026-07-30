@@ -1,10 +1,10 @@
 [package]
-name = "remote-desktop-agent"
+name = "os-in-browser-host"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "remote-desktop-agent"
+name = "os-in-browser-host"
 path = "src/main.rs"
 
 [dependencies]

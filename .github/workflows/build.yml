@@ -13,11 +13,11 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            artifact_name: host
+            artifact_name: os-in-browser-host
           - os: macos-latest
-            artifact_name: host
+            artifact_name: os-in-browser-host
           - os: windows-latest
-            artifact_name: host.exe
+            artifact_name: os-in-browser-host.exe
 
     runs-on: ${{ matrix.os }}
 
