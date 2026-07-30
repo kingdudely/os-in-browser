@@ -40,7 +40,8 @@ jobs:
             libxrandr-dev \
             libxtst-dev \
             libasound2-dev \
-            libpulse-dev
+            libpulse-dev \
+            libgirepository1.0-dev
 
       - name: Build release binary
         working-directory: ./host

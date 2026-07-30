@@ -73,21 +73,26 @@ pub fn code_index_to_key(index: u8) -> Option<Key> {
         73 => Key::F11,
         74 => Key::F12,
 
-        // These vary by platform in enigo's Key enum — gate per-OS,
-        // fall back to a harmless no-op-ish key elsewhere.
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         75 => Key::PrintScr,
-        #[cfg(not(target_os = "linux"))]
-        75 => Key::Print,
+        #[cfg(target_os = "macos")]
+        75 => return None,
 
         #[cfg(target_os = "linux")]
         76 => Key::ScrollLock,
         #[cfg(not(target_os = "linux"))]
         76 => return None,
 
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         77 => Key::Pause,
+        #[cfg(target_os = "macos")]
+        77 => return None,
 
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         78 => Key::Insert,
+        #[cfg(target_os = "macos")]
+        78 => return None,
+
         79 => Key::Home,
         80 => Key::PageUp,
         81 => Key::Delete,
@@ -98,7 +103,11 @@ pub fn code_index_to_key(index: u8) -> Option<Key> {
         86 => Key::DownArrow,
         87 => Key::UpArrow,
 
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         88 => Key::Numlock,
+        #[cfg(target_os = "macos")]
+        88 => return None,
+
         89 => Key::Divide,
         90 => Key::Multiply,
         91 => Key::Subtract,
