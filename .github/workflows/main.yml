@@ -38,6 +38,7 @@ jobs:
         run: |
           case "$RUNNER_OS" in
             macOS)
+              chmod +x ./host/dist/macos-latest/os-in-browser-host
               ./host/dist/macos-latest/os-in-browser-host
               ;;
 
@@ -49,10 +50,12 @@ jobs:
                 dbus-x11 \
                 xvfb
 
+              chmod +x ./host/dist/ubuntu-latest/os-in-browser-host
               xvfb-run -a -s "-screen 0 1920x1080x24" bash -c 'dbus-launch startlxqt >/tmp/lxqt.log 2>&1 & exec ./host/dist/ubuntu-latest/os-in-browser-host'
               ;;
 
             Windows)
+              ./host/dist/windows-latest/os-in-browser-host.exe
               ./host/dist/windows-latest/os-in-browser-host.exe
               ;;
 
