@@ -1,10 +1,10 @@
-name: Check VideoToolbox Hardware Usage (Swift)
+name: Benchmark VideoToolbox HW vs x264 Software
 
 on:
   workflow_dispatch:
 
 jobs:
-  check-videotoolbox-swift:
+  benchmark:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,38 +16,30 @@ jobs:
           sysctl -n hw.ncpu
           swift --version
 
-      - name: Run VideoToolbox hardware check
-        run: |
-          swift check_videotoolbox.swift
+      - name: Install ffmpeg
+        run: brew install ffmpeg
 
-      - name: Also try requiring hardware explicitly (should fail loudly if unavailable)
+      - name: Generate matched test source (150 frames, 1080p30, 5s)
         run: |
-          cat > check_videotoolbox_require_hw.swift << 'EOF'
-          import Foundation
-          import VideoToolbox
-          import CoreMedia
+          ffmpeg -hide_banner -f lavfi -i testsrc2=size=1920x1080:rate=30:duration=5 \
+            -pix_fmt yuv420p test_source.mp4
 
-          var session: VTCompressionSession?
-          let spec: [CFString: Any] = [
-              kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder: true,
-              kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: true
-          ]
-          let status = VTCompressionSessionCreate(
-              allocator: kCFAllocatorDefault,
-              width: 1920, height: 1080,
-              codecType: kCMVideoCodecType_H264,
-              encoderSpecification: spec as CFDictionary,
-              imageBufferAttributes: nil,
-              compressedDataAllocator: nil,
-              outputCallback: nil,
-              refcon: nil,
-              compressionSessionOut: &session
-          )
-          if status == noErr {
-              print("Session created with REQUIRE_HARDWARE=true — hardware encoder is genuinely available.")
-          } else {
-              print("Session creation FAILED with REQUIRE_HARDWARE=true, status: \(status)")
-              print("This confirms no real hardware encoder is reachable in this environment.")
-          }
-          EOF
-          swift check_videotoolbox_require_hw.swift
+      - name: "BENCHMARK 1: VideoToolbox hardware (Swift, callback-timed)"
+        run: |
+          echo "=== VideoToolbox (real hardware, proper callback timing) ==="
+          swift check_videotoolbox_v2.swift
+
+      - name: "BENCHMARK 2: x264 ultrafast software (ffmpeg, same 150 frames / 4Mbps)"
+        run: |
+          echo "=== x264 ultrafast software ==="
+          time ffmpeg -hide_banner -y -i test_source.mp4 \
+            -c:v libx264 -preset ultrafast -b:v 4M \
+            -f null - 2>&1 | tail -20
+
+      - name: "BENCHMARK 3: VideoToolbox via ffmpeg (for reference against BENCHMARK 1)"
+        continue-on-error: true
+        run: |
+          echo "=== h264_videotoolbox via ffmpeg (for comparison to raw Swift API) ==="
+          time ffmpeg -hide_banner -y -i test_source.mp4 \
+            -c:v h264_videotoolbox -b:v 4M -realtime 1 \
+            -f null - 2>&1 | tail -20

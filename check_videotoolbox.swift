@@ -3,23 +3,53 @@ import VideoToolbox
 import CoreMedia
 import CoreVideo
 
-// Definitive hardware-vs-software check for H.264 VideoToolbox encode.
-// Unlike inferring from ffmpeg speed, this reads VideoToolbox's own
-// kVTCompressionPropertyKey_UsingHardwareAcceleratedVideoEncoder property.
+// Accurate hardware-vs-software check + REAL throughput benchmark.
+// Uses a proper output callback so timing reflects actual completed
+// encodes, not just frame submission (the bug in the previous version
+// that produced a bogus 382x number).
 
 let width: Int32 = 1920
 let height: Int32 = 1080
-let frameCount = 60
+let frameCount = 150   // match ffmpeg test: 150 frames @ 30fps = 5s of content
 let fps: Int32 = 30
 
-var session: VTCompressionSession?
+final class EncodeCounter {
+    var framesCompleted = 0
+    var totalBytes = 0
+    let semaphore = DispatchSemaphore(value: 0)
+    let targetCount: Int
 
-// Force hardware encoder attempt explicitly rather than letting
-// VideoToolbox silently choose — this is the same knob AVFoundation/
-// ffmpeg use, but we can inspect the result directly here.
+    init(targetCount: Int) {
+        self.targetCount = targetCount
+    }
+
+    func recordFrame(dataSize: Int) {
+        framesCompleted += 1
+        totalBytes += dataSize
+        if framesCompleted >= targetCount {
+            semaphore.signal()
+        }
+    }
+}
+
+let counter = EncodeCounter(targetCount: frameCount)
+let counterPtr = Unmanaged.passRetained(counter).toOpaque()
+
+let outputCallback: VTCompressionOutputCallback = { refcon, sourceFrameRefcon, status, infoFlags, sampleBuffer in
+    guard let refcon = refcon else { return }
+    let counter = Unmanaged<EncodeCounter>.fromOpaque(refcon).takeUnretainedValue()
+
+    var size = 0
+    if status == noErr, let sbuf = sampleBuffer {
+        size = CMSampleBufferGetTotalSampleSize(sbuf)
+    }
+    counter.recordFrame(dataSize: size)
+}
+
+var session: VTCompressionSession?
 let encoderSpecification: [CFString: Any] = [
     kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder: true,
-    kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: false
+    kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: true
 ]
 
 let status = VTCompressionSessionCreate(
@@ -30,20 +60,19 @@ let status = VTCompressionSessionCreate(
     encoderSpecification: encoderSpecification as CFDictionary,
     imageBufferAttributes: nil,
     compressedDataAllocator: nil,
-    outputCallback: nil,
-    refcon: nil,
+    outputCallback: outputCallback,
+    refcon: counterPtr,
     compressionSessionOut: &session
 )
 
 guard status == noErr, let compressionSession = session else {
-    print("VTCompressionSessionCreate FAILED with status: \(status)")
-    print("This means VideoToolbox could not create a session at all (hardware or software).")
+    print("VTCompressionSessionCreate FAILED (hardware required), status: \(status)")
+    print("RESULT: No real hardware encoder available in this environment.")
     exit(1)
 }
 
-print("VTCompressionSessionCreate succeeded.")
+print("VTCompressionSessionCreate (hardware-required) succeeded.")
 
-// Query which encoder VideoToolbox actually picked.
 var usingHardware: CFTypeRef?
 let propStatus = VTSessionCopyProperty(
     compressionSession,
@@ -51,22 +80,10 @@ let propStatus = VTSessionCopyProperty(
     allocator: kCFAllocatorDefault,
     valueOut: &usingHardware
 )
-
 if propStatus == noErr, let value = usingHardware as? Bool {
-    print("kVTCompressionPropertyKey_UsingHardwareAcceleratedVideoEncoder = \(value)")
-    if value {
-        print("RESULT: VideoToolbox IS using real hardware acceleration.")
-    } else {
-        print("RESULT: VideoToolbox created a session but is running SOFTWARE encode.")
-    }
-} else {
-    print("Could not read UsingHardwareAcceleratedVideoEncoder property, status: \(propStatus)")
-    print("(Property may be unsupported on this OS/encoder combination — treat as inconclusive.)")
+    print("UsingHardwareAcceleratedVideoEncoder = \(value)")
 }
 
-// Also print the encoder's declared name/ID for extra context —
-// some VideoToolbox software fallback paths still report a
-// hardware-sounding encoder ID, so this is supplementary, not authoritative.
 var encoderIDValue: CFTypeRef?
 _ = VTSessionCopyProperty(
     compressionSession,
@@ -78,8 +95,10 @@ if let encoderID = encoderIDValue as? String {
     print("Encoder ID: \(encoderID)")
 }
 
-// Now actually run real frames through it and time it, so we get a
-// speed measurement alongside the authoritative hardware/software flag.
+// Set a realtime bitrate similar to the ffmpeg comparison (4 Mbps).
+VTSessionSetProperty(compressionSession, key: kVTCompressionPropertyKey_AverageBitRate, value: 4_000_000 as CFTypeRef)
+VTSessionSetProperty(compressionSession, key: kVTCompressionPropertyKey_RealTime, value: kCFBooleanTrue)
+
 VTCompressionSessionPrepareToEncodeFrames(compressionSession)
 
 var pixelBufferPool: CVPixelBufferPool?
@@ -90,8 +109,8 @@ let poolAttrs: [CFString: Any] = [
 ]
 CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, poolAttrs as CFDictionary, &pixelBufferPool)
 
+print("Encoding \(frameCount) frames at \(width)x\(height)...")
 let startTime = Date()
-var framesSubmitted = 0
 
 for i in 0..<frameCount {
     var pixelBuffer: CVPixelBuffer?
@@ -99,7 +118,6 @@ for i in 0..<frameCount {
     CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &pixelBuffer)
     guard let buffer = pixelBuffer else { continue }
 
-    // Fill with a trivial pattern so it's not encoding pure garbage memory.
     CVPixelBufferLockBaseAddress(buffer, [])
     if let base = CVPixelBufferGetBaseAddress(buffer) {
         memset(base, Int32((i * 4) % 255), CVPixelBufferGetDataSize(buffer))
@@ -116,15 +134,26 @@ for i in 0..<frameCount {
         sourceFrameRefcon: nil,
         infoFlagsOut: nil
     )
-    framesSubmitted += 1
 }
 
 VTCompressionSessionCompleteFrames(compressionSession, untilPresentationTimeStamp: .invalid)
+
+// Wait for the callback to actually confirm all frames completed —
+// this is the fix for the previous bogus 382x number.
+let waitResult = counter.semaphore.wait(timeout: .now() + 30)
 let elapsed = Date().timeIntervalSince(startTime)
 
+if waitResult == .timedOut {
+    print("WARNING: timed out waiting for all frames to complete.")
+}
+
 print("---")
-print("Frames submitted: \(framesSubmitted)")
+print("Frames completed: \(counter.framesCompleted)/\(frameCount)")
+print("Total encoded bytes: \(counter.totalBytes)")
 print("Elapsed: \(String(format: "%.3f", elapsed))s")
-print("Effective speed: \(String(format: "%.2f", Double(framesSubmitted) / Double(fps) / elapsed))x realtime")
+let contentSeconds = Double(frameCount) / Double(fps)
+print("Content duration: \(String(format: "%.2f", contentSeconds))s")
+print("REAL effective speed: \(String(format: "%.2f", contentSeconds / elapsed))x realtime")
 
 VTCompressionSessionInvalidate(compressionSession)
+Unmanaged<EncodeCounter>.fromOpaque(counterPtr).release()
