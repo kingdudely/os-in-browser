@@ -9,7 +9,6 @@ const { writeFile } = require('node:fs/promises');
 const { env, stdout } = require("node:process");
 keyboard.config.autoDelayMs = 0;
 mouse.config.autoDelayMs = 0;
-keyboard.nativeAdapter.keyboard.setKeyboardDelay(0); // needed for pressKey/releaseKey
 
 stdout.write("app/index.js loaded!");
 const offer = decodeURIComponent(env.OFFER);
