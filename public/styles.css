@@ -16,5 +16,5 @@ html, body, #screenshare {
 	image-rendering: pixelated; 
 	contain: strict;
 	touch-action: none;
-	cursor: crosshair;
+	cursor: none;
 }

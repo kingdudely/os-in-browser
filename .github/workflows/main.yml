@@ -7,8 +7,8 @@ defaults:
 on: 
   workflow_dispatch:
     inputs:
-      share-id:
-        description: "Share ID"
+      offer:
+        description: "Offer"
         type: string
         required: true
       os:
