@@ -24,12 +24,18 @@ jobs:
           ffmpeg -hide_banner -f lavfi -i testsrc2=size=1920x1080:rate=30:duration=5 \
             -pix_fmt yuv420p test_source.mp4
 
-      - name: "BENCHMARK 1: VideoToolbox hardware, FULLY TUNED (Swift, callback-timed) — with CPU time + powermetrics"
+      - name: "BENCHMARK 1: VideoToolbox hardware, FULLY TUNED — bitrate sweep to isolate bitrate as a variable"
         run: |
-          echo "=== VideoToolbox (real hardware, low-latency tuned, proper callback timing) ==="
-          echo "--- CPU time via /usr/bin/time -l ---"
           swiftc -O check_videotoolbox_v3.swift -o vt_bench
-          /usr/bin/time -l ./vt_bench 2>&1 | tee vt_time_output.txt
+          echo "=== Sweep: does lowering target bitrate speed up VideoToolbox? ==="
+          for br in 500000 1000000 2000000 4000000 8000000; do
+            echo ""
+            echo "--- bitrate=$br ---"
+            /usr/bin/time -l ./vt_bench $br 2>&1 | grep -E "REAL effective speed|real |user |sys |Encoder ID|UsingHardware"
+          done
+          echo ""
+          echo "=== Full run at 4Mbps (default, matches x264 comparison) for CPU-time record ==="
+          /usr/bin/time -l ./vt_bench 4000000 2>&1 | tee vt_time_output.txt
           echo ""
           echo "--- GPU/CPU power sampling during encode (powermetrics, needs sudo) ---"
           sudo powermetrics --samplers gpu_power,cpu_power -i 200 -n 15 > vt_powermetrics.txt 2>&1 &

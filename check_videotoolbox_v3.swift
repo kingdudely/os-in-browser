@@ -12,6 +12,10 @@ let height: Int32 = 1080
 let frameCount = 150
 let fps: Int32 = 30
 
+// Bitrate is now a CLI arg so we can sweep it: ./vt_bench 4000000
+let bitrate: Int = CommandLine.arguments.count > 1 ? (Int(CommandLine.arguments[1]) ?? 4_000_000) : 4_000_000
+print("Testing at bitrate: \(bitrate) bps")
+
 final class EncodeCounter {
     var framesCompleted = 0
     var totalBytes = 0
@@ -60,7 +64,9 @@ let status = VTCompressionSessionCreate(
     compressionSessionOut: &session
 )
 
-guard status == noErr, let compressionSession = session else {
+var vtSessionOpt: VTCompressionSession? = session
+
+if status != noErr || vtSessionOpt == nil {
     print("VTCompressionSessionCreate FAILED (hardware + low-latency required), status: \(status)")
     print("Retrying without EnableLowLatencyRateControl in case it's the incompatible property...")
 
@@ -68,22 +74,27 @@ guard status == noErr, let compressionSession = session else {
         kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder: true,
         kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: true
     ]
+    var fallbackSession: VTCompressionSession?
     let fallbackStatus = VTCompressionSessionCreate(
         allocator: kCFAllocatorDefault, width: width, height: height,
         codecType: kCMVideoCodecType_H264,
         encoderSpecification: fallbackSpec as CFDictionary,
         imageBufferAttributes: nil, compressedDataAllocator: nil,
         outputCallback: outputCallback, refcon: counterPtr,
-        compressionSessionOut: &session
+        compressionSessionOut: &fallbackSession
     )
-    guard fallbackStatus == noErr, session != nil else {
+    if fallbackStatus != noErr || fallbackSession == nil {
         print("Fallback also failed, status: \(fallbackStatus). No hardware encoder available.")
         exit(1)
     }
     print("Fallback session (hardware, no explicit low-latency spec) succeeded.")
+    vtSessionOpt = fallbackSession
 }
 
-let vtSession = session!
+guard let vtSession = vtSessionOpt else {
+    print("No session available after all attempts.")
+    exit(1)
+}
 
 print("VTCompressionSessionCreate succeeded.")
 
@@ -109,7 +120,7 @@ func setProp(_ key: CFString, _ value: CFTypeRef, _ label: String) {
 print("--- Applying tuning properties ---")
 setProp(kVTCompressionPropertyKey_RealTime, kCFBooleanTrue, "RealTime=true")
 setProp(kVTCompressionPropertyKey_AllowFrameReordering, kCFBooleanFalse, "AllowFrameReordering=false")
-setProp(kVTCompressionPropertyKey_AverageBitRate, 4_000_000 as CFTypeRef, "AverageBitRate=4Mbps")
+setProp(kVTCompressionPropertyKey_AverageBitRate, bitrate as CFTypeRef, "AverageBitRate=\(bitrate)")
 setProp(kVTCompressionPropertyKey_ExpectedFrameRate, Int(fps) as CFTypeRef, "ExpectedFrameRate=\(fps)")
 setProp(kVTCompressionPropertyKey_MaxKeyFrameInterval, Int(fps * 60) as CFTypeRef, "MaxKeyFrameInterval=\(fps*60)")
 setProp(kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration, 60.0 as CFTypeRef, "MaxKeyFrameIntervalDuration=60s")
@@ -117,7 +128,7 @@ setProp(kVTCompressionPropertyKey_H264EntropyMode, kVTH264EntropyMode_CABAC, "H2
 setProp(kVTCompressionPropertyKey_ProfileLevel, kVTProfileLevel_H264_Baseline_AutoLevel, "ProfileLevel=Baseline_AutoLevel")
 
 // DataRateLimits: [bytesPerSecond, 1 second window]
-let byteLimit = (4_000_000.0 / 8.0) as CFNumber
+let byteLimit = (Double(bitrate) / 8.0) as CFNumber
 let secLimit = 1.0 as CFNumber
 setProp(kVTCompressionPropertyKey_DataRateLimits, [byteLimit, secLimit] as CFArray, "DataRateLimits")
 
