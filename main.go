@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 	"time"
+	"net/url"
 
 	"github.com/pion/mediadevices"
 	"github.com/pion/mediadevices/pkg/codec/x264"
@@ -20,10 +21,13 @@ func fatal(step string, err error) {
 }
 
 func main() {
-	offer := os.Getenv("OFFER")
-	if offer == "" {
+	rawOffer := os.Getenv("OFFER")
+	if rawOffer == "" {
 		log.Fatal("OFFER environment variable is not set")
 	}
+
+	offer, err := url.QueryUnescape(rawOffer)
+	fatal("decoding offer", err)
 
 	pc, answerSDP, err := createAnswer(offer)
 	fatal("create answer", err)

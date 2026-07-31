@@ -33,10 +33,12 @@ jobs:
       - name: Start server
         id: server
         background: true
+        env:
+          OFFER: ${{ github.event.inputs.offer }}
         run: |
           case "$RUNNER_OS" in
             macOS)
-              ./dist/darwin "${{ github.event.inputs.share-id }}"
+              ./dist/darwin
               ;;
 
             Linux)
@@ -47,11 +49,11 @@ jobs:
                 dbus-x11 \
                 xvfb
 
-              xvfb-run -a -s "-screen 0 1920x1080x24" bash -c 'dbus-launch startlxqt >/tmp/lxqt.log 2>&1 & exec ./dist/linux "${{ github.event.inputs.share-id }}"'
+              xvfb-run -a -s "-screen 0 1920x1080x24" bash -c 'dbus-launch startlxqt >/tmp/lxqt.log 2>&1 & exec ./dist/linux'
               ;;
 
             Windows)
-              ./dist/windows.exe "${{ github.event.inputs.share-id }}"
+              ./dist/windows.exe
               ;;
 
             *)
