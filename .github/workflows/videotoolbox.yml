@@ -1,103 +1,71 @@
-name: Benchmark VideoToolbox HW vs x264 Software
+name: Encode Benchmark
 
 on:
   workflow_dispatch:
 
 jobs:
   benchmark:
-    runs-on: macos-latest
+    runs-on: macos-26
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: System info
+      - name: Install FFmpeg
         run: |
-          sw_vers
-          sysctl -n machdep.cpu.brand_string || true
-          sysctl -n hw.ncpu
-          swift --version
+          brew update
+          brew install ffmpeg
 
-      - name: Install ffmpeg
-        run: brew install ffmpeg
-
-      - name: Generate matched test source (150 frames, 1080p30, 5s)
+      - name: Generate test video (synthetic, consistent)
         run: |
-          ffmpeg -hide_banner -f lavfi -i testsrc2=size=1920x1080:rate=30:duration=5 \
-            -pix_fmt yuv420p test_source.mp4
+          ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=30 -t 20 -pix_fmt yuv420p input.mp4
 
-      - name: "BENCHMARK 1: VideoToolbox hardware, FULLY TUNED — bitrate sweep to isolate bitrate as a variable"
+      # ----------------------------
+      # 🔥 X264 TEST
+      # ----------------------------
+      - name: Benchmark x264
         run: |
-          swiftc -O check_videotoolbox_v3.swift -o vt_bench
-          echo "=== Sweep: does lowering target bitrate speed up VideoToolbox? ==="
-          for br in 500000 1000000 2000000 4000000 8000000; do
-            echo ""
-            echo "--- bitrate=$br ---"
-            /usr/bin/time -l ./vt_bench $br 2>&1 | grep -E "REAL effective speed|real |user |sys |Encoder ID|UsingHardware"
-          done
-          echo ""
-          echo "=== Full run at 4Mbps (default, matches x264 comparison) for CPU-time record ==="
-          /usr/bin/time -l ./vt_bench 4000000 2>&1 | tee vt_time_output.txt
-          echo ""
-          echo "--- GPU/CPU power sampling during encode (powermetrics, needs sudo) ---"
-          sudo powermetrics --samplers gpu_power,cpu_power -i 200 -n 15 > vt_powermetrics.txt 2>&1 &
-          PM_PID=$!
-          ./vt_bench > /dev/null 2>&1 || true
-          sleep 1
-          sudo kill $PM_PID 2>/dev/null || true
-          wait $PM_PID 2>/dev/null || true
-          echo "=== powermetrics output (GPU Active residency is the key signal) ==="
-          grep -A 2 -i "GPU HW active residency\|GPU idle residency\|CPU Power\|GPU Power" vt_powermetrics.txt || cat vt_powermetrics.txt
+          echo "===== X264 TEST ====="
+          /usr/bin/time -l ffmpeg -y -i input.mp4 \
+            -c:v libx264 -preset ultrafast -tune zerolatency \
+            -f mp4 x264.mp4 2>&1 | tee x264_log.txt
 
-      - name: "BENCHMARK 2: x264 ultrafast software (ffmpeg, same 150 frames / 4Mbps) — with CPU time + powermetrics"
+      # ----------------------------
+      # ⚡ VIDEOTOOLBOX TEST
+      # ----------------------------
+      - name: Benchmark VideoToolbox
         run: |
-          echo "=== x264 ultrafast software ==="
-          echo "--- CPU time via /usr/bin/time -l ---"
-          /usr/bin/time -l ffmpeg -hide_banner -y -i test_source.mp4 \
-            -c:v libx264 -preset ultrafast -b:v 4M \
-            -f null - > /dev/null 2> x264_time_output.txt
-          tail -30 x264_time_output.txt
-          echo ""
-          echo "--- GPU/CPU power sampling during encode ---"
-          sudo powermetrics --samplers gpu_power,cpu_power -i 200 -n 15 > x264_powermetrics.txt 2>&1 &
-          PM_PID=$!
-          ffmpeg -hide_banner -y -i test_source.mp4 -c:v libx264 -preset ultrafast -b:v 4M -f null - > /dev/null 2>&1 || true
-          sleep 1
-          sudo kill $PM_PID 2>/dev/null || true
-          wait $PM_PID 2>/dev/null || true
-          echo "=== powermetrics output ==="
-          grep -A 2 -i "GPU HW active residency\|GPU idle residency\|CPU Power\|GPU Power" x264_powermetrics.txt || cat x264_powermetrics.txt
+          echo "===== VIDEOTOOLBOX TEST ====="
+          /usr/bin/time -l ffmpeg -y -i input.mp4 \
+            -vf format=nv12 \
+            -c:v h264_videotoolbox \
+            -realtime true \
+            -prio_speed 1 \
+            -allow_sw 0 \
+            -b:v 2M -maxrate 2M -bufsize 2M \
+            -f mp4 vt.mp4 2>&1 | tee vt_log.txt
 
-      - name: "BENCHMARK 3: VideoToolbox via ffmpeg (for reference against BENCHMARK 1)"
-        continue-on-error: true
+      # ----------------------------
+      # 📊 CPU + SYSTEM INFO
+      # ----------------------------
+      - name: Capture system stats
         run: |
-          echo "=== h264_videotoolbox via ffmpeg (for comparison to raw Swift API) ==="
-          /usr/bin/time -l ffmpeg -hide_banner -y -i test_source.mp4 \
-            -c:v h264_videotoolbox -b:v 4M -realtime 1 \
-            -f null - > /dev/null 2> vt_ffmpeg_time_output.txt
-          tail -30 vt_ffmpeg_time_output.txt
+          echo "===== SYSTEM INFO ====="
+          sysctl -a | grep machdep.cpu > cpu_info.txt || true
+          sysctl -a | grep hw.memsize >> cpu_info.txt || true
 
-      - name: Summary — CPU seconds comparison
-        if: always()
-        run: |
-          echo "=== 'user' + 'sys' time = actual CPU seconds consumed (lower is better/lighter on CPU) ==="
-          echo ""
-          echo "--- VideoToolbox (Swift, real hardware-required session) ---"
-          grep -E "real|user|sys" vt_time_output.txt || true
-          echo ""
-          echo "--- x264 ultrafast (software) ---"
-          grep -E "real|user|sys" x264_time_output.txt || true
-          echo ""
-          echo "If VideoToolbox's user+sys CPU seconds are close to or higher than x264's,"
-          echo "the GPU is NOT meaningfully offloading work — the paravirt round-trip is"
-          echo "costing CPU time itself rather than freeing the CPU while GPU does the work."
+          echo "===== TOP SNAPSHOT ====="
+          top -l 1 -n 0 > top.txt
 
-      - name: Upload benchmark artifacts
-        if: always()
+      # ----------------------------
+      # 📦 Upload results
+      # ----------------------------
+      - name: Upload logs
         uses: actions/upload-artifact@v4
         with:
-          name: cpu-gpu-benchmark-results
+          name: benchmark-results
           path: |
-            vt_time_output.txt
-            vt_powermetrics.txt
-            x264_time_output.txt
-            x264_powermetrics.txt
-            vt_ffmpeg_time_output.txt
+            x264_log.txt
+            vt_log.txt
+            top.txt
+            cpu_info.txt
