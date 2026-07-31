@@ -24,11 +24,11 @@ jobs:
           ffmpeg -hide_banner -f lavfi -i testsrc2=size=1920x1080:rate=30:duration=5 \
             -pix_fmt yuv420p test_source.mp4
 
-      - name: "BENCHMARK 1: VideoToolbox hardware (Swift, callback-timed) — with CPU time + powermetrics"
+      - name: "BENCHMARK 1: VideoToolbox hardware, FULLY TUNED (Swift, callback-timed) — with CPU time + powermetrics"
         run: |
-          echo "=== VideoToolbox (real hardware, proper callback timing) ==="
+          echo "=== VideoToolbox (real hardware, low-latency tuned, proper callback timing) ==="
           echo "--- CPU time via /usr/bin/time -l ---"
-          swiftc -O check_videotoolbox_v2.swift -o vt_bench
+          swiftc -O check_videotoolbox_v3.swift -o vt_bench
           /usr/bin/time -l ./vt_bench 2>&1 | tee vt_time_output.txt
           echo ""
           echo "--- GPU/CPU power sampling during encode (powermetrics, needs sudo) ---"
