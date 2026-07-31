@@ -24,22 +24,74 @@ jobs:
           ffmpeg -hide_banner -f lavfi -i testsrc2=size=1920x1080:rate=30:duration=5 \
             -pix_fmt yuv420p test_source.mp4
 
-      - name: "BENCHMARK 1: VideoToolbox hardware (Swift, callback-timed)"
+      - name: "BENCHMARK 1: VideoToolbox hardware (Swift, callback-timed) — with CPU time + powermetrics"
         run: |
           echo "=== VideoToolbox (real hardware, proper callback timing) ==="
-          swift check_videotoolbox_v2.swift
+          echo "--- CPU time via /usr/bin/time -l ---"
+          swiftc -O check_videotoolbox_v2.swift -o vt_bench
+          /usr/bin/time -l ./vt_bench 2>&1 | tee vt_time_output.txt
+          echo ""
+          echo "--- GPU/CPU power sampling during encode (powermetrics, needs sudo) ---"
+          sudo powermetrics --samplers gpu_power,cpu_power -i 200 -n 15 > vt_powermetrics.txt 2>&1 &
+          PM_PID=$!
+          ./vt_bench > /dev/null 2>&1 || true
+          sleep 1
+          sudo kill $PM_PID 2>/dev/null || true
+          wait $PM_PID 2>/dev/null || true
+          echo "=== powermetrics output (GPU Active residency is the key signal) ==="
+          grep -A 2 -i "GPU HW active residency\|GPU idle residency\|CPU Power\|GPU Power" vt_powermetrics.txt || cat vt_powermetrics.txt
 
-      - name: "BENCHMARK 2: x264 ultrafast software (ffmpeg, same 150 frames / 4Mbps)"
+      - name: "BENCHMARK 2: x264 ultrafast software (ffmpeg, same 150 frames / 4Mbps) — with CPU time + powermetrics"
         run: |
           echo "=== x264 ultrafast software ==="
-          time ffmpeg -hide_banner -y -i test_source.mp4 \
+          echo "--- CPU time via /usr/bin/time -l ---"
+          /usr/bin/time -l ffmpeg -hide_banner -y -i test_source.mp4 \
             -c:v libx264 -preset ultrafast -b:v 4M \
-            -f null - 2>&1 | tail -20
+            -f null - > /dev/null 2> x264_time_output.txt
+          tail -30 x264_time_output.txt
+          echo ""
+          echo "--- GPU/CPU power sampling during encode ---"
+          sudo powermetrics --samplers gpu_power,cpu_power -i 200 -n 15 > x264_powermetrics.txt 2>&1 &
+          PM_PID=$!
+          ffmpeg -hide_banner -y -i test_source.mp4 -c:v libx264 -preset ultrafast -b:v 4M -f null - > /dev/null 2>&1 || true
+          sleep 1
+          sudo kill $PM_PID 2>/dev/null || true
+          wait $PM_PID 2>/dev/null || true
+          echo "=== powermetrics output ==="
+          grep -A 2 -i "GPU HW active residency\|GPU idle residency\|CPU Power\|GPU Power" x264_powermetrics.txt || cat x264_powermetrics.txt
 
       - name: "BENCHMARK 3: VideoToolbox via ffmpeg (for reference against BENCHMARK 1)"
         continue-on-error: true
         run: |
           echo "=== h264_videotoolbox via ffmpeg (for comparison to raw Swift API) ==="
-          time ffmpeg -hide_banner -y -i test_source.mp4 \
+          /usr/bin/time -l ffmpeg -hide_banner -y -i test_source.mp4 \
             -c:v h264_videotoolbox -b:v 4M -realtime 1 \
-            -f null - 2>&1 | tail -20
+            -f null - > /dev/null 2> vt_ffmpeg_time_output.txt
+          tail -30 vt_ffmpeg_time_output.txt
+
+      - name: Summary — CPU seconds comparison
+        if: always()
+        run: |
+          echo "=== 'user' + 'sys' time = actual CPU seconds consumed (lower is better/lighter on CPU) ==="
+          echo ""
+          echo "--- VideoToolbox (Swift, real hardware-required session) ---"
+          grep -E "real|user|sys" vt_time_output.txt || true
+          echo ""
+          echo "--- x264 ultrafast (software) ---"
+          grep -E "real|user|sys" x264_time_output.txt || true
+          echo ""
+          echo "If VideoToolbox's user+sys CPU seconds are close to or higher than x264's,"
+          echo "the GPU is NOT meaningfully offloading work — the paravirt round-trip is"
+          echo "costing CPU time itself rather than freeing the CPU while GPU does the work."
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpu-gpu-benchmark-results
+          path: |
+            vt_time_output.txt
+            vt_powermetrics.txt
+            x264_time_output.txt
+            x264_powermetrics.txt
+            vt_ffmpeg_time_output.txt
