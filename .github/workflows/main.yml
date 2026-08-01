@@ -53,7 +53,7 @@ jobs:
           OFFER: ${{ github.event.inputs.offer }}
         background: true
         run: |
-          npx nw --url="file:///${GITHUB_WORKSPACE}/index.html"
+          npx nw .
 
       - name: Wait for answer.txt
         run: |
