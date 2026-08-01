@@ -69,6 +69,60 @@ jobs:
               } else {
                   print("=> Classified as: REAL external/EDID-reporting display")
               }
+
+              print("--- Available display modes (CGDisplayCopyAllDisplayModes) ---")
+              let options: [String: Bool] = [kCGDisplayShowDuplicateLowResolutionModes as String: true]
+              guard let modes = CGDisplayCopyAllDisplayModes(id, options as CFDictionary) as? [CGDisplayMode] else {
+                  print("No modes returned.")
+                  continue
+              }
+              print("Total modes reported: \(modes.count)")
+
+              var uniqueSizes = Set<String>()
+              for mode in modes {
+                  let key = "\(mode.width)x\(mode.height)@\(mode.refreshRate)"
+                  if uniqueSizes.insert(key).inserted {
+                      print("  \(mode.width)x\(mode.height) (pixel: \(mode.pixelWidth)x\(mode.pixelHeight)) @ \(mode.refreshRate)Hz")
+                  }
+              }
+
+              // Try to test setting an arbitrary/unusual resolution to see if
+              // this placeholder framebuffer accepts non-listed modes, or only
+              // ones from its advertised list.
+              print("--- Testing arbitrary resolution set (1337x842) ---")
+              if let arbitraryMode = modes.first(where: { $0.width == 1337 && $0.height == 842 }) {
+                  print("1337x842 IS in the advertised mode list (unexpected) — attempting to set it.")
+                  var config: CGDisplayConfigRef?
+                  if CGBeginDisplayConfiguration(&config) == .success, let configRef = config {
+                      let result = CGConfigureDisplayWithDisplayMode(configRef, id, arbitraryMode, nil)
+                      if result == .success {
+                          CGCompleteDisplayConfiguration(configRef, .forSession)
+                          print("Set succeeded.")
+                      } else {
+                          CGCancelDisplayConfiguration(configRef)
+                          print("Set failed: \(result)")
+                      }
+                  }
+              } else {
+                  print("1337x842 not in advertised mode list, as expected — public API only allows listed modes.")
+              }
+
+              // Try setting the largest available advertised mode as a sanity check
+              // that we CAN change resolution via public API on this display at all.
+              if let largest = modes.max(by: { $0.width * $0.height < $1.width * $1.height }) {
+                  print("--- Testing set to largest advertised mode: \(largest.width)x\(largest.height) ---")
+                  var config2: CGDisplayConfigRef?
+                  if CGBeginDisplayConfiguration(&config2) == .success, let configRef2 = config2 {
+                      let result2 = CGConfigureDisplayWithDisplayMode(configRef2, id, largest, nil)
+                      if result2 == .success {
+                          CGCompleteDisplayConfiguration(configRef2, .forSession)
+                          print("Set succeeded. New reported size: \(CGDisplayPixelsWide(id))x\(CGDisplayPixelsHigh(id))")
+                      } else {
+                          CGCancelDisplayConfiguration(configRef2)
+                          print("Set failed: \(result2)")
+                      }
+                  }
+              }
           }
           EOF
 
