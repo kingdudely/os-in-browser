@@ -65,14 +65,14 @@ function createDataChannels() {
 
 	pointerMovementChannel.addEventListener("message", async (event) => {
 		const view = new DataView(event.data);
-		const isRelative = view.byteLength === 4;
+		const isRelative = view.getUint8(0) === 1;
 
 		if (isRelative) {
-			const movementX = view.getInt16(0, true);
-			const movementY = view.getInt16(2, true);
+			const movementX = view.getInt32(1, true);
+			const movementY = view.getInt16(5, true);
 		} else {
-			const absoluteX = view.getUint32(0, true);
-			const absoluteY = view.getUint32(4, true);
+			const absoluteX = view.getUint32(1, true);
+			const absoluteY = view.getUint32(5, true);
 		}
 	});
 
@@ -106,6 +106,39 @@ function createDataChannels() {
 		if (isDown) {
 		} else {
 		}
+	});
+
+	const screenResizeChannel = peer.createDataChannel("screen-resize", {
+		ordered: false,
+		negotiated: true,
+		id: 3
+	});
+
+	screenResizeChannel.addEventListener("message", async (event) => {
+		const view = new DataView(event.data);
+		const innerWidth = view.getUint32(0);
+		const innerHeight = view.getUint32(4);
+	});
+
+	const pointerScrollChannel = peer.createDataChannel("pointer-scroll", {
+		ordered: false,
+		maxRetransmits: 0,
+		negotiated: true,
+		id: 4
+	});
+
+	/*
+	const DOM_DELTA_PIXEL = 0x00;
+	const DOM_DELTA_LINE = 0x01;
+	const DOM_DELTA_PAGE = 0x02;
+	*/
+
+	pointerScrollChannel.addEventListener("message", async (event) => {
+		const view = new DataView(event.data);
+		const deltaMode = view.getUint8(0);
+		const deltaX = view.getUint32(1, true);
+		const deltaY = view.getUint32(5, true);
+		const deltaZ = view.getUint32(9, true);
 	});
 }
 
