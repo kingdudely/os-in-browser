@@ -1,32 +1,142 @@
-import express from 'express';
-import basicAuth from 'express-basic-auth';
-import { env } from 'node:process';
-import { spawn } from 'node:child_process';
-import { createAnswer } from "./whip.js";
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>os-in-browser</title>
+        <script>
+const { writeFile } = require('node:fs/promises');
+const { env, stdout } = require("node:process");
+const { Screen } = nw;
 
-const { USERNAME = "", PASSWORD = "" } = env;
+stdout.write("app/index.js loaded!");
+const offer = decodeURIComponent(env.OFFER);
 
-const app = express();
-const server = app.listen(0);
+const peer = new RTCPeerConnection({
+	iceServers: [
+		{ urls: "stun:stun.l.google.com:19302" }
+	]
+});
 
-app.use(
-	basicAuth({
-		users: { [USERNAME]: PASSWORD },
-		challenge: true,
-	}),
-	express.static("public")
-);
+stdout.write("Bfauzzezcheecks")
 
-app.post('/whip', express.text({ type: 'application/sdp' }), async (req, res) => {
-	const offer = req.body;
+captureScreen().then(() => {
+	createDataChannels();
+	createAnswerTXT();
+});
 
-	res.status(201)
-		.set('Content-Type', 'application/sdp')
-		.send(await createAnswer(offer)); 
-})
+async function captureScreen() {
+	Screen.Init();
+	const { DesktopCaptureMonitor } = Screen;
 
-spawn(
-	'cloudflared',
-	['tunnel', '--url', `http://localhost:${server.address().port}`],
-	{ stdio: 'inherit' }
-);
+	const streamId = await new Promise((resolve) => {
+		DesktopCaptureMonitor.on("added", function onAdded(id, name, order, type) => {
+			if (type !== "screen") return;
+
+			const streamId = DesktopCaptureMonitor.registerStream(id);
+			DesktopCaptureMonitor.stop();
+			DesktopCaptureMonitor.off("added", onAdded);
+			resolve(streamId);
+		});
+
+		DesktopCaptureMonitor.start(true, false);
+	});
+
+	const stream = await navigator.mediaDevices.getUserMedia({
+		video: {
+		mandatory: {
+			chromeMediaSource: 'desktop',
+			chromeMediaSourceId: streamId
+		}
+		}
+	})
+	
+	stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+
+	stdout.write("c")
+}
+
+function createDataChannels() {
+	const pointerMovementChannel = peer.createDataChannel("pointer-movement", {
+		ordered: false,
+		maxRetransmits: 0,
+		negotiated: true,
+		id: 0
+	});
+
+	pointerMovementChannel.addEventListener("message", async (event) => {
+		const view = new DataView(event.data);
+		const isRelative = view.byteLength === 4;
+
+		if (isRelative) {
+			const movementX = view.getInt16(0, true);
+			const movementY = view.getInt16(2, true);
+		} else {
+			const absoluteX = view.getUint32(0, true);
+			const absoluteY = view.getUint32(4, true);
+		}
+	});
+
+	const pointerClickChannel = peer.createDataChannel("pointer-click", {
+		ordered: true,
+		negotiated: true,
+		id: 1
+	});
+
+	pointerClickChannel.addEventListener("message", async (event) => {
+		const view = new DataView(event.data);
+		const isDown = view.getUint8(0) === 1;
+		const button = view.getUint8(1);
+
+		if (isDown) {
+		} else {
+		}
+	});
+
+	const keyboardTypeChannel = peer.createDataChannel("keyboard-type", {
+		ordered: true,
+		negotiated: true,
+		id: 2
+	});
+
+	keyboardTypeChannel.addEventListener("message", async (event) => {
+		const view = new DataView(event.data);
+		const isDown = view.getUint8(0) === 1;
+		const key = view.getUint8(1);
+
+		if (isDown) {
+		} else {
+		}
+	});
+}
+
+async function createAnswerTXT() {
+	stdout.write("A")
+	await peer.setRemoteDescription({ type: "offer", sdp: offer });
+	stdout.write("A")
+
+	await peer.setLocalDescription();
+	stdout.write("A")
+
+
+	await new Promise((resolve) => {
+		if (peer.iceGatheringState === "complete") {
+			resolve();
+		} else {
+			peer.addEventListener("icegatheringstatechange", function onStateChange() {
+				if (peer.iceGatheringState === "complete") {
+					peer.removeEventListener("icegatheringstatechange", onStateChange);
+					resolve();
+				}
+			});
+		}
+	});
+	stdout.write("A")
+
+
+	await writeFile('answer.txt', peer.localDescription.sdp);
+	stdout.write("A")
+}
+		</script>
+    </head>
+    <body></body>
+</html>

@@ -1,127 +1,71 @@
-name: NW.js Mixed Context Runner
+name: Remote Desktop
 
-on:
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
+on: 
   workflow_dispatch:
     inputs:
       os:
-        description: "OS to run on"
-        required: true
-        default: "ubuntu-latest"
+        description: 'Operating system'
         type: choice
+        required: true
+        default: 'windows-latest'
         options:
+          - windows-latest
           - ubuntu-latest
           - macos-latest
-          - windows-latest
-  push:
-    branches: [main]
-
-env:
-  NWJS_VERSION: "0.113.0"
-  NWJS_FLAVOR: "normal"   # "normal" or "sdk"
+      offer:
+        description: "Offer"
+        type: string
+        required: true
 
 jobs:
-  run-nwjs:
-    # workflow_dispatch lets you pick; push events default to ubuntu-latest
-    runs-on: ${{ github.event.inputs.os || 'ubuntu-latest' }}
+  remote:
+    runs-on: ${{ github.event.inputs.os }}
+    timeout-minutes: 360
+
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - name: Copy repository into PC
+        uses: actions/checkout@main
 
-      - name: Set platform vars (Linux)
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          echo "NWJS_PLATFORM=linux-x64" >> $GITHUB_ENV
-          echo "NWJS_EXT=tar.gz" >> $GITHUB_ENV
-          echo "NWJS_BIN=nw" >> $GITHUB_ENV
-
-      - name: Set platform vars (macOS)
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          echo "NWJS_PLATFORM=osx-x64" >> $GITHUB_ENV
-          echo "NWJS_EXT=zip" >> $GITHUB_ENV
-          echo "NWJS_BIN=nwjs.app/Contents/MacOS/nwjs" >> $GITHUB_ENV
-
-      - name: Set platform vars (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          echo "NWJS_PLATFORM=win-x64" >> $GITHUB_ENV
-          echo "NWJS_EXT=zip" >> $GITHUB_ENV
-          echo "NWJS_BIN=nw.exe" >> $GITHUB_ENV
-
-      - name: Cache NW.js download
-        id: cache-nwjs
-        uses: actions/cache@v4
-        with:
-          path: nwjs-dist
-          key: nwjs-${{ env.NWJS_VERSION }}-${{ env.NWJS_FLAVOR }}-${{ env.NWJS_PLATFORM }}
-
-      - name: Download NW.js
-        if: steps.cache-nwjs.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          NAME="nwjs"
-          if [ "$NWJS_FLAVOR" = "sdk" ]; then NAME="nwjs-sdk"; fi
-          FILE="${NAME}-v${NWJS_VERSION}-${NWJS_PLATFORM}.${NWJS_EXT}"
-          URL="https://dl.nwjs.io/v${NWJS_VERSION}/${FILE}"
-          echo "Downloading $URL"
-          curl -L -o nwjs-archive.${NWJS_EXT} "$URL"
-
-          if [ "$NWJS_EXT" = "tar.gz" ]; then
-            tar -xzf nwjs-archive.tar.gz
-          else
-            unzip -q nwjs-archive.zip
-          fi
-          mv ${NAME}-v${NWJS_VERSION}-${NWJS_PLATFORM} nwjs-dist
-
-      - name: Add NW.js to PATH (Linux/macOS)
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          chmod +x "nwjs-dist/${NWJS_BIN}" || true
-          echo "${{ github.workspace }}/nwjs-dist" >> $GITHUB_PATH
-
-      - name: Add NW.js to PATH (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: echo "${{ github.workspace }}/nwjs-dist" >> $GITHUB_PATH
-
-      - name: Install app dependencies
-        shell: bash
-        run: |
-          if [ -f package.json ]; then npm ci --omit=dev || npm install; fi
-
-      - name: Install xvfb (Linux only, for headless GUI)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y xvfb
-
-      - name: Run NW.js app (Linux, headless)
+      - name: Create Linux screen
         if: runner.os == 'Linux'
         run: |
-          xvfb-run -a --server-args="-screen 0 1280x1024x24" \
-            nw . --enable-logging --no-sandbox
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            lxqt \
+            openbox \
+            dbus-x11 \
+            xvfb
+
+          read -r DISPLAY_NUMBER < <(exec Xvfb -displayfd 1)
+
+          export DISPLAY=":$DISPLAY_NUMBER"
+          echo "DISPLAY=$DISPLAY" >> "$GITHUB_ENV"
+
+          startlxqt &
+
+      - name: Start server
+        id: server
         env:
-          DISPLAY: ":99"
-
-      - name: Run NW.js app (macOS)
-        if: runner.os == 'macOS'
+          OFFER: ${{ github.event.inputs.offer }}
+        background: true
         run: |
-          ./nwjs-dist/${{ env.NWJS_BIN }} . --enable-logging --no-sandbox
+          npx nw
 
-      - name: Run NW.js app (Windows)
-        if: runner.os == 'Windows'
-        shell: cmd
+      - name: Wait for answer.txt
         run: |
-          nwjs-dist\nw.exe . --enable-logging --no-sandbox
+          until [ -f answer.txt ]; do
+            sleep 1
+          done
 
-      - name: Upload output artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Upload answer.txt
+        uses: actions/upload-artifact@main
         with:
-          name: nwjs-output-${{ runner.os }}
-          path: |
-            output/**
-            *.log
-          if-no-files-found: ignore
+          path: answer.txt
+          archive: false
+
+      - name: Wait until connection is closed
+        wait: server
