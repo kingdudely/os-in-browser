@@ -1,0 +1,78 @@
+name: Check macOS Runner Display
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  check-display:
+    runs-on: macos-latest
+    steps:
+      - name: Print runner OS/hardware info
+        run: |
+          sw_vers
+          system_profiler SPHardwareDataType
+          system_profiler SPDisplaysDataType
+
+      - name: Write display inspection Swift script
+        run: |
+          cat > check_display.swift << 'EOF'
+          import CoreGraphics
+          import Foundation
+
+          var displayCount: UInt32 = 0
+          CGGetActiveDisplayList(0, nil, &displayCount)
+
+          print("=== Active Display Count: \(displayCount) ===")
+
+          if displayCount == 0 {
+              print("No active displays detected — fully headless.")
+              exit(0)
+          }
+
+          var displayIDs = [CGDirectDisplayID](repeating: 0, count: Int(displayCount))
+          CGGetActiveDisplayList(displayCount, &displayIDs, &displayCount)
+
+          for id in displayIDs {
+              print("---")
+              print("Display ID: \(id)")
+
+              let isBuiltin = CGDisplayIsBuiltin(id) != 0
+              print("Is built-in: \(isBuiltin)")
+
+              let isOnline = CGDisplayIsOnline(id) != 0
+              print("Is online: \(isOnline)")
+
+              let isAsleep = CGDisplayIsAsleep(id) != 0
+              print("Is asleep: \(isAsleep)")
+
+              let width = CGDisplayPixelsWide(id)
+              let height = CGDisplayPixelsHigh(id)
+              print("Resolution: \(width)x\(height)")
+
+              let vendor = CGDisplayVendorNumber(id)
+              let model = CGDisplayModelNumber(id)
+              let serial = CGDisplaySerialNumber(id)
+              print("Vendor: \(vendor), Model: \(model), Serial: \(serial)")
+
+              // Heuristic: Apple's virtual/headless displays and CI VM framebuffers
+              // typically report vendor/model as 0 or a known placeholder,
+              // and are neither a real built-in panel nor a real EDID-reporting monitor.
+              let looksVirtualOrPlaceholder = (vendor == 0 || vendor == 0xFFFFFFFF) && !isBuiltin
+              print("Looks like virtual/placeholder framebuffer: \(looksVirtualOrPlaceholder)")
+
+              if isBuiltin {
+                  print("=> Classified as: REAL built-in display")
+              } else if looksVirtualOrPlaceholder {
+                  print("=> Classified as: LIKELY VIRTUAL / VM placeholder framebuffer")
+              } else {
+                  print("=> Classified as: REAL external/EDID-reporting display")
+              }
+          }
+          EOF
+
+      - name: Compile and run display check
+        run: |
+          swiftc check_display.swift -o check_display
+          ./check_display
