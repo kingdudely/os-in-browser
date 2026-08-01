@@ -53,7 +53,7 @@ jobs:
           OFFER: ${{ github.event.inputs.offer }}
         background: true
         run: |
-          npx nw
+          npx nw .
 
       - name: Wait for answer.txt
         run: |

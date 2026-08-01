@@ -29,7 +29,7 @@ async function captureScreen() {
 	const { DesktopCaptureMonitor } = Screen;
 
 	const streamId = await new Promise((resolve) => {
-		DesktopCaptureMonitor.on("added", function onAdded(id, name, order, type) => {
+		DesktopCaptureMonitor.on("added", function onAdded(id, name, order, type) {
 			if (type !== "screen") return;
 
 			const streamId = DesktopCaptureMonitor.registerStream(id);
