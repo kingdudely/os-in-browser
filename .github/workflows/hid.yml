@@ -1,173 +1,73 @@
-name: Test HIDVirtualDevice (macOS, unentitled)
+name: IOHIDUserDevice relative-mouse probe
+
+# Checks whether IOHIDUserDeviceCreate can stand up a relative-motion-only
+# HID mouse device and accept reports on a GitHub-hosted macos-latest
+# runner, run with elevated privileges.
+#
+# NOTE (read before trusting the result):
+#   - GitHub-hosted macos-latest runners do NOT have SIP disabled and do
+#     NOT have every TCC/Input-Monitoring permission pre-granted, and you
+#     cannot interactively click through a TCC prompt in headless CI.
+#     `sudo` does not bypass Input Monitoring/TCC checks for HID.
+#   - AMFI is enabled in this scenario, which is irrelevant to
+#     IOHIDUserDeviceCreate anyway (no kext/DriverKit ext is being loaded
+#     here, so AMFI's kext/binary policy doesn't gate this call).
+#   - So: a FAIL on the hosted runner likely reflects the runner's TCC
+#     state, not a defect in the approach. Treat this workflow as a
+#     build-and-smoke-test harness, and treat the PASS/FAIL log as
+#     informative rather than authoritative — the real signal comes from
+#     running the same binary on a machine where you've actually granted
+#     Input Monitoring / disabled SIP yourself.
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - '.github/workflows/test-hidvirtualdevice.yml'
-      - 'Sources/**'
+      - 'iohid_relmouse_test.c'
+      - '.github/workflows/iohid-relmouse-probe.yml'
 
 jobs:
-  test-hidvirtualdevice:
+  probe:
     runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Show system / runner info
+      - name: Show OS / SIP / AMFI state (informational)
         run: |
           sw_vers
-          uname -a
-          xcrun swift --version
+          echo "---- csrutil status ----"
+          csrutil status || true
+          echo "---- codesign AMFI-related sanity check ----"
+          # There's no simple 'amfi status' CLI; csrutil status folds AMFI
+          # state into SIP reporting on most macOS versions.
+          nvram -p 2>/dev/null | grep -i amfi || echo "no amfi nvram override present"
 
-      # --- Security posture checks -----------------------------------
-      # These almost always report SIP=enabled and AMFI enforced on
-      # GitHub-hosted macOS runners, since you can't reboot into
-      # recovery mode or change NVRAM boot-args in a hosted CI VM.
-      # This step is here so the job log tells you definitively rather
-      # than assuming.
-      - name: Check SIP (System Integrity Protection) status
+      - name: Compile probe
         run: |
-          echo "== csrutil status =="
-          SIP_OUTPUT=$(csrutil status 2>&1 || echo "csrutil not available / requires reboot to check fully")
-          echo "$SIP_OUTPUT"
-          if echo "$SIP_OUTPUT" | grep -qi "disabled"; then
-            echo "SIP_STATE=disabled" >> "$GITHUB_ENV"
-          elif echo "$SIP_OUTPUT" | grep -qi "enabled"; then
-            echo "SIP_STATE=enabled" >> "$GITHUB_ENV"
-          else
-            echo "SIP_STATE=unknown" >> "$GITHUB_ENV"
+          clang -Wall -Wextra -O2 \
+            -framework CoreFoundation \
+            -framework IOKit \
+            -o iohid_relmouse_test \
+            iohid_relmouse_test.c
+
+      - name: Run probe (unprivileged)
+        id: unpriv
+        continue-on-error: true
+        run: ./iohid_relmouse_test
+
+      - name: Run probe (sudo)
+        id: priv
+        continue-on-error: true
+        run: sudo ./iohid_relmouse_test
+
+      - name: Summarize
+        run: |
+          echo "Unprivileged run outcome: ${{ steps.unpriv.outcome }}"
+          echo "sudo run outcome:         ${{ steps.priv.outcome }}"
+          if [ "${{ steps.priv.outcome }}" != "success" ] && [ "${{ steps.unpriv.outcome }}" != "success" ]; then
+            echo "Neither run succeeded on this hosted runner. This is expected"
+            echo "if Input Monitoring / TCC hasn't been granted to the process —"
+            echo "sudo alone does not grant it. See workflow header notes."
+            exit 1
           fi
-          echo "Parsed SIP state: $SIP_STATE"
-
-      - name: Check AMFI (Apple Mobile File Integrity) status
-        run: |
-          echo "== AMFI-related boot-args =="
-          nvram boot-args 2>/dev/null || echo "no boot-args set (or not readable)"
-          echo ""
-          echo "== amfi_get_out_of_my_way / dev-mode hints =="
-          # This sysctl only exists/returns meaningfully on some macOS
-          # versions and usually requires elevated privileges anyway.
-          sysctl kern.bootargs 2>/dev/null || true
-          echo ""
-          echo "Note: SIP/AMFI status above is whatever this specific runner"
-          echo "reports — don't assume it matches other runners or a prior run."
-          echo "GitHub-hosted macos-latest runners have historically shipped"
-          echo "with SIP enabled by default with no supported way to disable it"
-          echo "(that requires Recovery OS, which hosted VMs don't expose)."
-          echo "If csrutil reports 'disabled' here, treat that as a real signal"
-          echo "worth double-checking (self-hosted runner? different image?),"
-          echo "not just background noise."
-
-      # --- Build the sample virtual HID device test -------------------
-      - name: Build sample HIDVirtualDevice test executable
-        run: |
-          mkdir -p Sources/HIDVirtualDeviceTest
-          cat > Sources/HIDVirtualDeviceTest/main.swift << 'EOF'
-          import Foundation
-          import CoreHID
-
-          // Minimal sample report descriptor for a generic 1-button,
-          // 2-axis (relative X/Y) mouse-like device. Adjust as needed
-          // for the actual device class you're testing.
-          let reportDescriptor: [UInt8] = [
-              0x05, 0x01,       // Usage Page (Generic Desktop)
-              0x09, 0x02,       // Usage (Mouse)
-              0xA1, 0x01,       // Collection (Application)
-              0x09, 0x01,       //   Usage (Pointer)
-              0xA1, 0x00,       //   Collection (Physical)
-              0x05, 0x09,       //     Usage Page (Buttons)
-              0x19, 0x01,       //     Usage Minimum (1)
-              0x29, 0x01,       //     Usage Maximum (1)
-              0x15, 0x00,       //     Logical Minimum (0)
-              0x25, 0x01,       //     Logical Maximum (1)
-              0x95, 0x01,       //     Report Count (1)
-              0x75, 0x01,       //     Report Size (1)
-              0x81, 0x02,       //     Input (Data,Var,Abs)
-              0x95, 0x01,       //     Report Count (1)
-              0x75, 0x07,       //     Report Size (7)
-              0x81, 0x03,       //     Input (Const,Var,Abs) - padding
-              0x05, 0x01,       //     Usage Page (Generic Desktop)
-              0x09, 0x30,       //     Usage (X)
-              0x09, 0x31,       //     Usage (Y)
-              0x15, 0x81,       //     Logical Minimum (-127)
-              0x25, 0x7F,       //     Logical Maximum (127)
-              0x75, 0x08,       //     Report Size (8)
-              0x95, 0x02,       //     Report Count (2)
-              0x81, 0x06,       //     Input (Data,Var,Rel)
-              0xC0,             //   End Collection
-              0xC0              // End Collection
-          ]
-
-          print("Attempting to create a virtual HID device via CoreHID.HIDVirtualDevice ...")
-          let properties = HIDVirtualDevice.Properties(
-              descriptor: Data(reportDescriptor),
-              vendorID: 0x05AC,   // arbitrary test VID (Apple's, for visibility in IORegistry)
-              productID: 0x0001   // arbitrary test PID
-          )
-
-          // Real API: HIDVirtualDevice.init(properties:) is a NON-throwing,
-          // FAILABLE initializer -> HIDVirtualDevice?. Without the
-          // com.apple.developer.hid.virtual.device entitlement, it does
-          // NOT throw and does NOT crash — it silently returns nil.
-          // This is the actual observable behavior on macos-latest
-          // (confirmed via CI run): unentitled creation just fails quiet.
-          if let device = HIDVirtualDevice(properties: properties) {
-              print("RESULT: HIDVirtualDevice created successfully (unentitled).")
-              print("Device: \(String(describing: device))")
-
-              try await Task.sleep(for: .seconds(2))
-
-              print("RESULT: no crash during creation or brief lifetime.")
-          } else {
-              print("RESULT: HIDVirtualDevice(properties:) returned nil.")
-              print("This is the expected outcome without the com.apple.developer.hid.virtual.device entitlement:")
-              print("creation fails SILENTLY (no thrown error, no crash) — just nil.")
-              exit(1)
-          }
-          EOF
-
-          cat > Package.swift << 'EOF'
-          // swift-tools-version:6.0
-          import PackageDescription
-
-          let package = Package(
-              name: "HIDVirtualDeviceTest",
-              platforms: [.macOS(.v15)],
-              targets: [
-                  .executableTarget(
-                      name: "HIDVirtualDeviceTest",
-                      path: "Sources/HIDVirtualDeviceTest"
-                  )
-              ]
-          )
-          EOF
-
-          swift build -c release
-
-      # Intentionally NOT signing/entitling the binary here, so we can
-      # observe whether HIDVirtualDevice creation succeeds, fails
-      # silently, or throws a permissions/entitlement error without the
-      # com.apple.developer.hid.virtual.device (or similar) entitlement.
-      - name: Run test WITHOUT entitlements (ad-hoc / unsigned)
-        run: |
-          BIN=.build/release/HIDVirtualDeviceTest
-          echo "Binary signature info (expect ad-hoc / no entitlements):"
-          codesign -dv --entitlements :- "$BIN" 2>&1 || true
-          echo ""
-          echo "Running unentitled binary:"
-          set +e
-          "$BIN"
-          STATUS=$?
-          echo "Exit status: $STATUS"
-          set -e
-          if [ $STATUS -ne 0 ]; then
-            echo "::warning::HIDVirtualDeviceTest exited non-zero ($STATUS) — likely missing entitlement or unsupported on hosted runner (SIP/AMFI restrictions)."
-          fi
-
-      - name: Upload build artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: hidvirtualdevice-test-binary
-          path: .build/release/HIDVirtualDeviceTest
