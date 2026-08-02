@@ -63,6 +63,9 @@ jobs:
           OFFER: ${{ github.event.inputs.offer }}
         background: true
         run: |
+          unset LDFLAGS CXXFLAGS CPPFLAGS
+          export CC=/usr/bin/clang
+          export CXX=/usr/bin/clang++
           npm install
           npm start
 
