@@ -147,6 +147,11 @@ void MoveMousePosition(const Napi::CallbackInfo& info) {
     std::int32_t dy = info[1].As<Napi::Number>().Int32Value();
 
     io_connect_t conn = GetHIDConnect();
+    if (conn == MACH_PORT_NULL) {
+        // don't spam retries at input rate; caller/UI layer should
+        // surface "Accessibility permission needed" separately
+        return;
+    }
 
     NXEventData ev = {};
     ev.mouseMove.dx = dx;
