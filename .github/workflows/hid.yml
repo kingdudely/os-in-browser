@@ -73,6 +73,21 @@ jobs:
           security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
           security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | sed 's/"//g')
 
+          # macos-latest runners ship both /usr/bin/openssl (Apple's
+          # LibreSSL, no -legacy flag) and Homebrew's OpenSSL 3.x. We need
+          # real OpenSSL 3.x for the -legacy PKCS#12 export below.
+          OPENSSL_BIN="openssl"
+          if command -v /opt/homebrew/opt/openssl@3/bin/openssl >/dev/null 2>&1; then
+            OPENSSL_BIN="/opt/homebrew/opt/openssl@3/bin/openssl"
+          elif brew list openssl@3 >/dev/null 2>&1; then
+            OPENSSL_BIN="$(brew --prefix openssl@3)/bin/openssl"
+          else
+            brew install openssl@3
+            OPENSSL_BIN="$(brew --prefix openssl@3)/bin/openssl"
+          fi
+          "$OPENSSL_BIN" version
+          echo "OPENSSL_BIN=${OPENSSL_BIN}" >> "$GITHUB_ENV"
+
           CERT_NAME="IOHIDProbeCodesign"
           cat > cert.conf <<EOF
           [req]
@@ -87,9 +102,14 @@ jobs:
           extendedKeyUsage=critical,codeSigning
           EOF
 
-          openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem \
+          "$OPENSSL_BIN" req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem \
             -days 1 -nodes -config cert.conf
-          openssl pkcs12 -export -out cert.p12 -inkey key.pem -in cert.pem \
+          # macOS's SecKeychainItemImport uses the legacy CDSA PKCS#12
+          # reader (RC2/3DES + SHA-1 MAC). Modern OpenSSL (3.x) defaults to
+          # AES + SHA-256 MAC, which macOS fails to verify ("MAC
+          # verification failed" is misleading -- it's an algorithm
+          # mismatch, not a wrong password). -legacy forces the old format.
+          "$OPENSSL_BIN" pkcs12 -export -legacy -out cert.p12 -inkey key.pem -in cert.pem \
             -passout pass:"$KEYCHAIN_PW"
 
           security import cert.p12 -k "$KEYCHAIN" -P "$KEYCHAIN_PW" \
