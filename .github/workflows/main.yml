@@ -54,9 +54,40 @@ jobs:
 
       - name: Install MacOS dependencies
         if: runner.os == 'macOS'
+        env:
+          KARABINER_VERSION: "8.2.0" # bump deliberately, don't track main
         run: |
           brew install lld
-          # How to install Karabiner Virtual HID Device + headers?
+
+          # --- Karabiner-DriverKit-VirtualHIDDevice ---------------------------------
+          # Pinned tag, not main, so a Karabiner-side change can't silently break your build.
+          git clone --depth 1 --branch "v${KARABINER_VERSION}" \
+            https://github.com/pqrs-org/Karabiner-DriverKit-VirtualHIDDevice.git /tmp/karabiner-vhid
+
+          # Headers: client library + its vendored deps (dispatcher, hid, spdlog,
+          # nlohmann json, asio, boost, etc). Both trees have a top-level pqrs/ dir
+          # with non-overlapping subfolders, so they merge cleanly.
+          mkdir -p native-apis/macos/vendor/karabiner
+          cp -R /tmp/karabiner-vhid/include/.               native-apis/macos/vendor/karabiner/
+          cp -R /tmp/karabiner-vhid/vendor/vendor/include/.  native-apis/macos/vendor/karabiner/
+
+          # Install the driver + daemon from the pkg that ships in that same repo.
+          PKG_PATH=$(ls /tmp/karabiner-vhid/dist/Karabiner-DriverKit-VirtualHIDDevice-*.pkg | sort -V | tail -1)
+          sudo installer -pkg "$PKG_PATH" -target /
+
+          # Activate the system extension.
+          # NOTE: normally requires a one-time interactive "Allow" click in
+          # System Settings -> Privacy & Security. On a headless CI runner there's
+          # no one to click it, so this may hang or silently fail to actually load
+          # the dext even though the command below returns success. If
+          # MoveMousePosition later throws "pointing device not ready", this is why.
+          sudo '/Applications/.Karabiner-VirtualHIDDevice-Manager.app/Contents/MacOS/Karabiner-VirtualHIDDevice-Manager' activate
+
+          # Start the daemon that brokers client <-> driver communication.
+          # Client apps (this addon) must also run as root to be allowed to send input.
+          sudo '/Library/Application Support/org.pqrs/Karabiner-DriverKit-VirtualHIDDevice/Applications/Karabiner-VirtualHIDDevice-Daemon.app/Contents/MacOS/Karabiner-VirtualHIDDevice-Daemon' &
+
+          rm -rf /tmp/karabiner-vhid
 
       - name: Start server
         id: server

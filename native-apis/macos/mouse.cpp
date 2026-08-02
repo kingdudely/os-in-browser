@@ -1,8 +1,13 @@
 #include "../shared/addon.hpp"
 
 #include <Carbon/Carbon.h>
+#include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdint>
+#include <iostream>
+#include <memory>
 #include <mutex>
 
 #include <pqrs/karabiner/driverkit/virtual_hid_device_driver.hpp>
