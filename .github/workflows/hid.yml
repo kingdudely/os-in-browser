@@ -90,27 +90,31 @@ jobs:
 
           print("Attempting to create a virtual HID device via CoreHID.HIDVirtualDevice ...")
 
-          // NOTE: This is intentionally left generic since the exact
-          // HIDVirtualDevice initializer/property surface may vary by
-          // SDK version. Wrap the actual construction call(s) here.
-          //
-          // Example shape (adjust to match the SDK you're building
-          // against — check with:
-          //   xcrun --sdk macosx --show-sdk-path
-          //   then inspect CoreHID.swiftinterface for the real API):
-          //
-          // let device = try HIDVirtualDevice(
-          //     reportDescriptor: Data(reportDescriptor),
-          //     properties: [:]
-          // )
-          // try device.activate()
-          // print("Virtual HID device created + activated successfully")
+          // Real API: HIDVirtualDevice(properties:) — takes a
+          // HIDVirtualDevice.Properties struct describing the fake
+          // device (vendorID/productID/descriptor/etc). On a system
+          // WITHOUT the com.apple.developer.hid.virtual.device
+          // entitlement, this call is expected to throw/fail rather
+          // than silently succeed. That's exactly what we're testing.
+          var properties = HIDVirtualDevice.Properties()
+          properties.vendorID = 0x05AC        // arbitrary test VID (Apple's, for visibility in IORegistry)
+          properties.productID = 0x0001       // arbitrary test PID
+          properties.descriptor = Data(reportDescriptor)
 
           do {
-              // Placeholder call — replace with the real HIDVirtualDevice
-              // API once confirmed against the installed SDK.
-              _ = reportDescriptor
-              print("RESULT: build succeeded; replace placeholder with real HIDVirtualDevice call.")
+              let device = try HIDVirtualDevice(properties: properties)
+              print("RESULT: HIDVirtualDevice created successfully (unentitled).")
+              print("Device: \(device)")
+
+              // Keep the process alive briefly so the device is
+              // observable (e.g. via ioreg/IOHIDManager) while running.
+              try await Task.sleep(for: .seconds(2))
+
+              print("RESULT: no crash/throw during creation or brief lifetime.")
+          } catch {
+              print("RESULT: HIDVirtualDevice creation FAILED: \(error)")
+              print("This is the expected outcome without the com.apple.developer.hid.virtual.device entitlement.")
+              exit(1)
           }
           EOF
 
