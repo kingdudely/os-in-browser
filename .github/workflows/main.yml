@@ -52,17 +52,17 @@ jobs:
         run: |
           winget install --id=VirtualDrivers.Virtual-Display-Driver -e
 
+      - name: Install MacOS LLD
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm
+
       - name: Start server
         id: server
         env:
           OFFER: ${{ github.event.inputs.offer }}
         background: true
         run: |
-          npm config list
-          cat ~/.npmrc 2>/dev/null
-          cat "$(brew --prefix)/etc/npmrc" 2>/dev/null
-          env | grep -i ld
-          unset LDFLAGS CXXFLAGS CPPFLAGS
           npm install
           npx nw@0.114.0 .
 
