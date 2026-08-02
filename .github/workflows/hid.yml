@@ -96,10 +96,11 @@ jobs:
           // WITHOUT the com.apple.developer.hid.virtual.device
           // entitlement, this call is expected to throw/fail rather
           // than silently succeed. That's exactly what we're testing.
-          var properties = HIDVirtualDevice.Properties()
-          properties.vendorID = 0x05AC        // arbitrary test VID (Apple's, for visibility in IORegistry)
-          properties.productID = 0x0001       // arbitrary test PID
-          properties.descriptor = Data(reportDescriptor)
+          let properties = HIDVirtualDevice.Properties(
+              descriptor: Data(reportDescriptor),
+              vendorID: 0x05AC,   // arbitrary test VID (Apple's, for visibility in IORegistry)
+              productID: 0x0001   // arbitrary test PID
+          )
 
           do {
               let device = try HIDVirtualDevice(properties: properties)
