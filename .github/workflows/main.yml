@@ -58,6 +58,7 @@ jobs:
           OFFER: ${{ github.event.inputs.offer }}
         background: true
         run: |
+          npm install
           npm rebuild --target=0.114.0 --disturl=https://dl.nwjs.io/
           npx nw@0.114.0 .
 

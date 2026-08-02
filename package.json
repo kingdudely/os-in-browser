@@ -3,5 +3,8 @@
 	"main": "index.html",
 	"window": {
 		"show": false
+	},
+	"dependencies": {
+		"node-addon-api": "^8.0.0"
 	}
 }
