@@ -55,7 +55,7 @@ jobs:
       - name: Install MacOS LLD
         if: runner.os == 'macOS'
         run: |
-          brew install llvm
+          brew install lld
 
       - name: Start server
         id: server
