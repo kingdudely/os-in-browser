@@ -64,7 +64,7 @@ jobs:
         background: true
         run: |
           npm install
-          npx nw@0.114.0 .
+          npm start
 
       - name: Wait for answer.txt
         run: |

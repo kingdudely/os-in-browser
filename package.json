@@ -5,9 +5,11 @@
 		"show": false
 	},
 	"dependencies": {
-		"node-addon-api": "^8.9.1"
+		"node-addon-api": "^8.9.1",
+		"nw": "0.114.0"
 	},
 	"scripts": {
-		"install": "node-gyp rebuild --target=0.114.0 --disturl=https://dl.nwjs.io/"
+		"install": "node-gyp rebuild --target=0.114.0 --disturl=https://dl.nwjs.io/",
+		"start": "nw ."
 	}
 }
