@@ -34,9 +34,6 @@
             "native-apis/macos/keyboard.cpp",
             "native-apis/macos/virtual_screen.mm"
           ],
-          "include_dirs": [
-            "native-apis/macos/vendor/karabiner"
-          ],
           "link_settings": {
             "libraries": [
               "-framework Carbon",
@@ -46,9 +43,6 @@
           },
           "xcode_settings": {
             "OTHER_CFLAGS": ["-ObjC++", "-fobjc-arc"],
-            "OTHER_CPLUSPLUSFLAGS": ["-std=c++17"],
-            "CLANG_CXX_LANGUAGE_STANDARD": "c++17",
-            "MACOSX_DEPLOYMENT_TARGET": "13.0",
             "OTHER_LDFLAGS": []
           }
         }]

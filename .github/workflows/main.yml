@@ -52,43 +52,10 @@ jobs:
         run: |
           winget install --id=VirtualDrivers.Virtual-Display-Driver -e
 
-      - name: Install MacOS dependencies
+      - name: Install LLD for MacOS
         if: runner.os == 'macOS'
-        env:
-          KARABINER_VERSION: "8.2.0" # bump deliberately, don't track main
         run: |
           brew install lld
-
-          # --- Karabiner-DriverKit-VirtualHIDDevice ---------------------------------
-          # Pinned tag, not main, so a Karabiner-side change can't silently break your build.
-          git clone --depth 1 --branch "v${KARABINER_VERSION}" \
-            https://github.com/pqrs-org/Karabiner-DriverKit-VirtualHIDDevice.git /tmp/karabiner-vhid
-
-          # Headers: client library + its vendored deps (dispatcher, hid, spdlog,
-          # nlohmann json, asio, boost, etc). Both trees have a top-level pqrs/ dir
-          # with non-overlapping subfolders, so they merge cleanly.
-          mkdir -p native-apis/macos/vendor/karabiner
-          cp -R /tmp/karabiner-vhid/include/.               native-apis/macos/vendor/karabiner/
-          cp -R /tmp/karabiner-vhid/vendor/vendor/include/.  native-apis/macos/vendor/karabiner/
-
-          # Install the driver + daemon from the pkg that ships in that same repo.
-          PKG_PATH=$(ls /tmp/karabiner-vhid/dist/Karabiner-DriverKit-VirtualHIDDevice-*.pkg | sort -V | tail -1)
-          sudo installer -pkg "$PKG_PATH" -target /
-
-          # With SIP disabled, this skips the normal interactive "Allow" prompt in
-          # System Settings -> Privacy & Security, which otherwise has no one to click it
-          # on a headless runner.
-          sudo security authorizationdb write com.apple.system-extensions.admin allow
-          sudo systemextensionsctl developer on
-
-          # Activate the system extension.
-          sudo '/Applications/.Karabiner-VirtualHIDDevice-Manager.app/Contents/MacOS/Karabiner-VirtualHIDDevice-Manager' activate
-
-          # Start the daemon that brokers client <-> driver communication.
-          # Client apps (this addon) must also run as root to be allowed to send input.
-          sudo '/Library/Application Support/org.pqrs/Karabiner-DriverKit-VirtualHIDDevice/Applications/Karabiner-VirtualHIDDevice-Daemon.app/Contents/MacOS/Karabiner-VirtualHIDDevice-Daemon' &
-
-          rm -rf /tmp/karabiner-vhid
 
       - name: Start server
         id: server
@@ -96,9 +63,6 @@ jobs:
           OFFER: ${{ github.event.inputs.offer }}
         background: true
         run: |
-          unset LDFLAGS CXXFLAGS CPPFLAGS
-          export CC=/usr/bin/clang
-          export CXX=/usr/bin/clang++
           npm install
           npm start
 
