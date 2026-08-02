@@ -29,7 +29,16 @@ jobs:
       - name: Check SIP (System Integrity Protection) status
         run: |
           echo "== csrutil status =="
-          csrutil status || echo "csrutil not available / requires reboot to check fully"
+          SIP_OUTPUT=$(csrutil status 2>&1 || echo "csrutil not available / requires reboot to check fully")
+          echo "$SIP_OUTPUT"
+          if echo "$SIP_OUTPUT" | grep -qi "disabled"; then
+            echo "SIP_STATE=disabled" >> "$GITHUB_ENV"
+          elif echo "$SIP_OUTPUT" | grep -qi "enabled"; then
+            echo "SIP_STATE=enabled" >> "$GITHUB_ENV"
+          else
+            echo "SIP_STATE=unknown" >> "$GITHUB_ENV"
+          fi
+          echo "Parsed SIP state: $SIP_STATE"
 
       - name: Check AMFI (Apple Mobile File Integrity) status
         run: |
@@ -41,12 +50,14 @@ jobs:
           # versions and usually requires elevated privileges anyway.
           sysctl kern.bootargs 2>/dev/null || true
           echo ""
-          echo "Note: on GitHub-hosted runners, SIP is enabled and AMFI is"
-          echo "enforced by default. There is no supported way to disable"
-          echo "SIP/AMFI on a hosted runner because that requires booting"
-          echo "into Recovery OS, which hosted VMs don't expose. If you"
-          echo "need SIP/AMFI disabled, you'll need a self-hosted macOS"
-          echo "runner that you control and have pre-configured."
+          echo "Note: SIP/AMFI status above is whatever this specific runner"
+          echo "reports — don't assume it matches other runners or a prior run."
+          echo "GitHub-hosted macos-latest runners have historically shipped"
+          echo "with SIP enabled by default with no supported way to disable it"
+          echo "(that requires Recovery OS, which hosted VMs don't expose)."
+          echo "If csrutil reports 'disabled' here, treat that as a real signal"
+          echo "worth double-checking (self-hosted runner? different image?),"
+          echo "not just background noise."
 
       # --- Build the sample virtual HID device test -------------------
       - name: Build sample HIDVirtualDevice test executable
@@ -89,32 +100,29 @@ jobs:
           ]
 
           print("Attempting to create a virtual HID device via CoreHID.HIDVirtualDevice ...")
-
-          // Real API: HIDVirtualDevice(properties:) — takes a
-          // HIDVirtualDevice.Properties struct describing the fake
-          // device (vendorID/productID/descriptor/etc). On a system
-          // WITHOUT the com.apple.developer.hid.virtual.device
-          // entitlement, this call is expected to throw/fail rather
-          // than silently succeed. That's exactly what we're testing.
           let properties = HIDVirtualDevice.Properties(
               descriptor: Data(reportDescriptor),
               vendorID: 0x05AC,   // arbitrary test VID (Apple's, for visibility in IORegistry)
               productID: 0x0001   // arbitrary test PID
           )
 
-          do {
-              let device = try HIDVirtualDevice(properties: properties)
+          // Real API: HIDVirtualDevice.init(properties:) is a NON-throwing,
+          // FAILABLE initializer -> HIDVirtualDevice?. Without the
+          // com.apple.developer.hid.virtual.device entitlement, it does
+          // NOT throw and does NOT crash — it silently returns nil.
+          // This is the actual observable behavior on macos-latest
+          // (confirmed via CI run): unentitled creation just fails quiet.
+          if let device = HIDVirtualDevice(properties: properties) {
               print("RESULT: HIDVirtualDevice created successfully (unentitled).")
-              print("Device: \(device)")
+              print("Device: \(String(describing: device))")
 
-              // Keep the process alive briefly so the device is
-              // observable (e.g. via ioreg/IOHIDManager) while running.
               try await Task.sleep(for: .seconds(2))
 
-              print("RESULT: no crash/throw during creation or brief lifetime.")
-          } catch {
-              print("RESULT: HIDVirtualDevice creation FAILED: \(error)")
-              print("This is the expected outcome without the com.apple.developer.hid.virtual.device entitlement.")
+              print("RESULT: no crash during creation or brief lifetime.")
+          } else {
+              print("RESULT: HIDVirtualDevice(properties:) returned nil.")
+              print("This is the expected outcome without the com.apple.developer.hid.virtual.device entitlement:")
+              print("creation fails SILENTLY (no thrown error, no crash) — just nil.")
               exit(1)
           }
           EOF
