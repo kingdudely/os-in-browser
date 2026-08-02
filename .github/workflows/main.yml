@@ -59,7 +59,7 @@ jobs:
         background: true
         run: |
           npm install
-          node -e "console.log(require('node-addon-api').include)"
+          node -e "console.log("NAH");console.log(require('node-addon-api').include)"
 
           npm rebuild --target=0.114.0 --disturl=https://dl.nwjs.io/
           npx nw@0.114.0 .
