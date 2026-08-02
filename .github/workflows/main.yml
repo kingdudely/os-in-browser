@@ -48,7 +48,7 @@ jobs:
           startlxqt &
 
       - name: Install Windows Virtual Device Driver
-        if: runner.os == "Windows"
+        if: runner.os == 'Windows'
         run: |
           winget install --id=VirtualDrivers.Virtual-Display-Driver -e
 
@@ -58,7 +58,8 @@ jobs:
           OFFER: ${{ github.event.inputs.offer }}
         background: true
         run: |
-          npx nw .
+          npm rebuild --target=0.114.0 --disturl=https://dl.nwjs.io/
+          npx nw@0.114.0 .
 
       - name: Wait for answer.txt
         run: |

@@ -6,6 +6,7 @@
         <script>
 const { writeFile } = require('node:fs/promises');
 const { env, stdout } = require("node:process");
+const nativeApis = require("./build/Release/native-apis.node");
 const { Screen } = nw;
 
 stdout.write("app/index.js loaded!");
@@ -70,9 +71,11 @@ function createDataChannels() {
 		if (isRelative) {
 			const movementX = view.getInt32(1, true);
 			const movementY = view.getInt32(5, true);
+			nativeApis.moveMousePosition(movementX, movementY);
 		} else {
 			const absoluteX = view.getUint32(1, true);
 			const absoluteY = view.getUint32(5, true);
+			nativeApis.setMousePosition(absoluteX, absoluteY);
 		}
 	});
 
@@ -87,9 +90,7 @@ function createDataChannels() {
 		const isDown = view.getUint8(0) === 1;
 		const button = view.getUint8(1);
 
-		if (isDown) {
-		} else {
-		}
+		nativeApis.setMouseButton(button, isDown);
 	});
 
 	const keyboardTypeChannel = peer.createDataChannel("keyboard-type", {
@@ -103,9 +104,7 @@ function createDataChannels() {
 		const isDown = view.getUint8(0) === 1;
 		const key = view.getUint8(1);
 
-		if (isDown) {
-		} else {
-		}
+		nativeApis.setKeyboardKey(key, isDown);
 	});
 
 	const screenResizeChannel = peer.createDataChannel("screen-resize", {
@@ -114,10 +113,19 @@ function createDataChannels() {
 		id: 3
 	});
 
+	let screenCreated = false;
+
 	screenResizeChannel.addEventListener("message", async (event) => {
 		const view = new DataView(event.data);
 		const innerWidth = view.getUint32(0, true);
 		const innerHeight = view.getUint32(4, true);
+
+		if (!screenCreated) {
+			nativeApis.createVirtualScreen(innerWidth, innerHeight);
+			screenCreated = true;
+		} else {
+			nativeApis.resizeVirtualScreen(innerWidth, innerHeight);
+		}
 	});
 
 	const pointerScrollChannel = peer.createDataChannel("pointer-scroll", {
@@ -136,9 +144,11 @@ function createDataChannels() {
 	pointerScrollChannel.addEventListener("message", async (event) => {
 		const view = new DataView(event.data);
 		const deltaMode = view.getUint8(0);
-		const deltaX = view.getUint32(1, true);
-		const deltaY = view.getUint32(5, true);
-		const deltaZ = view.getUint32(9, true);
+		const deltaX = view.getFloat32(1, true);
+		const deltaY = view.getFloat32(5, true);
+		const deltaZ = view.getFloat32(9, true);
+
+		nativeApis.scrollMouse(deltaMode, deltaX, deltaY, deltaZ);
 	});
 }
 
