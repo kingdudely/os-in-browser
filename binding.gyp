@@ -29,7 +29,8 @@
             ]
           },
           "xcode_settings": {
-            "OTHER_CFLAGS": ["-ObjC++", "-fobjc-arc"]
+            "OTHER_CFLAGS": ["-ObjC++", "-fobjc-arc"],
+            "OTHER_LDFLAGS": []
           }
         }]
       ],
