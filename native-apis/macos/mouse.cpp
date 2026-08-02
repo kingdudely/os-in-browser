@@ -3,8 +3,38 @@
 #include <Carbon/Carbon.h>
 #include <cmath>
 #include <cstdint>
+#include <IOKit/hidsystem/IOLLEvent.h>
+#include <IOKit/hidsystem/IOHIDLib.h>
+#include <IOKit/hidsystem/IOHIDParameter.h>
+
+extern "C" {
+    kern_return_t IOHIDPostEvent(io_connect_t connect, UInt32 eventType,
+                                  IOGPoint location, const NXEventData *eventData,
+                                  UInt32 eventDataVersion, IOOptionBits eventFlags,
+                                  IOOptionBits options);
+}
 
 namespace {
+
+static io_connect_t g_hidConnect = MACH_PORT_NULL;
+
+static io_connect_t GetHIDConnect() {
+    if (g_hidConnect != MACH_PORT_NULL) {
+        return g_hidConnect;
+    }
+    io_service_t service = IOServiceGetMatchingService(
+        kIOMainPortDefault, IOServiceMatching(kIOHIDSystemClass));
+    if (service == MACH_PORT_NULL) {
+        return MACH_PORT_NULL;
+    }
+    kern_return_t kr = IOServiceOpen(service, mach_task_self(),
+                                      kIOHIDParamConnectType, &g_hidConnect);
+    IOObjectRelease(service);
+    if (kr != KERN_SUCCESS) {
+        g_hidConnect = MACH_PORT_NULL;
+    }
+    return g_hidConnect;
+}
 
 CGPoint CurrentMouseLocation() {
     CGEventRef event = CGEventCreate(nullptr);
@@ -24,6 +54,13 @@ void PostMouseEvent(CGEventType type, CGPoint location, CGMouseButton button, st
 }
 
 } // namespace
+
+void CleanupHIDConnect() {
+    if (g_hidConnect != MACH_PORT_NULL) {
+        IOServiceClose(g_hidConnect);
+        g_hidConnect = MACH_PORT_NULL;
+    }
+}
 
 void ScrollMouse(const Napi::CallbackInfo& info) {
     std::uint8_t deltaMode = static_cast<std::uint8_t>(info[0].As<Napi::Number>().Uint32Value());
@@ -109,7 +146,14 @@ void MoveMousePosition(const Napi::CallbackInfo& info) {
     std::int32_t dx = info[0].As<Napi::Number>().Int32Value();
     std::int32_t dy = info[1].As<Napi::Number>().Int32Value();
 
-    CGPoint current = CurrentMouseLocation();
-    CGPoint newPos = CGPointMake(current.x + dx, current.y + dy);
-    PostMouseEvent(kCGEventMouseMoved, newPos, kCGMouseButtonLeft, dx, dy);
+    io_connect_t conn = GetHIDConnect();
+
+    NXEventData ev = {};
+    ev.mouseMove.dx = dx;
+    ev.mouseMove.dy = dy;
+
+    IOGPoint loc = {0, 0}; // ignored when kIOHIDSetRelativeCursorPosition is set
+
+    IOHIDPostEvent(conn, NX_MOUSEMOVED, loc, &ev, kNXEventDataVersion,
+                   NX_NONCOALSESCEDMASK, kIOHIDSetRelativeCursorPosition);
 }
