@@ -2,10 +2,14 @@
   "targets": [
     {
       "target_name": "native-apis",
-      "sources": [],
+      "sources": ["src/shared/addon.cpp"],
       "conditions": [
         ["OS=='win'", {
-          "sources": ["native-apis/windows.cc"],
+          "sources": [
+            "src/windows/mouse.cpp",
+            "src/windows/keyboard.cpp",
+            "src/windows/virtual_screen.cpp"
+          ],
           "libraries": [
             "setupapi.lib",
             "cfgmgr32.lib",
@@ -13,14 +17,23 @@
           ]
         }],
         ["OS=='linux'", {
-          "sources": ["native-apis/ubuntu.cc"],
+          "sources": [
+            "src/linux/uinput.cpp",
+            "src/linux/mouse.cpp",
+            "src/linux/keyboard.cpp",
+            "src/linux/virtual_screen.cpp"
+          ],
           "libraries": [
             "-lX11",
             "-lXrandr"
           ]
         }],
         ["OS=='mac'", {
-          "sources": ["native-apis/macos.mm"],
+          "sources": [
+            "src/macos/mouse.cpp",
+            "src/macos/keyboard.cpp",
+            "src/macos/virtual_screen.mm"
+          ],
           "link_settings": {
             "libraries": [
               "-framework Carbon",
