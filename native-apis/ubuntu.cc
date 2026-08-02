@@ -111,6 +111,8 @@ Display* g_display = nullptr;
 RRCrtc g_crtc = 0;
 RROutput g_output = 0;
 RRMode g_mode = 0;
+std::uint32_t g_screenWidth = 0;
+std::uint32_t g_screenHeight = 0;
 
 Display* GetX11Display() {
     if (g_display) return g_display;
@@ -139,8 +141,8 @@ RROutput FindDummyOutput(Display* display, Window root) {
 }
 
 void CreateVirtualScreen(const Napi::CallbackInfo& info) {
-    std::uint32_t x = info[0].As<Napi::Number>().Uint32Value();
-    std::uint32_t y = info[1].As<Napi::Number>().Uint32Value();
+    g_screenWidth = info[0].As<Napi::Number>().Uint32Value();
+    g_screenHeight = info[1].As<Napi::Number>().Uint32Value();
 
     Display* display = GetX11Display();
     if (!display) return;
@@ -151,26 +153,24 @@ void CreateVirtualScreen(const Napi::CallbackInfo& info) {
     g_output = FindDummyOutput(display, root);
     if (!g_output) { XRRFreeScreenResources(res); return; }
 
-    // Build a custom mode for the exact requested resolution.
     XRRModeInfo modeInfo = {};
-    modeInfo.width = x;
-    modeInfo.height = y;
-    modeInfo.hSyncStart = x;
-    modeInfo.hSyncEnd = x;
-    modeInfo.hTotal = x;
-    modeInfo.vSyncStart = y;
-    modeInfo.vSyncEnd = y;
-    modeInfo.vTotal = y;
-    modeInfo.dotClock = static_cast<unsigned long>(x) * y * 60; // approx for 60Hz
+    modeInfo.width = g_screenWidth;
+    modeInfo.height = g_screenHeight;
+    modeInfo.hSyncStart = g_screenWidth;
+    modeInfo.hSyncEnd = g_screenWidth;
+    modeInfo.hTotal = g_screenWidth;
+    modeInfo.vSyncStart = g_screenHeight;
+    modeInfo.vSyncEnd = g_screenHeight;
+    modeInfo.vTotal = g_screenHeight;
+    modeInfo.dotClock = static_cast<unsigned long>(g_screenWidth) * g_screenHeight * 60;
     char modeName[32];
-    snprintf(modeName, sizeof(modeName), "%ux%u_60", x, y);
+    snprintf(modeName, sizeof(modeName), "%ux%u_60", g_screenWidth, g_screenHeight);
     modeInfo.name = modeName;
     modeInfo.nameLength = strlen(modeName);
 
     g_mode = XRRCreateMode(display, root, &modeInfo);
     XRRAddOutputMode(display, g_output, g_mode);
 
-    // Find an unused CRTC to drive the output.
     for (int i = 0; i < res->ncrtc; ++i) {
         XRRCrtcInfo* crtcInfo = XRRGetCrtcInfo(display, res, res->crtcs[i]);
         if (crtcInfo->noutput == 0) {
@@ -191,11 +191,11 @@ void CreateVirtualScreen(const Napi::CallbackInfo& info) {
 }
 
 void ResizeVirtualScreen(const Napi::CallbackInfo& info) {
-    std::uint32_t x = info[0].As<Napi::Number>().Uint32Value();
-    std::uint32_t y = info[1].As<Napi::Number>().Uint32Value();
-
     Display* display = GetX11Display();
     if (!display || !g_output || !g_crtc) return;
+
+    g_screenWidth = info[0].As<Napi::Number>().Uint32Value();
+    g_screenHeight = info[1].As<Napi::Number>().Uint32Value();
 
     Window root = DefaultRootWindow(display);
     XRRScreenResources* res = XRRGetScreenResources(display, root);
@@ -206,17 +206,17 @@ void ResizeVirtualScreen(const Napi::CallbackInfo& info) {
     XRRDestroyMode(display, g_mode);
 
     XRRModeInfo modeInfo = {};
-    modeInfo.width = x;
-    modeInfo.height = y;
-    modeInfo.hSyncStart = x;
-    modeInfo.hSyncEnd = x;
-    modeInfo.hTotal = x;
-    modeInfo.vSyncStart = y;
-    modeInfo.vSyncEnd = y;
-    modeInfo.vTotal = y;
-    modeInfo.dotClock = static_cast<unsigned long>(x) * y * 60;
+    modeInfo.width = g_screenWidth;
+    modeInfo.height = g_screenHeight;
+    modeInfo.hSyncStart = g_screenWidth;
+    modeInfo.hSyncEnd = g_screenWidth;
+    modeInfo.hTotal = g_screenWidth;
+    modeInfo.vSyncStart = g_screenHeight;
+    modeInfo.vSyncEnd = g_screenHeight;
+    modeInfo.vTotal = g_screenHeight;
+    modeInfo.dotClock = static_cast<unsigned long>(g_screenWidth) * g_screenHeight * 60;
     char modeName[32];
-    snprintf(modeName, sizeof(modeName), "%ux%u_60", x, y);
+    snprintf(modeName, sizeof(modeName), "%ux%u_60", g_screenWidth, g_screenHeight);
     modeInfo.name = modeName;
     modeInfo.nameLength = strlen(modeName);
 
@@ -252,22 +252,43 @@ void DestroyVirtualScreen(const Napi::CallbackInfo& info) {
     g_mode = 0;
 }
 
+// One logical wheel detent in REL_WHEEL_HI_RES units — mirrors Windows'
+// WHEEL_DELTA convention, which the kernel's hi-res axis was modelled on.
+inline constexpr float kWheelDelta = 120.0f;
+
 void ScrollMouse(const Napi::CallbackInfo& info) {
     std::uint8_t deltaMode = static_cast<std::uint8_t>(info[0].As<Napi::Number>().Uint32Value());
     float deltaX = info[1].As<Napi::Number>().FloatValue();
     float deltaY = info[2].As<Napi::Number>().FloatValue();
-    // deltaZ (info[3]) has no evdev equivalent; ignored.
 
     int fd = GetUinputFd();
     if (fd < 0) return;
 
-    float scale = (deltaMode == 2) ? 3.0f : 1.0f;
+    if (deltaMode == 0) {
+        if (deltaY != 0.0f) EmitEvent(fd, EV_REL, REL_WHEEL_HI_RES, static_cast<__s32>(-deltaY));
+        if (deltaX != 0.0f) EmitEvent(fd, EV_REL, REL_HWHEEL_HI_RES, static_cast<__s32>(deltaX));
+        return;
+    }
+
+    float scaleX, scaleY;
+    switch (deltaMode) {
+        case 2: // page = one full screen dimension, in hi-res units
+            scaleX = g_screenWidth  ? static_cast<float>(g_screenWidth)  : kWheelDelta * 3.0f;
+            scaleY = g_screenHeight ? static_cast<float>(g_screenHeight) : kWheelDelta * 3.0f;
+            break;
+        case 1: // line
+        default:
+            scaleX = scaleY = kWheelDelta;
+            break;
+    }
 
     if (deltaY != 0.0f) {
-        EmitEvent(fd, EV_REL, REL_WHEEL, static_cast<__s32>(-deltaY * scale));
+        EmitEvent(fd, EV_REL, REL_WHEEL_HI_RES, static_cast<__s32>(-deltaY * scaleY));
+        EmitEvent(fd, EV_REL, REL_WHEEL, static_cast<__s32>(std::lround(-deltaY * scaleY / kWheelDelta)));
     }
     if (deltaX != 0.0f) {
-        EmitEvent(fd, EV_REL, REL_HWHEEL, static_cast<__s32>(deltaX * scale));
+        EmitEvent(fd, EV_REL, REL_HWHEEL_HI_RES, static_cast<__s32>(deltaX * scaleX));
+        EmitEvent(fd, EV_REL, REL_HWHEEL, static_cast<__s32>(std::lround(deltaX * scaleX / kWheelDelta)));
     }
 }
 

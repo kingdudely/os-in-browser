@@ -47,6 +47,11 @@ jobs:
 
           startlxqt &
 
+      - name: Install Windows Virtual Device Driver
+        if: runner.os == "Windows"
+        run: |
+          winget install --id=VirtualDrivers.Virtual-Display-Driver -e
+
       - name: Start server
         id: server
         env:

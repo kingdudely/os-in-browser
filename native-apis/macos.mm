@@ -2,18 +2,17 @@
 #include <Carbon/Carbon.h>
 #include <optional>
 #include <array>
+#include <cstdint>
 #include <cmath>
 #import <Foundation/Foundation.h>
 
-// Private CoreGraphics API — no public header exists; redeclared here.
-// May break across macOS versions since it's undocumented.
 @interface CGVirtualDisplayDescriptor : NSObject
 @property(copy) NSString *name;
 @property CGSize sizeInMillimeters;
 @property uint32_t maxPixelsWide;
 @property uint32_t maxPixelsHigh;
-@property CGPoint productID;
-@property CGPoint vendorID;
+@property uint32_t productID;
+@property uint32_t vendorID;
 @property uint32_t serialNum;
 @end
 
@@ -78,48 +77,52 @@ CGPoint CurrentMouseLocation() {
     return point;
 }
 
-void PostMouseEvent(CGEventType type, CGPoint location, CGMouseButton button) {
+void PostMouseEvent(CGEventType type, CGPoint location, CGMouseButton button, std::int32_t dx = 0, std::int32_t dy = 0) {
     CGEventRef event = CGEventCreateMouseEvent(nullptr, type, location, button);
+    if (dx != 0 || dy != 0) {
+        CGEventSetIntegerValueField(event, kCGMouseEventDeltaX, dx);
+        CGEventSetIntegerValueField(event, kCGMouseEventDeltaY, dy);
+    }
     CGEventPost(kCGHIDEventTap, event);
     CFRelease(event);
 }
 
 CGVirtualDisplay* g_virtualDisplay = nil;
+std::uint32_t g_screenWidth = 0;
+std::uint32_t g_screenHeight = 0;
 
 void CreateVirtualScreen(const Napi::CallbackInfo& info) {
-    std::uint32_t x = info[0].As<Napi::Number>().Uint32Value();
-    std::uint32_t y = info[1].As<Napi::Number>().Uint32Value();
+    g_screenWidth = info[0].As<Napi::Number>().Uint32Value();
+    g_screenHeight = info[1].As<Napi::Number>().Uint32Value();
 
-    if (g_virtualDisplay != nil) return; // already created
+    if (g_virtualDisplay != nil) return;
 
     CGVirtualDisplayDescriptor *descriptor = [[CGVirtualDisplayDescriptor alloc] init];
     descriptor.name = @"Virtual Display";
-    descriptor.sizeInMillimeters = CGSizeMake(x / 4, y / 4); // arbitrary DPI approximation
-    descriptor.maxPixelsWide = x;
-    descriptor.maxPixelsHigh = y;
+    descriptor.sizeInMillimeters = CGSizeMake(g_screenWidth / 4, g_screenHeight / 4);
+    descriptor.maxPixelsWide = g_screenWidth;
+    descriptor.maxPixelsHigh = g_screenHeight;
     descriptor.serialNum = 1;
-    descriptor.vendorID = CGPointMake(0x1234, 0);
-    descriptor.productID = CGPointMake(0x5678, 0);
+    descriptor.vendorID = 0x1234;
+    descriptor.productID = 0x5678;
 
     g_virtualDisplay = [[CGVirtualDisplay alloc] initWithDescriptor:descriptor];
 
-    CGVirtualDisplayMode *mode = [[CGVirtualDisplayMode alloc] initWithWidth:x height:y refreshRate:60.0];
+    CGVirtualDisplayMode *mode = [[CGVirtualDisplayMode alloc] initWithWidth:g_screenWidth height:g_screenHeight refreshRate:60.0];
     CGVirtualDisplaySettings *settings = [[CGVirtualDisplaySettings alloc] init];
     settings.modes = @[mode];
-
     [g_virtualDisplay applySettings:settings];
 }
 
 void ResizeVirtualScreen(const Napi::CallbackInfo& info) {
-    std::uint32_t x = info[0].As<Napi::Number>().Uint32Value();
-    std::uint32_t y = info[1].As<Napi::Number>().Uint32Value();
-
     if (g_virtualDisplay == nil) return;
 
-    CGVirtualDisplayMode *mode = [[CGVirtualDisplayMode alloc] initWithWidth:x height:y refreshRate:60.0];
+    g_screenWidth = info[0].As<Napi::Number>().Uint32Value();
+    g_screenHeight = info[1].As<Napi::Number>().Uint32Value();
+
+    CGVirtualDisplayMode *mode = [[CGVirtualDisplayMode alloc] initWithWidth:g_screenWidth height:g_screenHeight refreshRate:60.0];
     CGVirtualDisplaySettings *settings = [[CGVirtualDisplaySettings alloc] init];
     settings.modes = @[mode];
-
     [g_virtualDisplay applySettings:settings];
 }
 
@@ -133,16 +136,32 @@ void ScrollMouse(const Napi::CallbackInfo& info) {
     float deltaY = info[2].As<Napi::Number>().FloatValue();
     float deltaZ = info[3].As<Napi::Number>().FloatValue();
 
-    CGScrollEventUnit unit = (deltaMode == 0) ? kCGScrollEventUnitPixel : kCGScrollEventUnitLine;
-    float scale = (deltaMode == 2) ? 3.0f : 1.0f;
+    CGScrollEventUnit unit;
+    float scaleX, scaleY;
+    switch (deltaMode) {
+        case 0: // pixel
+            unit = kCGScrollEventUnitPixel;
+            scaleX = scaleY = 1.0f;
+            break;
+        case 2: // page = one full screen dimension, expressed as N lines
+            unit = kCGScrollEventUnitLine;
+            scaleX = g_screenWidth  ? static_cast<float>(g_screenWidth)  : 3.0f;
+            scaleY = g_screenHeight ? static_cast<float>(g_screenHeight) : 3.0f;
+            break;
+        case 1: // line
+        default:
+            unit = kCGScrollEventUnitLine;
+            scaleX = scaleY = 1.0f; // kCGScrollEventUnitLine already == one line
+            break;
+    }
 
-    int32_t wheel1 = static_cast<int32_t>(std::lround(-deltaY * scale));
-    int32_t wheel2 = static_cast<int32_t>(std::lround(-deltaX * scale));
-    int32_t wheel3 = static_cast<int32_t>(std::lround(-deltaZ * scale));
+    int32_t wheel1 = static_cast<int32_t>(std::lround(-deltaY * scaleY));
+    int32_t wheel2 = static_cast<int32_t>(std::lround(-deltaX * scaleX));
+    int32_t wheel3 = static_cast<int32_t>(std::lround(-deltaZ * scaleY));
 
     CGEventRef event = CGEventCreateScrollWheelEvent(nullptr, unit, 3, wheel1, wheel2, wheel3);
-    CGEventSetDoubleValueField(event, kCGScrollWheelEventFixedPtDeltaAxis1, -deltaY * scale);
-    CGEventSetDoubleValueField(event, kCGScrollWheelEventFixedPtDeltaAxis2, -deltaX * scale);
+    CGEventSetDoubleValueField(event, kCGScrollWheelEventFixedPtDeltaAxis1, -deltaY * scaleY);
+    CGEventSetDoubleValueField(event, kCGScrollWheelEventFixedPtDeltaAxis2, -deltaX * scaleX);
     CGEventPost(kCGHIDEventTap, event);
     CFRelease(event);
 }
@@ -205,12 +224,12 @@ void SetMousePosition(const Napi::CallbackInfo& info) {
 }
 
 void MoveMousePosition(const Napi::CallbackInfo& info) {
-    std::int32_t x = info[0].As<Napi::Number>().Int32Value();
-    std::int32_t y = info[1].As<Napi::Number>().Int32Value();
+    std::int32_t dx = info[0].As<Napi::Number>().Int32Value();
+    std::int32_t dy = info[1].As<Napi::Number>().Int32Value();
 
     CGPoint current = CurrentMouseLocation();
-    CGPoint location = CGPointMake(current.x + x, current.y + y);
-    PostMouseEvent(kCGEventMouseMoved, location, kCGMouseButtonLeft);
+    CGPoint newPos = CGPointMake(current.x + dx, current.y + dy);
+    PostMouseEvent(kCGEventMouseMoved, newPos, kCGMouseButtonLeft, dx, dy);
 }
 
 } // namespace
