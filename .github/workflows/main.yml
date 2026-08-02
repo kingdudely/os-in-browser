@@ -52,10 +52,11 @@ jobs:
         run: |
           winget install --id=VirtualDrivers.Virtual-Display-Driver -e
 
-      - name: Install MacOS LLD
+      - name: Install MacOS dependencies
         if: runner.os == 'macOS'
         run: |
           brew install lld
+          # How to install Karabiner Virtual HID Device + headers?
 
       - name: Start server
         id: server
