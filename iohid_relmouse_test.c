@@ -6,8 +6,8 @@
 // CI can gate on it.
 
 #include <CoreFoundation/CoreFoundation.h>
-#include <IOKit/hid/IOHIDUserDevice.h>
 #include <IOKit/hid/IOHIDKeys.h>
+#include "IOHIDUserDevice.h"  // vendored: not reliably shipped in current SDKs, see repo root
 #include <stdio.h>
 #include <unistd.h>
 

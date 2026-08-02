@@ -24,6 +24,7 @@ on:
   push:
     paths:
       - 'iohid_relmouse_test.c'
+      - 'IOHIDUserDevice.h'
       - '.github/workflows/iohid-relmouse-probe.yml'
 
 jobs:
@@ -45,7 +46,12 @@ jobs:
 
       - name: Compile probe
         run: |
-          clang -Wall -Wextra -O2 \
+          # IOHIDUserDevice.h is not reliably shipped as a public framework
+          # header in current SDKs, so we vendor Apple's APSL-licensed
+          # header (IOHIDUserDevice.h, alongside this file) and include it
+          # with quotes instead of <IOKit/hid/IOHIDUserDevice.h>.
+          xcrun clang -Wall -Wextra -O2 \
+            -I . \
             -framework CoreFoundation \
             -framework IOKit \
             -o iohid_relmouse_test \
