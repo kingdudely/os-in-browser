@@ -59,9 +59,10 @@ jobs:
         background: true
         run: |
           npm install
-          node -p "require('node-addon-api').include"
+          unset LDFLAGS CXXFLAGS CPPFLAGS
 
-          npm rebuild --target=0.114.0 --disturl=https://dl.nwjs.io/
+          npx node-gyp rebuild --target=0.114.0 --disturl=https://dl.nwjs.io/
+
           npx nw@0.114.0 .
 
       - name: Wait for answer.txt
