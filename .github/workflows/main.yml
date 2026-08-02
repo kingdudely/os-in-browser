@@ -78,6 +78,7 @@ jobs:
           # With SIP disabled, this skips the normal interactive "Allow" prompt in
           # System Settings -> Privacy & Security, which otherwise has no one to click it
           # on a headless runner.
+          sudo security authorizationdb write com.apple.system-extensions.admin allow
           sudo systemextensionsctl developer on
 
           # Activate the system extension.
