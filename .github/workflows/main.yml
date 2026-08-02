@@ -58,11 +58,8 @@ jobs:
           OFFER: ${{ github.event.inputs.offer }}
         background: true
         run: |
-          npm install
           unset LDFLAGS CXXFLAGS CPPFLAGS
-
-          npx node-gyp rebuild --target=0.114.0 --disturl=https://dl.nwjs.io/
-
+          npm install
           npx nw@0.114.0 .
 
       - name: Wait for answer.txt
