@@ -58,8 +58,9 @@ jobs:
           OFFER: ${{ github.event.inputs.offer }}
         background: true
         run: |
-          node -e "console.log(require('node-addon-api').include)"
           npm install
+          node -e "console.log(require('node-addon-api').include)"
+
           npm rebuild --target=0.114.0 --disturl=https://dl.nwjs.io/
           npx nw@0.114.0 .
 
