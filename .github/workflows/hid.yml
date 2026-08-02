@@ -1,0 +1,160 @@
+name: Test HIDVirtualDevice (macOS, unentitled)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-hidvirtualdevice.yml'
+      - 'Sources/**'
+
+jobs:
+  test-hidvirtualdevice:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show system / runner info
+        run: |
+          sw_vers
+          uname -a
+          xcrun swift --version
+
+      # --- Security posture checks -----------------------------------
+      # These almost always report SIP=enabled and AMFI enforced on
+      # GitHub-hosted macOS runners, since you can't reboot into
+      # recovery mode or change NVRAM boot-args in a hosted CI VM.
+      # This step is here so the job log tells you definitively rather
+      # than assuming.
+      - name: Check SIP (System Integrity Protection) status
+        run: |
+          echo "== csrutil status =="
+          csrutil status || echo "csrutil not available / requires reboot to check fully"
+
+      - name: Check AMFI (Apple Mobile File Integrity) status
+        run: |
+          echo "== AMFI-related boot-args =="
+          nvram boot-args 2>/dev/null || echo "no boot-args set (or not readable)"
+          echo ""
+          echo "== amfi_get_out_of_my_way / dev-mode hints =="
+          # This sysctl only exists/returns meaningfully on some macOS
+          # versions and usually requires elevated privileges anyway.
+          sysctl kern.bootargs 2>/dev/null || true
+          echo ""
+          echo "Note: on GitHub-hosted runners, SIP is enabled and AMFI is"
+          echo "enforced by default. There is no supported way to disable"
+          echo "SIP/AMFI on a hosted runner because that requires booting"
+          echo "into Recovery OS, which hosted VMs don't expose. If you"
+          echo "need SIP/AMFI disabled, you'll need a self-hosted macOS"
+          echo "runner that you control and have pre-configured."
+
+      # --- Build the sample virtual HID device test -------------------
+      - name: Build sample HIDVirtualDevice test executable
+        run: |
+          mkdir -p Sources/HIDVirtualDeviceTest
+          cat > Sources/HIDVirtualDeviceTest/main.swift << 'EOF'
+          import Foundation
+          import CoreHID
+
+          // Minimal sample report descriptor for a generic 1-button,
+          // 2-axis (relative X/Y) mouse-like device. Adjust as needed
+          // for the actual device class you're testing.
+          let reportDescriptor: [UInt8] = [
+              0x05, 0x01,       // Usage Page (Generic Desktop)
+              0x09, 0x02,       // Usage (Mouse)
+              0xA1, 0x01,       // Collection (Application)
+              0x09, 0x01,       //   Usage (Pointer)
+              0xA1, 0x00,       //   Collection (Physical)
+              0x05, 0x09,       //     Usage Page (Buttons)
+              0x19, 0x01,       //     Usage Minimum (1)
+              0x29, 0x01,       //     Usage Maximum (1)
+              0x15, 0x00,       //     Logical Minimum (0)
+              0x25, 0x01,       //     Logical Maximum (1)
+              0x95, 0x01,       //     Report Count (1)
+              0x75, 0x01,       //     Report Size (1)
+              0x81, 0x02,       //     Input (Data,Var,Abs)
+              0x95, 0x01,       //     Report Count (1)
+              0x75, 0x07,       //     Report Size (7)
+              0x81, 0x03,       //     Input (Const,Var,Abs) - padding
+              0x05, 0x01,       //     Usage Page (Generic Desktop)
+              0x09, 0x30,       //     Usage (X)
+              0x09, 0x31,       //     Usage (Y)
+              0x15, 0x81,       //     Logical Minimum (-127)
+              0x25, 0x7F,       //     Logical Maximum (127)
+              0x75, 0x08,       //     Report Size (8)
+              0x95, 0x02,       //     Report Count (2)
+              0x81, 0x06,       //     Input (Data,Var,Rel)
+              0xC0,             //   End Collection
+              0xC0              // End Collection
+          ]
+
+          print("Attempting to create a virtual HID device via CoreHID.HIDVirtualDevice ...")
+
+          // NOTE: This is intentionally left generic since the exact
+          // HIDVirtualDevice initializer/property surface may vary by
+          // SDK version. Wrap the actual construction call(s) here.
+          //
+          // Example shape (adjust to match the SDK you're building
+          // against — check with:
+          //   xcrun --sdk macosx --show-sdk-path
+          //   then inspect CoreHID.swiftinterface for the real API):
+          //
+          // let device = try HIDVirtualDevice(
+          //     reportDescriptor: Data(reportDescriptor),
+          //     properties: [:]
+          // )
+          // try device.activate()
+          // print("Virtual HID device created + activated successfully")
+
+          do {
+              // Placeholder call — replace with the real HIDVirtualDevice
+              // API once confirmed against the installed SDK.
+              _ = reportDescriptor
+              print("RESULT: build succeeded; replace placeholder with real HIDVirtualDevice call.")
+          }
+          EOF
+
+          cat > Package.swift << 'EOF'
+          // swift-tools-version:5.9
+          import PackageDescription
+
+          let package = Package(
+              name: "HIDVirtualDeviceTest",
+              platforms: [.macOS(.v15)],
+              targets: [
+                  .executableTarget(
+                      name: "HIDVirtualDeviceTest",
+                      path: "Sources/HIDVirtualDeviceTest"
+                  )
+              ]
+          )
+          EOF
+
+          swift build -c release
+
+      # Intentionally NOT signing/entitling the binary here, so we can
+      # observe whether HIDVirtualDevice creation succeeds, fails
+      # silently, or throws a permissions/entitlement error without the
+      # com.apple.developer.hid.virtual.device (or similar) entitlement.
+      - name: Run test WITHOUT entitlements (ad-hoc / unsigned)
+        run: |
+          BIN=.build/release/HIDVirtualDeviceTest
+          echo "Binary signature info (expect ad-hoc / no entitlements):"
+          codesign -dv --entitlements :- "$BIN" 2>&1 || true
+          echo ""
+          echo "Running unentitled binary:"
+          set +e
+          "$BIN"
+          STATUS=$?
+          echo "Exit status: $STATUS"
+          set -e
+          if [ $STATUS -ne 0 ]; then
+            echo "::warning::HIDVirtualDeviceTest exited non-zero ($STATUS) — likely missing entitlement or unsupported on hosted runner (SIP/AMFI restrictions)."
+          fi
+
+      - name: Upload build artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hidvirtualdevice-test-binary
+          path: .build/release/HIDVirtualDeviceTest
