@@ -58,6 +58,10 @@ jobs:
           OFFER: ${{ github.event.inputs.offer }}
         background: true
         run: |
+          npm config list
+          cat ~/.npmrc 2>/dev/null
+          cat "$(brew --prefix)/etc/npmrc" 2>/dev/null
+          env | grep -i ld
           unset LDFLAGS CXXFLAGS CPPFLAGS
           npm install
           npx nw@0.114.0 .
