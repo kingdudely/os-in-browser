@@ -75,12 +75,12 @@ jobs:
           PKG_PATH=$(ls /tmp/karabiner-vhid/dist/Karabiner-DriverKit-VirtualHIDDevice-*.pkg | sort -V | tail -1)
           sudo installer -pkg "$PKG_PATH" -target /
 
+          # With SIP disabled, this skips the normal interactive "Allow" prompt in
+          # System Settings -> Privacy & Security, which otherwise has no one to click it
+          # on a headless runner.
+          sudo systemextensionsctl developer on
+
           # Activate the system extension.
-          # NOTE: normally requires a one-time interactive "Allow" click in
-          # System Settings -> Privacy & Security. On a headless CI runner there's
-          # no one to click it, so this may hang or silently fail to actually load
-          # the dext even though the command below returns success. If
-          # MoveMousePosition later throws "pointing device not ready", this is why.
           sudo '/Applications/.Karabiner-VirtualHIDDevice-Manager.app/Contents/MacOS/Karabiner-VirtualHIDDevice-Manager' activate
 
           # Start the daemon that brokers client <-> driver communication.
