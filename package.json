@@ -1,15 +1,14 @@
 {
 	"name": "os-in-browser.pages.dev-host",
-	"main": "index.html",
-	"window": {
-		"show": false
+	"main": "index.js",
+	"devDependencies": {
+		"@electron/rebuild": "^4.2.0"
 	},
 	"dependencies": {
-		"node-addon-api": "^8.9.1",
-		"nw": "0.114.0"
+		"electron": "^43.2.0"
 	},
 	"scripts": {
-		"install": "node-gyp rebuild --target=0.114.0 --disturl=https://dl.nwjs.io/",
-		"start": "nw ."
+		"postinstall": "electron-rebuild",
+		"start": "electron ."
 	}
 }
