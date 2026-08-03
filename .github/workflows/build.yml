@@ -52,6 +52,9 @@ jobs:
       - name: Build prebuilt N-API binary
         run: npm run build:native
 
+      - name: Show what prebuildify actually produced
+        run: find prebuilds -type f
+
       - name: Verify build output
         run: test -f prebuilds/${{ matrix.artifact }}/node.napi.node
 
