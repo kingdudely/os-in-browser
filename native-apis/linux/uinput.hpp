@@ -22,7 +22,7 @@ void EmitEvent(int fd, __u16 type, __u16 code, __s32 value);
 
 // Writes a SYN_REPORT, committing all EmitEvent() calls since the last
 // sync as one input frame.
-void EmitSync(int fd);
+void EmitSyn(int fd);
 
 // Called by GetUinputFd() during device setup, before UI_DEV_CREATE, so
 // every code each map might emit has its bit registered. Defined next to
