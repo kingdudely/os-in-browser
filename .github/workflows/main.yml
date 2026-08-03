@@ -38,7 +38,8 @@ jobs:
             lxqt \
             openbox \
             dbus-x11 \
-            xvfb
+            xvfb \
+            libxrandr-dev
 
           read -r DISPLAY_NUMBER < <(exec Xvfb -displayfd 1)
 
