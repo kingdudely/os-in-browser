@@ -2,12 +2,6 @@ name: Build Electron Native Modules
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - 'package.json'
-      - 'package-lock.json'
-      - 'binding.gyp'
-      - 'native-apis/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -50,7 +44,7 @@ jobs:
         run: npm install
 
       - name: Build prebuilt N-API binary
-        run: npm run build:native
+        run: npm run build
 
       - name: Show what prebuildify actually produced
         run: find prebuilds -type f
