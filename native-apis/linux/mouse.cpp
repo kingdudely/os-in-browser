@@ -22,6 +22,10 @@ inline constexpr std::array<__u16, 5> kLinuxMouseButtonMap = {
 // WHEEL_DELTA convention, which the kernel's hi-res axis was modelled on.
 inline constexpr float kWheelDelta = 120.0f;
 
+constexpr __s32 MulDiv32(std::uint32_t a, __s32 b, std::uint32_t c) {
+    return static_cast<__s32>((static_cast<std::uint64_t>(a) * b) / c);
+}
+
 } // namespace
 
 // Registers a UI_SET_KEYBIT for every code in kLinuxMouseButtonMap. Called
@@ -43,6 +47,7 @@ void ScrollMouse(const Napi::CallbackInfo& info) {
     if (deltaMode == 0) {
         if (deltaY != 0.0f) EmitEvent(fd, EV_REL, REL_WHEEL_HI_RES, static_cast<__s32>(-deltaY));
         if (deltaX != 0.0f) EmitEvent(fd, EV_REL, REL_HWHEEL_HI_RES, static_cast<__s32>(deltaX));
+        EmitSyn(fd);
         return;
     }
 
@@ -66,6 +71,7 @@ void ScrollMouse(const Napi::CallbackInfo& info) {
         EmitEvent(fd, EV_REL, REL_HWHEEL_HI_RES, static_cast<__s32>(deltaX * scaleX));
         EmitEvent(fd, EV_REL, REL_HWHEEL, static_cast<__s32>(std::lround(deltaX * scaleX / kWheelDelta)));
     }
+    EmitSyn(fd); // one frame for the whole gesture, not two
 }
 
 void SetMouseButton(const Napi::CallbackInfo& info) {
@@ -78,6 +84,7 @@ void SetMouseButton(const Napi::CallbackInfo& info) {
     if (fd < 0) return;
 
     EmitEvent(fd, EV_KEY, kLinuxMouseButtonMap[button], isDown ? 1 : 0);
+    EmitSyn(fd);
 }
 
 void SetMousePosition(const Napi::CallbackInfo& info) {
@@ -85,14 +92,14 @@ void SetMousePosition(const Napi::CallbackInfo& info) {
     std::uint32_t y = info[1].As<Napi::Number>().Uint32Value();
 
     int fd = GetUinputFd();
-    if (fd < 0) return;
+    if (fd < 0 || g_screenWidth == 0 || g_screenHeight == 0) return;
 
-    // Absolute positioning via uinput requires ABS_X/ABS_Y ranges to be
-    // configured with UI_ABS_SETUP at device-creation time to match the
-    // target display resolution; omitted here since resolution isn't known.
-    // As a fallback, most callers use moveMousePosition (relative) instead.
-    (void)x;
-    (void)y;
+    __s32 normX = MulDiv32(x, kAbsMax, std::max<std::uint32_t>(g_screenWidth - 1, 1));
+    __s32 normY = MulDiv32(y, kAbsMax, std::max<std::uint32_t>(g_screenHeight - 1, 1));
+
+    EmitEvent(fd, EV_ABS, ABS_X, normX);
+    EmitEvent(fd, EV_ABS, ABS_Y, normY);
+    EmitSyn(fd);
 }
 
 void MoveMousePosition(const Napi::CallbackInfo& info) {
@@ -104,4 +111,5 @@ void MoveMousePosition(const Napi::CallbackInfo& info) {
 
     if (x != 0) EmitEvent(fd, EV_REL, REL_X, x);
     if (y != 0) EmitEvent(fd, EV_REL, REL_Y, y);
+    EmitSyn(fd);
 }

@@ -1,4 +1,4 @@
-// Use IPC instead, make whep endpoint
+// Use IPC instead, make whep endpoint with cloudflared, getMouseBitmap for quicker mouse movement, clipboardapi, webhid, onpointerrawupdate, getCoascledEvents, cam, mic, etc.
 console.log("Node.js loaded!")
 import { app, BrowserWindow, desktopCapturer, session } from 'electron';
 import { fileURLToPath } from 'node:url';

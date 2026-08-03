@@ -28,8 +28,22 @@ int GetUinputFd() {
     ioctl(fd, UI_SET_RELBIT, REL_Y);
     ioctl(fd, UI_SET_RELBIT, REL_WHEEL);
     ioctl(fd, UI_SET_RELBIT, REL_HWHEEL);
+    ioctl(fd, UI_SET_RELBIT, REL_WHEEL_HI_RES);
+    ioctl(fd, UI_SET_RELBIT, REL_HWHEEL_HI_RES);
     ioctl(fd, UI_SET_ABSBIT, ABS_X);
     ioctl(fd, UI_SET_ABSBIT, ABS_Y);
+
+    struct uinput_abs_setup absX{};
+    absX.code = ABS_X;
+    absX.absinfo.minimum = 0;
+    absX.absinfo.maximum = kAbsMax;
+    ioctl(fd, UI_ABS_SETUP, &absX);
+
+    struct uinput_abs_setup absY{};
+    absY.code = ABS_Y;
+    absY.absinfo.minimum = 0;
+    absY.absinfo.maximum = kAbsMax;
+    ioctl(fd, UI_ABS_SETUP, &absY);
 
     struct uinput_setup setup{};
     setup.id.bustype = BUS_VIRTUAL;
@@ -50,7 +64,9 @@ void EmitEvent(int fd, __u16 type, __u16 code, __s32 value) {
     ev.code = code;
     ev.value = value;
     write(fd, &ev, sizeof(ev));
+}
 
+void EmitSyn(int fd) {
     struct input_event syn{};
     syn.type = EV_SYN;
     syn.code = SYN_REPORT;

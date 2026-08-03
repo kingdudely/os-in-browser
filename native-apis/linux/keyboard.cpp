@@ -63,4 +63,5 @@ void SetKeyboardKey(const Napi::CallbackInfo& info) {
     if (fd < 0) return;
 
     EmitEvent(fd, EV_KEY, code, isDown ? 1 : 0);
+    EmitSyn(fd);
 }
