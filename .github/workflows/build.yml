@@ -49,6 +49,9 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Echo Prebuildify's package.json
+        run: cat node_modules/prebuildify/package.json | grep -E '"name"|"version"'
+
       - name: Build prebuilt N-API binary
         run: npm run build:native
 
