@@ -8,6 +8,9 @@
 #include <cmath>
 #include <cstdint>
 
+// Declared/defined in virtual_screen.cpp.
+void GetVirtualScreenSize(std::uint32_t& outWidth, std::uint32_t& outHeight);
+
 namespace {
 
 inline constexpr std::array<__u16, 5> kLinuxMouseButtonMap = {
@@ -18,7 +21,7 @@ inline constexpr std::array<__u16, 5> kLinuxMouseButtonMap = {
     BTN_EXTRA,
 };
 
-// One logical wheel detent in REL_WHEEL_HI_RES units — mirrors Windows'
+// One logical wheel detent in REL_WHEEL_HI_RES units -- mirrors Windows'
 // WHEEL_DELTA convention, which the kernel's hi-res axis was modelled on.
 inline constexpr float kWheelDelta = 120.0f;
 
@@ -53,10 +56,13 @@ void ScrollMouse(const Napi::CallbackInfo& info) {
 
     float scaleX, scaleY;
     switch (deltaMode) {
-        case 2: // page = one full screen dimension, in hi-res units
-            scaleX = g_screenWidth  ? static_cast<float>(g_screenWidth)  : kWheelDelta * 3.0f;
-            scaleY = g_screenHeight ? static_cast<float>(g_screenHeight) : kWheelDelta * 3.0f;
+        case 2: { // page = one full screen dimension, in hi-res units
+            std::uint32_t screenWidth = 0, screenHeight = 0;
+            GetVirtualScreenSize(screenWidth, screenHeight);
+            scaleX = screenWidth  ? static_cast<float>(screenWidth)  : kWheelDelta * 3.0f;
+            scaleY = screenHeight ? static_cast<float>(screenHeight) : kWheelDelta * 3.0f;
             break;
+        }
         case 1: // line
         default:
             scaleX = scaleY = kWheelDelta;
@@ -92,10 +98,14 @@ void SetMousePosition(const Napi::CallbackInfo& info) {
     std::uint32_t y = info[1].As<Napi::Number>().Uint32Value();
 
     int fd = GetUinputFd();
-    if (fd < 0 || g_screenWidth == 0 || g_screenHeight == 0) return;
+    if (fd < 0) return;
 
-    __s32 normX = MulDiv32(x, kAbsMax, std::max<std::uint32_t>(g_screenWidth - 1, 1));
-    __s32 normY = MulDiv32(y, kAbsMax, std::max<std::uint32_t>(g_screenHeight - 1, 1));
+    std::uint32_t screenWidth = 0, screenHeight = 0;
+    GetVirtualScreenSize(screenWidth, screenHeight);
+    if (!screenWidth || !screenHeight) return;
+
+    __s32 normX = MulDiv32(x, kAbsMax, std::max<std::uint32_t>(screenWidth - 1, 1));
+    __s32 normY = MulDiv32(y, kAbsMax, std::max<std::uint32_t>(screenHeight - 1, 1));
 
     EmitEvent(fd, EV_ABS, ABS_X, normX);
     EmitEvent(fd, EV_ABS, ABS_Y, normY);

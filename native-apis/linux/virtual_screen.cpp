@@ -40,13 +40,9 @@ RROutput FindDummyOutput(Display* display, Window root) {
 
 } // namespace
 
-// Definitions for the globals declared extern in addon.hpp.
-std::uint32_t g_screenWidth = 0;
-std::uint32_t g_screenHeight = 0;
-
 void CreateVirtualScreen(const Napi::CallbackInfo& info) {
-    g_screenWidth = info[0].As<Napi::Number>().Uint32Value();
-    g_screenHeight = info[1].As<Napi::Number>().Uint32Value();
+    std::uint32_t screenWidth = info[0].As<Napi::Number>().Uint32Value();
+    std::uint32_t screenHeight = info[1].As<Napi::Number>().Uint32Value();
 
     Display* display = GetX11Display();
     if (!display) return;
@@ -58,17 +54,17 @@ void CreateVirtualScreen(const Napi::CallbackInfo& info) {
     if (!g_output) { XRRFreeScreenResources(res); return; }
 
     XRRModeInfo modeInfo = {};
-    modeInfo.width = g_screenWidth;
-    modeInfo.height = g_screenHeight;
-    modeInfo.hSyncStart = g_screenWidth;
-    modeInfo.hSyncEnd = g_screenWidth;
-    modeInfo.hTotal = g_screenWidth;
-    modeInfo.vSyncStart = g_screenHeight;
-    modeInfo.vSyncEnd = g_screenHeight;
-    modeInfo.vTotal = g_screenHeight;
-    modeInfo.dotClock = static_cast<unsigned long>(g_screenWidth) * g_screenHeight * 60;
+    modeInfo.width = screenWidth;
+    modeInfo.height = screenHeight;
+    modeInfo.hSyncStart = screenWidth;
+    modeInfo.hSyncEnd = screenWidth;
+    modeInfo.hTotal = screenWidth;
+    modeInfo.vSyncStart = screenHeight;
+    modeInfo.vSyncEnd = screenHeight;
+    modeInfo.vTotal = screenHeight;
+    modeInfo.dotClock = static_cast<unsigned long>(screenWidth) * screenHeight * 60;
     char modeName[32];
-    snprintf(modeName, sizeof(modeName), "%ux%u_60", g_screenWidth, g_screenHeight);
+    snprintf(modeName, sizeof(modeName), "%ux%u_60", screenWidth, screenHeight);
     modeInfo.name = modeName;
     modeInfo.nameLength = strlen(modeName);
 
@@ -98,8 +94,8 @@ void ResizeVirtualScreen(const Napi::CallbackInfo& info) {
     Display* display = GetX11Display();
     if (!display || !g_output || !g_crtc) return;
 
-    g_screenWidth = info[0].As<Napi::Number>().Uint32Value();
-    g_screenHeight = info[1].As<Napi::Number>().Uint32Value();
+    std::uint32_t screenWidth = info[0].As<Napi::Number>().Uint32Value();
+    std::uint32_t screenHeight = info[1].As<Napi::Number>().Uint32Value();
 
     Window root = DefaultRootWindow(display);
     XRRScreenResources* res = XRRGetScreenResources(display, root);
@@ -110,17 +106,17 @@ void ResizeVirtualScreen(const Napi::CallbackInfo& info) {
     XRRDestroyMode(display, g_mode);
 
     XRRModeInfo modeInfo = {};
-    modeInfo.width = g_screenWidth;
-    modeInfo.height = g_screenHeight;
-    modeInfo.hSyncStart = g_screenWidth;
-    modeInfo.hSyncEnd = g_screenWidth;
-    modeInfo.hTotal = g_screenWidth;
-    modeInfo.vSyncStart = g_screenHeight;
-    modeInfo.vSyncEnd = g_screenHeight;
-    modeInfo.vTotal = g_screenHeight;
-    modeInfo.dotClock = static_cast<unsigned long>(g_screenWidth) * g_screenHeight * 60;
+    modeInfo.width = screenWidth;
+    modeInfo.height = screenHeight;
+    modeInfo.hSyncStart = screenWidth;
+    modeInfo.hSyncEnd = screenWidth;
+    modeInfo.hTotal = screenWidth;
+    modeInfo.vSyncStart = screenHeight;
+    modeInfo.vSyncEnd = screenHeight;
+    modeInfo.vTotal = screenHeight;
+    modeInfo.dotClock = static_cast<unsigned long>(screenWidth) * screenHeight * 60;
     char modeName[32];
-    snprintf(modeName, sizeof(modeName), "%ux%u_60", g_screenWidth, g_screenHeight);
+    snprintf(modeName, sizeof(modeName), "%ux%u_60", screenWidth, screenHeight);
     modeInfo.name = modeName;
     modeInfo.nameLength = strlen(modeName);
 
@@ -154,4 +150,26 @@ void DestroyVirtualScreen(const Napi::CallbackInfo& info) {
     g_crtc = 0;
     g_output = 0;
     g_mode = 0;
+}
+
+// Live current resolution of our CRTC, queried fresh -- used by mouse.cpp
+// for SetMousePosition/ScrollMouse so those can't go stale if the
+// resolution changes outside Create/ResizeVirtualScreen.
+// XRRGetScreenResourcesCurrent reads cached server state (cheap) rather
+// than forcing a full rescan like XRRGetScreenResources does.
+void GetVirtualScreenSize(std::uint32_t& outWidth, std::uint32_t& outHeight) {
+    outWidth = 0;
+    outHeight = 0;
+
+    Display* display = GetX11Display();
+    if (!display || !g_crtc) return;
+
+    XRRScreenResources* res = XRRGetScreenResourcesCurrent(display, DefaultRootWindow(display));
+    XRRCrtcInfo* crtcInfo = XRRGetCrtcInfo(display, res, g_crtc);
+    if (crtcInfo) {
+        outWidth = crtcInfo->width;
+        outHeight = crtcInfo->height;
+        XRRFreeCrtcInfo(crtcInfo);
+    }
+    XRRFreeScreenResources(res);
 }

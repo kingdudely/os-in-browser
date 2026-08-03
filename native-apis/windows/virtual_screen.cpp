@@ -17,7 +17,7 @@ namespace {
 // Resolves the driver's actual config directory. Checks
 // HKLM\SOFTWARE\MikeTheTech\VirtualDisplayDriver\VDDPATH first, since a
 // custom install path overrides the C:\VirtualDisplayDriver default (see
-// project wiki / discussion #144 — hardcoding the default silently
+// project wiki / discussion #144 -- hardcoding the default silently
 // no-ops on nondefault installs).
 std::wstring GetVddConfigDir() {
     HKEY hKey;
@@ -143,36 +143,32 @@ void ReloadVddDevice() {
     }
 }
 
-bool g_virtualScreenCreated = false;
+bool g_virtualDisplayCreated = false;
 
 } // namespace
 
-// Definitions for the globals declared extern in addon.hpp.
-std::uint32_t g_screenWidth = 0;
-std::uint32_t g_screenHeight = 0;
-
 void CreateVirtualScreen(const Napi::CallbackInfo& info) {
-    g_screenWidth = info[0].As<Napi::Number>().Uint32Value();
-    g_screenHeight = info[1].As<Napi::Number>().Uint32Value();
+    std::uint32_t screenWidth = info[0].As<Napi::Number>().Uint32Value();
+    std::uint32_t screenHeight = info[1].As<Napi::Number>().Uint32Value();
 
-    WriteVddConfig(g_screenWidth, g_screenHeight);
+    WriteVddConfig(screenWidth, screenHeight);
     ReloadVddDevice();
-    g_virtualScreenCreated = true;
+    g_virtualDisplayCreated = true;
 }
 
 void ResizeVirtualScreen(const Napi::CallbackInfo& info) {
-    if (!g_virtualScreenCreated) return;
+    if (!g_virtualDisplayCreated) return;
 
-    g_screenWidth = info[0].As<Napi::Number>().Uint32Value();
-    g_screenHeight = info[1].As<Napi::Number>().Uint32Value();
+    std::uint32_t screenWidth = info[0].As<Napi::Number>().Uint32Value();
+    std::uint32_t screenHeight = info[1].As<Napi::Number>().Uint32Value();
 
-    WriteVddConfig(g_screenWidth, g_screenHeight);
+    WriteVddConfig(screenWidth, screenHeight);
     ReloadVddDevice();
 }
 
 void DestroyVirtualScreen(const Napi::CallbackInfo& info) {
-    if (!g_virtualScreenCreated) return;
+    if (!g_virtualDisplayCreated) return;
 
     SetVddDeviceEnabled(false);
-    g_virtualScreenCreated = false;
+    g_virtualDisplayCreated = false;
 }

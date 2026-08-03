@@ -3,6 +3,17 @@
 #include <windows.h>
 #include <cstdint>
 
+namespace {
+
+// Live current resolution, queried fresh each call -- never goes stale,
+// no listener/thread needed.
+void GetVirtualScreenSize(std::uint32_t& outWidth, std::uint32_t& outHeight) {
+    outWidth = static_cast<std::uint32_t>(GetSystemMetrics(SM_CXSCREEN));
+    outHeight = static_cast<std::uint32_t>(GetSystemMetrics(SM_CYSCREEN));
+}
+
+} // namespace
+
 void ScrollMouse(const Napi::CallbackInfo& info) {
     std::uint8_t deltaMode = static_cast<std::uint8_t>(info[0].As<Napi::Number>().Uint32Value());
     float deltaX = info[1].As<Napi::Number>().FloatValue();
@@ -13,10 +24,13 @@ void ScrollMouse(const Napi::CallbackInfo& info) {
         case 0: // pixel
             scaleX = scaleY = 1.0f;
             break;
-        case 2: // page = one full screen dimension
-            scaleX = g_screenWidth  ? static_cast<float>(g_screenWidth)  : static_cast<float>(WHEEL_DELTA) * 3.0f;
-            scaleY = g_screenHeight ? static_cast<float>(g_screenHeight) : static_cast<float>(WHEEL_DELTA) * 3.0f;
+        case 2: { // page = one full screen dimension
+            std::uint32_t screenWidth = 0, screenHeight = 0;
+            GetVirtualScreenSize(screenWidth, screenHeight);
+            scaleX = screenWidth  ? static_cast<float>(screenWidth)  : static_cast<float>(WHEEL_DELTA) * 3.0f;
+            scaleY = screenHeight ? static_cast<float>(screenHeight) : static_cast<float>(WHEEL_DELTA) * 3.0f;
             break;
+        }
         case 1: // line = one wheel detent
         default:
             scaleX = scaleY = static_cast<float>(WHEEL_DELTA);
@@ -63,10 +77,27 @@ void SetMouseButton(const Napi::CallbackInfo& info) {
     SendInput(1, &input, sizeof(INPUT));
 }
 
+// Absolute positioning via SendInput + MOUSEEVENTF_ABSOLUTE. Normalizes
+// against the live current resolution (queried fresh, not cached) so it
+// can't go stale if the resolution changes outside Create/ResizeVirtualScreen.
+// Assumes the VDD is the only display -- origin is always (0,0).
 void SetMousePosition(const Napi::CallbackInfo& info) {
-    std::uint32_t x = info[0].As<Napi::Number>().Uint32Value();
-    std::uint32_t y = info[1].As<Napi::Number>().Uint32Value();
-    SetCursorPos(static_cast<int>(x), static_cast<int>(y));
+    std::int32_t x = info[0].As<Napi::Number>().Int32Value();
+    std::int32_t y = info[1].As<Napi::Number>().Int32Value();
+
+    std::uint32_t screenWidth = 0, screenHeight = 0;
+    GetVirtualScreenSize(screenWidth, screenHeight);
+    if (!screenWidth || !screenHeight) return;
+
+    LONG normX = MulDiv(x, 65536, static_cast<int>(screenWidth));
+    LONG normY = MulDiv(y, 65536, static_cast<int>(screenHeight));
+
+    INPUT input{};
+    input.type = INPUT_MOUSE;
+    input.mi.dx = normX;
+    input.mi.dy = normY;
+    input.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
+    SendInput(1, &input, sizeof(INPUT));
 }
 
 void MoveMousePosition(const Napi::CallbackInfo& info) {

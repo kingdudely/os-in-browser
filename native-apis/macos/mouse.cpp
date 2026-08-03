@@ -14,6 +14,9 @@ extern "C" {
                                   IOOptionBits options);
 }
 
+// Declared/defined in virtual_screen.mm.
+void GetVirtualScreenSize(std::uint32_t& outWidth, std::uint32_t& outHeight);
+
 namespace {
 
 static io_connect_t g_hidConnect = MACH_PORT_NULL;
@@ -71,11 +74,14 @@ void ScrollMouse(const Napi::CallbackInfo& info) {
             unit = kCGScrollEventUnitPixel;
             scaleX = scaleY = 1.0f;
             break;
-        case 2: // page = one full screen dimension, expressed as N lines
+        case 2: { // page = one full screen dimension, expressed as N lines
             unit = kCGScrollEventUnitLine;
-            scaleX = g_screenWidth  ? static_cast<float>(g_screenWidth)  : 3.0f;
-            scaleY = g_screenHeight ? static_cast<float>(g_screenHeight) : 3.0f;
+            std::uint32_t screenWidth = 0, screenHeight = 0;
+            GetVirtualScreenSize(screenWidth, screenHeight);
+            scaleX = screenWidth  ? static_cast<float>(screenWidth)  : 3.0f;
+            scaleY = screenHeight ? static_cast<float>(screenHeight) : 3.0f;
             break;
+        }
         case 1: // line
         default:
             unit = kCGScrollEventUnitLine;
@@ -130,7 +136,8 @@ void SetMouseButton(const Napi::CallbackInfo& info) {
     PostMouseEvent(type, location, cgButton);
 }
 
-// do I set the relative delta?
+// CGEventCreateMouseEvent takes absolute screen coordinates directly --
+// no relative-delta conversion needed here.
 void SetMousePosition(const Napi::CallbackInfo& info) {
     std::uint32_t x = info[0].As<Napi::Number>().Uint32Value();
     std::uint32_t y = info[1].As<Napi::Number>().Uint32Value();
