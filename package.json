@@ -2,10 +2,9 @@
 	"name": "os-in-browser.pages.dev-host",
 	"main": "index.js",
 	"devDependencies": {
-		"@electron/rebuild": "^4.2.0"
-	},
-	"dependencies": {
-		"electron": "^43.2.0"
+		"@electron/rebuild": "^4.2.0",
+		"electron": "^43.2.0",
+		"node-addon-api": "^8.9.1"
 	},
 	"scripts": {
 		"postinstall": "electron-rebuild",

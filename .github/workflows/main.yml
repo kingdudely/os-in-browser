@@ -52,11 +52,6 @@ jobs:
         run: |
           winget install --id=VirtualDrivers.Virtual-Display-Driver -e
 
-      - name: Install LLD for MacOS
-        if: runner.os == 'macOS'
-        run: |
-          brew install lld
-
       - name: Start server
         id: server
         env:
