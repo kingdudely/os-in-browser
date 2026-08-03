@@ -1,0 +1,82 @@
+name: Build Electron Native Modules
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'binding.gyp'
+      - 'native-apis/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact: darwin-arm64
+          - os: windows-latest
+            artifact: win32-x64
+          - os: ubuntu-latest
+            artifact: linux-x64
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@main
+        with:
+          node-version: 26
+
+      - name: Install Linux X11 headers
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxrandr-dev
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build prebuilt N-API binary
+        run: npm run build:native
+
+      - name: Verify build output
+        run: test -f prebuilds/${{ matrix.artifact }}/node.napi.node
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@main
+        with:
+          name: ${{ matrix.artifact }}
+          path: prebuilds/${{ matrix.artifact }}
+
+  commit:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@main
+
+      - name: Download artifact
+        uses: actions/download-artifact@main
+        with:
+          path: prebuilds
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add prebuilds
+          git commit -m "chore: rebuild native modules [skip ci]" || echo "nothing to commit"
+          git push

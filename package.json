@@ -2,12 +2,15 @@
 	"name": "os-in-browser.pages.dev-host",
 	"main": "index.js",
 	"devDependencies": {
-		"@electron/rebuild": "^4.2.0",
 		"electron": "^43.2.0",
-		"node-addon-api": "^8.9.1"
+		"node-addon-api": "^8.9.1",
+		"prebuildify": "^6.0.1"
+	},
+	"dependencies": {
+		"node-gyp-build": "^4.8.4"
 	},
 	"scripts": {
-		"postinstall": "electron-rebuild",
+		"build:native": "prebuildify --napi --strip",
 		"start": "electron ."
 	}
 }
