@@ -6,7 +6,7 @@
 #include <optional>
 
 namespace {
-
+// NX_KEYTYPE
 inline constexpr std::array<std::optional<CGKeyCode>, 174> kMacVirtualKeyMap = {
     std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt,
     std::nullopt, std::nullopt, std::nullopt, kVK_Function, std::nullopt,
