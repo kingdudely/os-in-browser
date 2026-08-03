@@ -43,12 +43,8 @@ CGPoint CurrentMouseLocation() {
     return point;
 }
 
-void PostMouseEvent(CGEventType type, CGPoint location, CGMouseButton button, std::int32_t dx = 0, std::int32_t dy = 0) {
+void PostMouseEvent(CGEventType type, CGPoint location, CGMouseButton button) {
     CGEventRef event = CGEventCreateMouseEvent(nullptr, type, location, button);
-    if (dx != 0 || dy != 0) {
-        CGEventSetIntegerValueField(event, kCGMouseEventDeltaX, dx);
-        CGEventSetIntegerValueField(event, kCGMouseEventDeltaY, dy);
-    }
     CGEventPost(kCGHIDEventTap, event);
     CFRelease(event);
 }
@@ -134,6 +130,7 @@ void SetMouseButton(const Napi::CallbackInfo& info) {
     PostMouseEvent(type, location, cgButton);
 }
 
+// do I set the relative delta?
 void SetMousePosition(const Napi::CallbackInfo& info) {
     std::uint32_t x = info[0].As<Napi::Number>().Uint32Value();
     std::uint32_t y = info[1].As<Napi::Number>().Uint32Value();
