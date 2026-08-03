@@ -11,7 +11,7 @@
 	},
 	"scripts": {
 		"install": "node-gyp-build",
-		"build:native": "prebuildify --napi --strip",
+		"build:native": "prebuildify --napi --strip --name node",
 		"start": "electron ."
 	}
 }
