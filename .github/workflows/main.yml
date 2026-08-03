@@ -57,6 +57,7 @@ jobs:
         id: server
         env:
           OFFER: ${{ github.event.inputs.offer }}
+          ELECTRON_DISABLE_SANDBOX: 1 # Curse you Ubuntu!!!!!!!!!!!!!!!! jk sorry, but still . ... .
         background: true
         run: |
           npm install
