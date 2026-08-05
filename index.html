@@ -32,6 +32,7 @@ peer.addEventListener("icecandidate", (event) => {
 	});
 });
 
+const setRemoteDescriptionCompleted = Promise.withResolvers();
 topic.addEventListener("message", async (event) => {
 	const { title, attachment } = JSON.parse(event.data);
 	if (!attachment) return; // shouldn't happen anymore, but guard just in case
@@ -43,12 +44,14 @@ topic.addEventListener("message", async (event) => {
 	switch (title) {
 		case "answer": {
 			await peer.setRemoteDescription({ type: "answer", sdp: message });
+			setRemoteDescriptionCompleted.resolve();
 			console.log(`Set remote description!`)
 
 			break;
 		};
 
 		case "answer-candidate": {
+			await setRemoteDescriptionCompleted.promise;
 			await peer.addIceCandidate(JSON.parse(message));
 			console.log(`Added ice candidate!`)
 
