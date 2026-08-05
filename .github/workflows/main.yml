@@ -16,8 +16,8 @@ on:
           - windows-latest
           - ubuntu-latest
           - macos-latest
-      offer:
-        description: "Offer"
+      topic-name:
+        description: "Topic name"
         type: string
         required: true
 
@@ -54,26 +54,9 @@ jobs:
           winget install --id=VirtualDrivers.Virtual-Display-Driver -e --accept-source-agreements --accept-package-agreements
 
       - name: Start server
-        id: server
         env:
-          OFFER: ${{ github.event.inputs.offer }}
+          TOPIC_NAME: ${{ github.event.inputs.topic-name }}
           ELECTRON_DISABLE_SANDBOX: 1 # Curse you Ubuntu!!!!!!!!!!!!!!!! jk sorry, but still . ... .
-        background: true
         run: |
           npm install
           npm start
-
-      - name: Wait for answer.txt
-        run: |
-          until [ -f answer.txt ]; do
-            sleep 1
-          done
-
-      - name: Upload answer.txt
-        uses: actions/upload-artifact@main
-        with:
-          path: answer.txt
-          archive: false
-
-      - name: Wait until connection is closed
-        wait: server
