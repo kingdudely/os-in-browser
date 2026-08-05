@@ -35,6 +35,7 @@ app.whenReady().then(() => {
 		console.log('Renderer gone:', details);
 	});
 	win.webContents.on('unresponsive', () => console.log('Renderer unresponsive'));
+	win.webContents.openDevTools({ mode: 'detach' });
 	win.loadFile(fileURLToPath(import.meta.resolve("./index.html")));
 });
 

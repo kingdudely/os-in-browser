@@ -4,10 +4,10 @@
         <meta charset="utf-8" />
         <title>os-in-browser</title>
         <script>
-const { env, stdout } = require("node:process");
+const { TOPIC_NAME } = require("node:process").env;
 const nativeApis = require('node-gyp-build')(__dirname);
 
-stdout.write("app/index.js loaded!\n");
+console.log("app/index.js loaded!");
 
 const peer = new RTCPeerConnection({
 	iceServers: [
@@ -15,11 +15,10 @@ const peer = new RTCPeerConnection({
 	]
 });
 
-const topicName = env.TOPIC_NAME;
-const topicUrl = `https://ntfy.sh/${topicName}`;
+const topicUrl = `https://ntfy.sh/${TOPIC_NAME}`;
 const topic = new EventSource(`${topicUrl}/sse`);
 peer.addEventListener("icecandidate", (event) => {
-	stdout.write(`Got ice candidate: ${event.candidate}\n`);
+	console.log(`Got ice candidate: ${event.candidate}`);
 
 	if (!event.candidate) return;
 
@@ -32,27 +31,27 @@ peer.addEventListener("icecandidate", (event) => {
 
 topic.addEventListener("message", async (event) => {
 	const { title, message } = JSON.parse(event.data);
-	stdout.write(`Got message: title ${title}, message ${message}!\n`)
+	console.log(`Got message: title ${title}, message ${message}!`)
 
 
 	switch (title) {
 		case "answer": {
 			await peer.setRemoteDescription({ type: "answer", sdp: message });
-			stdout.write(`Set remote description!\n`)
+			console.log(`Set remote description!`)
 
 			break;
 		};
 
 		case "answer-candidate": {
 			await peer.addIceCandidate(JSON.parse(message));
-			stdout.write(`Added ice candidate!\n`)
+			console.log(`Added ice candidate!`)
 
 			break;
 		};
 	}
 });
 
-stdout.write("RTCPeerConnection initialized!\n");
+console.log("RTCPeerConnection initialized!");
 
 const pointerMovementChannel = peer.createDataChannel("pointer-movement", {
 	ordered: false,
@@ -147,19 +146,19 @@ pointerScrollChannel.addEventListener("message", async (event) => {
 
 	nativeApis.scrollMouse(deltaMode, deltaX, deltaY, deltaZ);
 });
-stdout.write("DataChannels initialized!\n")
+console.log("DataChannels initialized!")
 
 (async function () {
-	stdout.write("Entered async function!\n");
+	console.log("Entered async function!");
 
 	const stream = await navigator.mediaDevices.getDisplayMedia();
-	stdout.write("Display media obtained!\n")
+	console.log("Display media obtained!")
 
 	stream.getTracks().forEach((track) => peer.addTrack(track, stream));
-	stdout.write("Display media tracks added!\n")
+	console.log("Display media tracks added!")
 	
 	await peer.setLocalDescription();
-	stdout.write("Local description set!\n")
+	console.log("Local description set!")
 
 	// this was missing — actually send the offer
 	await fetch(topicUrl, {
@@ -167,7 +166,7 @@ stdout.write("DataChannels initialized!\n")
 		headers: { "Title": "offer" },
 		body: peer.localDescription.sdp,
 	});
-	stdout.write("Sent offer!\n")
+	console.log("Sent offer!")
 
 })();
 		</script>
