@@ -149,7 +149,7 @@ pointerScrollChannel.addEventListener("message", async (event) => {
 console.log("DataChannels initialized!")
 console.log("typeof console:", typeof console, "typeof console.log:", typeof console.log)
 
-const stream = navigator.mediaDevices.getDisplayMedia().then(() => {
+navigator.mediaDevices.getDisplayMedia().then((stream) => {
 	console.log("Display media obtained!")
 
 	stream.getTracks().forEach((track) => peer.addTrack(track, stream));
