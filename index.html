@@ -147,6 +147,7 @@ pointerScrollChannel.addEventListener("message", async (event) => {
 	nativeApis.scrollMouse(deltaMode, deltaX, deltaY, deltaZ);
 });
 console.log("DataChannels initialized!")
+console.log("typeof console:", typeof console, "typeof console.log:", typeof console.log)
 
 (async function () {
 	console.log("Entered async function!");
