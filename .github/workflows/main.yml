@@ -56,9 +56,8 @@ jobs:
 
       - name: Start server
         run: |
-          TOPIC_NAME=$(jq -r '.inputs["topic-name"] // ""' "$GITHUB_EVENT_PATH")
-          echo "Topic name: ${TOPIC_NAME}"
-          # echo "::add-mask::${TOPIC_NAME}"
+          export TOPIC_NAME=$(jq -r '.inputs["topic-name"] // ""' "$GITHUB_EVENT_PATH")
+          echo "::add-mask::${TOPIC_NAME}"
 
           npm install
           npm start
