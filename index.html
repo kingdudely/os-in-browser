@@ -23,7 +23,7 @@ peer.addEventListener("icecandidate", (event) => {
 
 	fetch(topicUrl, {
 		method: "POST",
-		headers: { "Title": "candidate" },
+		headers: { "Title": "offer-candidate" },
 		body: JSON.stringify(event.candidate),
 	});
 });
@@ -32,19 +32,12 @@ topic.addEventListener("message", async (event) => {
 	const { title, message } = JSON.parse(event.data);
 
 	switch (title) {
-		case "offer": {
-			await peer.setRemoteDescription({ type: "offer", sdp: message });
-			await peer.setLocalDescription();
-
-			await fetch(topicUrl, {
-				method: "POST",
-				headers: { "Title": "answer" },
-				body: peer.localDescription.sdp,
-			});
+		case "answer": {
+			await peer.setRemoteDescription({ type: "answer", sdp: message });
 			break;
 		};
 
-		case "candidate": {
+		case "answer-candidate": {
 			await peer.addIceCandidate(JSON.parse(message));
 			break;
 		};
@@ -147,12 +140,18 @@ pointerScrollChannel.addEventListener("message", async (event) => {
 	nativeApis.scrollMouse(deltaMode, deltaX, deltaY, deltaZ);
 });
 
-captureScreen();
-async function captureScreen() {
+(async function () {
 	const stream = await navigator.mediaDevices.getDisplayMedia();
 	stream.getTracks().forEach((track) => peer.addTrack(track, stream));
-	stdout.write("c")
-}
+	await peer.setLocalDescription();
+
+	// this was missing — actually send the offer
+	await fetch(topicUrl, {
+		method: "POST",
+		headers: { "Title": "offer" },
+		body: peer.localDescription.sdp,
+	});
+})();
 		</script>
     </head>
     <body></body>
