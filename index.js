@@ -27,9 +27,9 @@ app.whenReady().then(() => {
 		}
 	});
 
-	// win.webContents.on('console-message', ({ level, message, lineNumber, sourceId }) => {
-	// 	console.log(`[renderer:${level}] ${message} (${sourceId}:${lineNumber})`);
-	// });
+	win.webContents.on('console-message', ({ level, message, lineNumber, sourceId }) => {
+		console.log(`[renderer:${level}] ${message} (${sourceId}:${lineNumber})`);
+	});
 	win.loadFile(fileURLToPath(import.meta.resolve("./index.html")));
 });
 
