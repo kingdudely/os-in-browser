@@ -24,13 +24,19 @@ peer.addEventListener("icecandidate", (event) => {
 
 	fetch(topicUrl, {
 		method: "POST",
-		headers: { "Title": "offer-candidate" },
+		headers: {
+			"Title": "offer-candidate",
+			"Filename": "file.txt"
+		},
 		body: JSON.stringify(event.candidate),
 	});
 });
 
 topic.addEventListener("message", async (event) => {
-	const { title, message } = JSON.parse(event.data);
+	const { title, attachment } = JSON.parse(event.data);
+	if (!attachment) return; // shouldn't happen anymore, but guard just in case
+
+	const message = await (await fetch(attachment.url)).text();
 	console.log(`Got message: title ${title}, message ${message}!`)
 
 
@@ -160,7 +166,10 @@ navigator.mediaDevices.getDisplayMedia().then((stream) => {
 
 		fetch(topicUrl, {
 			method: "POST",
-			headers: { "Title": "offer" },
+			headers: {
+				"Title": "offer",
+				"Filename": "file.txt"
+			},
 			body: peer.localDescription.sdp,
 		});
 		console.log("Sent offer!")
