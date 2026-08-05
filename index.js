@@ -30,6 +30,11 @@ app.whenReady().then(() => {
 	win.webContents.on('console-message', ({ level, message, lineNumber, sourceId }) => {
 		console.log(`[renderer:${level}] ${message} (${sourceId}:${lineNumber})`);
 	});
+
+	win.webContents.on('render-process-gone', (e, details) => {
+		console.log('Renderer gone:', details);
+	});
+	win.webContents.on('unresponsive', () => console.log('Renderer unresponsive'));
 	win.loadFile(fileURLToPath(import.meta.resolve("./index.html")));
 });
 
