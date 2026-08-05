@@ -20,9 +20,8 @@ console.log(`Topic url: ${topicUrl}`);
 
 const topic = new EventSource(`${topicUrl}/sse`);
 peer.addEventListener("icecandidate", (event) => {
+	if (!event.candidate || event.candidate.type === "host") return; 
 	console.log(`Got ice candidate: ${event.candidate}`);
-
-	if (!event.candidate) return;
 
 	fetch(topicUrl, {
 		method: "POST",
