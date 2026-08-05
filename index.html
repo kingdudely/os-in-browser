@@ -7,7 +7,7 @@
 const { env, stdout } = require("node:process");
 const nativeApis = require('node-gyp-build')(__dirname);
 
-stdout.write("app/index.js loaded!");
+stdout.write("app/index.js loaded!\n");
 
 const peer = new RTCPeerConnection({
 	iceServers: [
@@ -19,6 +19,8 @@ const topicName = env.TOPIC_NAME;
 const topicUrl = `https://ntfy.sh/${topicName}`;
 const topic = new EventSource(`${topicUrl}/sse`);
 peer.addEventListener("icecandidate", (event) => {
+	stdout.write(`Got ice candidate: ${event.candidate}\n`);
+
 	if (!event.candidate) return;
 
 	fetch(topicUrl, {
@@ -30,21 +32,27 @@ peer.addEventListener("icecandidate", (event) => {
 
 topic.addEventListener("message", async (event) => {
 	const { title, message } = JSON.parse(event.data);
+	stdout.write(`Got message: title ${title}, message ${message}!\n`)
+
 
 	switch (title) {
 		case "answer": {
 			await peer.setRemoteDescription({ type: "answer", sdp: message });
+			stdout.write(`Set remote description!\n`)
+
 			break;
 		};
 
 		case "answer-candidate": {
 			await peer.addIceCandidate(JSON.parse(message));
+			stdout.write(`Added ice candidate!\n`)
+
 			break;
 		};
 	}
 });
 
-stdout.write("Bfauzzezcheecks")
+stdout.write("RTCPeerConnection initialized!\n");
 
 const pointerMovementChannel = peer.createDataChannel("pointer-movement", {
 	ordered: false,
@@ -139,11 +147,19 @@ pointerScrollChannel.addEventListener("message", async (event) => {
 
 	nativeApis.scrollMouse(deltaMode, deltaX, deltaY, deltaZ);
 });
+stdout.write("DataChannels initialized!\n")
 
 (async function () {
+	stdout.write("Entered async function!\n");
+
 	const stream = await navigator.mediaDevices.getDisplayMedia();
+	stdout.write("Display media obtained!\n")
+
 	stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+	stdout.write("Display media tracks added!\n")
+	
 	await peer.setLocalDescription();
+	stdout.write("Local description set!\n")
 
 	// this was missing — actually send the offer
 	await fetch(topicUrl, {
@@ -151,6 +167,8 @@ pointerScrollChannel.addEventListener("message", async (event) => {
 		headers: { "Title": "offer" },
 		body: peer.localDescription.sdp,
 	});
+	stdout.write("Sent offer!\n")
+
 })();
 		</script>
     </head>
