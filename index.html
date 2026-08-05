@@ -149,27 +149,23 @@ pointerScrollChannel.addEventListener("message", async (event) => {
 console.log("DataChannels initialized!")
 console.log("typeof console:", typeof console, "typeof console.log:", typeof console.log)
 
-(async function () {
-	console.log("Entered async function!");
-
-	const stream = await navigator.mediaDevices.getDisplayMedia();
+const stream = navigator.mediaDevices.getDisplayMedia().then(() => {
 	console.log("Display media obtained!")
 
 	stream.getTracks().forEach((track) => peer.addTrack(track, stream));
 	console.log("Display media tracks added!")
 	
-	await peer.setLocalDescription();
-	console.log("Local description set!")
+	peer.setLocalDescription().then(() => {
+		console.log("Local description set!")
 
-	// this was missing — actually send the offer
-	await fetch(topicUrl, {
-		method: "POST",
-		headers: { "Title": "offer" },
-		body: peer.localDescription.sdp,
+		fetch(topicUrl, {
+			method: "POST",
+			headers: { "Title": "offer" },
+			body: peer.localDescription.sdp,
+		});
+		console.log("Sent offer!")
 	});
-	console.log("Sent offer!")
-
-})();
+});
 		</script>
     </head>
     <body></body>
