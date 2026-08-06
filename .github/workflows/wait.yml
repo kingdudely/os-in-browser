@@ -1,0 +1,21 @@
+name: Random Number Stream
+
+on:
+  workflow_dispatch:
+
+jobs:
+  stream:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set output
+        id: output
+        background: true
+        run: |
+          sleep 10
+          echo "my_key=hello-world" >> "$GITHUB_OUTPUT"
+
+      - name: Get output
+        run: |
+          echo "The output was ${{ steps.source_step.outputs.my_key }}"
+          sleep 10
+          echo "The output was ${{ steps.source_step.outputs.my_key }}"
