@@ -17,5 +17,5 @@ jobs:
       - name: Get output
         run: |
           echo "The output was ${{ steps.source_step.outputs.my_key }}"
-          sleep 10
+          sleep 20
           echo "The output was ${{ steps.source_step.outputs.my_key }}"
