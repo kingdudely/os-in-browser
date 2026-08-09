@@ -16,8 +16,8 @@ on:
           - windows-latest
           - ubuntu-latest
           - macos-latest
-      password:
-        description: "Password"
+      topic-name:
+        description: "Topic name"
         type: string
         required: true
 
@@ -56,8 +56,8 @@ jobs:
 
       - name: Start server
         run: |
-          export PASSWORD=$(jq -r '.inputs["password"] // ""' "$GITHUB_EVENT_PATH")
-          echo "::add-mask::${PASSWORD}"
+          export TOPIC_NAME=$(jq -r '.inputs["topic-name"] // ""' "$GITHUB_EVENT_PATH")
+          echo "::add-mask::${TOPIC_NAME}"
 
           npm install
           npm start
