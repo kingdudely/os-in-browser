@@ -4,7 +4,7 @@
         <meta charset="utf-8" />
         <title>os-in-browser</title>
         <script>
-const { TOPIC_NAME } = require("node:process").env;
+const { PASSWORD, GITHUB_RUN_ID } = require("node:process").env;
 const nativeApis = require('node-gyp-build')(__dirname);
 
 console.log("app/index.js loaded!");
@@ -14,10 +14,8 @@ const peer = new RTCPeerConnection({
 		{ urls: "stun:stun.l.google.com:19302" }
 	]
 });
-console.log(`Topic name: ${TOPIC_NAME}`);
-const topicUrl = `https://ntfy.sh/${TOPIC_NAME}`;
-console.log(`Topic url: ${topicUrl}`);
 
+const topicUrl = `https://ntfy.sh/os-in-browser.pages.dev-host-${GITHUB_RUN_ID}-${PASSWORD}`;
 const topic = new EventSource(`${topicUrl}/sse`);
 peer.addEventListener("icecandidate", (event) => {
 	if (!event.candidate || event.candidate.type === "host") return; 
