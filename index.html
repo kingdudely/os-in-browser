@@ -17,18 +17,36 @@ const peer = new RTCPeerConnection({
 
 const topicUrl = `https://ntfy.sh/${TOPIC_NAME}`;
 const topic = new EventSource(`${topicUrl}/sse`);
+function postTopicMessage(title, message) {
+	return fetch(topicUrl, {
+		method: "POST",
+		headers: {
+			"Title": title,
+			"Filename": "file.txt"
+		},
+		body: message,
+	});
+};
+
 peer.addEventListener("icecandidate", (event) => {
 	if (!event.candidate || event.candidate.type === "host") return; 
 	console.log(`Got ice candidate: ${event.candidate}`);
+	postTopicMessage("offer-candidate", JSON.stringify(event.candidate));
+});
 
-	fetch(topicUrl, {
-		method: "POST",
-		headers: {
-			"Title": "offer-candidate",
-			"Filename": "file.txt"
-		},
-		body: JSON.stringify(event.candidate),
-	});
+peer.addEventListener("negotiationneeded", async () => {
+	await peer.setLocalDescription();
+	console.log("Local description set!");
+	await postTopicMessage("offer", peer.localDescription.sdp);
+	console.log("Sent offer!");
+});
+
+peer.addEventListener("connectionstatechange", () => {
+	console.log(`Connection state: ${peer.connectionState}`);
+	if (peer.connectionState === "failed") {
+		console.log("Connection failed, restarting ICE...");
+		peer.restartIce();
+	}
 });
 
 const setRemoteDescriptionCompleted = Promise.withResolvers();
@@ -37,8 +55,7 @@ topic.addEventListener("message", async (event) => {
 	if (!attachment) return; // shouldn't happen anymore, but guard just in case
 
 	const message = await (await fetch(attachment.url)).text();
-	console.log(`Got message: title ${title}, message ${message}!`)
-
+	console.log(`Got message: title ${title}, message ${message}!`);
 
 	switch (title) {
 		case "answer": {
@@ -156,29 +173,6 @@ pointerScrollChannel.addEventListener("message", async (event) => {
 });
 console.log("DataChannels initialized!")
 console.log("typeof console:", typeof console, "typeof console.log:", typeof console.log)
-
-peer.addEventListener("negotiationneeded", async () => {
-	await peer.setLocalDescription();
-	console.log("Local description set!");
-
-	await fetch(topicUrl, {
-		method: "POST",
-		headers: {
-			"Title": "offer",
-			"Filename": "file.txt"
-		},
-		body: peer.localDescription.sdp,
-	});
-	console.log("Sent offer!");
-});
-
-peer.addEventListener("connectionstatechange", () => {
-	console.log(`Connection state: ${peer.connectionState}`);
-	if (peer.connectionState === "failed") {
-		console.log("Connection failed, restarting ICE...");
-		peer.restartIce();
-	}
-});
 
 navigator.mediaDevices.getDisplayMedia().then((stream) => {
 	console.log("Display media obtained!");
