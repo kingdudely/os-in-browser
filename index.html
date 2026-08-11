@@ -5,16 +5,38 @@
         <title>os-in-browser</title>
         <script>
 console.log("app/index.js loaded!");
+// Import the WebSocket Server from the 'ws' library
+const { WebSocketServer } = require('ws');
+const { startTunnel } = require("untun");
 
+const port = 8080;
+const wss = new WebSocketServer({ port });
 
-console.log("DataChannels initialized!")
-console.log("typeof console:", typeof console, "typeof console.log:", typeof console.log)
+wss.on('connection', (ws) => {
+  console.log('A new client connected!');
+
+  // Send a welcome message to the connected client
+  ws.send('Welcome to the WebSocket server!');
+
+  // Listen for messages from this specific client
+  ws.on('message', (message) => {
+    // Convert Buffer data to a readable string
+    console.log(`Received message: ${message}`);
+    
+    // Echo the message back to the client
+    ws.send(`Server received: ${message}`);
+  });
+
+  // Handle client disconnection
+  ws.on('close', () => {
+    console.log('Client has disconnected.');
+  });
+});
+
+const tunnel = await startTunnel({ port, acceptCloudflareNotice: true });
+const tunnelUrl = await tunnel.getURL();
 
 const stream = await navigator.mediaDevices.getDisplayMedia()
-console.log("Display media obtained!");
-console.log("Display media tracks added!");
-stream.getTracks().forEach((track) => peer.addTrack(track, stream));
-
 		</script>
     </head>
     <body></body>

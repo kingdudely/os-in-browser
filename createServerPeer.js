@@ -9,8 +9,6 @@ const RTCPeerConnectionInit = {
 export default function createServerPeer() {
     const peer = new RTCPeerConnection(RTCPeerConnectionInit);
 
-    console.log("RTCPeerConnection initialized!");
-
     const pointerMovementChannel = peer.createDataChannel("pointer-movement", {
         ordered: false,
         maxRetransmits: 0,
