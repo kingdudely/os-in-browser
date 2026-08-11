@@ -16,10 +16,6 @@ on:
           - windows-latest
           - ubuntu-latest
           - macos-latest
-      topic-name:
-        description: "Topic name"
-        type: string
-        required: true
 
 jobs:
   remote:
@@ -56,8 +52,5 @@ jobs:
 
       - name: Start server
         run: |
-          export TOPIC_NAME=$(jq -r '.inputs["topic-name"] // ""' "$GITHUB_EVENT_PATH")
-          echo "::add-mask::${TOPIC_NAME}"
-
           npm install
           npm start
