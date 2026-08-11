@@ -5,7 +5,7 @@
         <title>os-in-browser</title>
         <script>
 const { TOPIC_NAME } = require("node:process").env;
-const nativeApis = require('node-gyp-build')(__dirname);
+const nativeApis = require('native-apis');
 
 console.log("app/index.js loaded!");
 
