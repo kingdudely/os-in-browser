@@ -19,7 +19,7 @@ app.whenReady().then(() => {
 	}, { useSystemPicker: false });
 
 	const win = new BrowserWindow({
-		show: false,
+		show: true,
 		webPreferences: {
 			nodeIntegration: true,
 			contextIsolation: false,
@@ -36,7 +36,7 @@ app.whenReady().then(() => {
 	});
 	win.webContents.on('unresponsive', () => console.log('Renderer unresponsive'));
 	win.webContents.openDevTools({ mode: 'detach' });
-	win.loadFile(fileURLToPath(import.meta.resolve("./index.html")));
+	win.loadFile(fileURLToPath(import.meta.resolve("./app/index.html")));
 });
 
 app.on('window-all-closed', () => app.quit());
