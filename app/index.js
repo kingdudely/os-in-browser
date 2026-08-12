@@ -1,6 +1,8 @@
 console.log("app/index.js loaded!");
 // Import the WebSocket Server from the 'ws' library
 const { GITHUB_TOKEN, GITHUB_SHA, GITHUB_RUN_ID, GITHUB_REPOSITORY, RUNNER_OS } = require("process").env;
+console.log("GITHUB_TOKEN present:", !!GITHUB_TOKEN, GITHUB_TOKEN?.length);
+
 const { WebSocketServer } = require('ws');
 const { startTunnel } = require("untun");
 import createServerPeer from "./createServerPeer.js";
