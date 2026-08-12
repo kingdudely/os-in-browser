@@ -3,7 +3,7 @@
 	"main": "index.js",
 	"type": "module",
 	"devDependencies": {
-		"electron": "43.2.0",
+		"electron": "^43.2.0",
 		"native-apis": "^1.0.0",
 		"untun": "^0.2.2",
 		"ws": "^8.21.3"
