@@ -9,6 +9,7 @@ const port = 8080;
 const wss = new WebSocketServer({ port });
 const stream = await navigator.mediaDevices.getDisplayMedia();
 const tracks = stream.getTracks();
+const etagCache = new Map(); // path -> { etag, data }
 
 wss.on('connection', async (ws) => {
 	const accessToken = await new Promise((resolve) => ws.once('message', resolve));
@@ -34,7 +35,6 @@ await gh("POST", `/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}`, {
 	"description": RUNNER_OS
 });
 
-const etagCache = new Map(); // path -> { etag, data }
 async function ghFactory(method, path, body) {
 	const cacheKey = `${this}:${path}`;
 	const cached = etagCache.get(cacheKey);
