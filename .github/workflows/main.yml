@@ -25,6 +25,11 @@ jobs:
     steps:
       - name: Copy repository into PC
         uses: actions/checkout@main
+      
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
 
       - name: Create Linux screen
         if: runner.os == 'Linux'
