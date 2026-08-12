@@ -58,6 +58,8 @@ jobs:
           winget install --id=VirtualDrivers.Virtual-Display-Driver -e --accept-source-agreements --accept-package-agreements
 
       - name: Start server
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           npm install
           npm start
