@@ -35,7 +35,6 @@ await gh("POST", `/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}`, {
 });
 
 const etagCache = new Map(); // path -> { etag, data }
-
 async function ghFactory(method, path, body) {
 	const cacheKey = `${this}:${path}`;
 	const cached = etagCache.get(cacheKey);
