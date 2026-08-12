@@ -21,8 +21,57 @@ wss.on('connection', async (ws) => {
     }
 
 	const peer = createServerPeer();
-    peer.addEventListener("negotiationneeded")
     tracks.forEach((track) => peer.addTrack(track, stream));
+
+    function send(type, message) {
+        if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({ type, message }));
+        }
+    }
+
+    peer.addEventListener("icecandidate", (event) => {
+        if (event.candidate) {
+            send("ice-candidate", event.candidate);
+        }
+    });
+
+    peer.addEventListener("negotiationneeded", async () => {
+        try {
+            const offer = await peer.createOffer();
+            await peer.setLocalDescription(offer);
+            send("offer", peer.localDescription);
+        } catch (err) {
+            console.error("Failed to create/send offer:", err);
+        }
+    });
+
+    ws.on("message", async (raw) => {
+        let data;
+        try {
+            data = JSON.parse(raw.toString());
+        } catch {
+            return;
+        }
+
+        switch (data.type) {
+            case "answer":
+                try {
+                    await peer.setRemoteDescription(data.message);
+                } catch (err) {
+                    console.error("Failed to set remote description:", err);
+                }
+                break;
+            case "ice-candidate":
+                try {
+                    await peer.addIceCandidate(data.message);
+                } catch (err) {
+                    console.error("Failed to add ICE candidate:", err);
+                }
+                break;
+        }
+    });
+
+    ws.once("close", () => peer.close());
 });
 
 const tunnel = await startTunnel({ port, acceptCloudflareNotice: true });
