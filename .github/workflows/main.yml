@@ -21,6 +21,8 @@ jobs:
   remote:
     runs-on: ${{ github.event.inputs.os }}
     timeout-minutes: 360
+    permissions:
+      statuses: write
 
     steps:
       - name: Copy repository into PC
