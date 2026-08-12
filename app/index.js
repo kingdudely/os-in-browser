@@ -34,23 +34,35 @@ await gh("POST", `/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}`, {
 	"description": RUNNER_OS
 });
 
+const etagCache = new Map(); // path -> { etag, data }
+
 async function ghFactory(method, path, body) {
+	const cacheKey = `${this}:${path}`;
+	const cached = etagCache.get(cacheKey);
+	const headers = {
+		"Authorization": `Bearer ${this}`,
+		"Accept": "application/vnd.github+json",
+		"Content-Type": "application/json",
+		// browser sets useragent for us
+	};
+	if (method === "GET" && cached) headers["If-None-Match"] = cached.etag;
+
 	const response = await fetch(`https://api.github.com${path}`, {
 		"method": method,
-		"headers": {
-			"Authorization": `Bearer ${this}`,
-			"Accept": "application/vnd.github+json",
-			"Content-Type": "application/json",
-			// browser sets useragent for us
-		},
-		"body": JSON.stringify(body)
+		"headers": headers,
+		"body": body !== undefined ? JSON.stringify(body) : undefined
 	});
+
+	if (response.status === 304) return cached.data;
 
 	const json = await response.json();
 
 	if (!response.ok) {
 		throw new Error(`Got HTTP status code ${response.status}${json.message ? `, error message: ${json.message}` : ""}`);
 	}
+
+	const etag = response.headers.get("ETag");
+	if (method === "GET" && etag) etagCache.set(cacheKey, { etag, data: json });
 
 	return json;
 }
