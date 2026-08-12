@@ -1,6 +1,6 @@
 console.log("app/index.js loaded!");
 // Import the WebSocket Server from the 'ws' library
-const { GITHUB_TOKEN, GITHUB_SHA, GITHUB_RUN_ID, GITHUB_REPOSITORY } = require("process").env;
+const { GITHUB_TOKEN, GITHUB_SHA, GITHUB_RUN_ID, GITHUB_REPOSITORY, RUNNER_OS } = require("process").env;
 const { WebSocketServer } = require('ws');
 const { startTunnel } = require("untun");
 import createServerPeer from "./createServerPeer.js";
@@ -30,7 +30,8 @@ const gh = ghFactory.bind(GITHUB_TOKEN);
 await gh("POST", `/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}`, {
 	"state": "success",
 	"target_url": tunnelUrl,
-	"context": GITHUB_RUN_ID
+	"context": GITHUB_RUN_ID,
+	"description": RUNNER_OS
 });
 
 async function ghFactory(method, path, body) {
