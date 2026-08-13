@@ -1,5 +1,5 @@
-#include "virtual_screen.hpp"
-#include "parser-vdd.hpp"
+#include "../../shared/include/virtual_screen.hpp"
+#include "../vendor/include/parser-vdd.hpp"
 
 #include <windows.h>
 #include <cstdio>
