@@ -32,7 +32,7 @@ jobs:
         run: |
           case "$RUNNER_OS" in
             macOS)
-              ./dist/darwin "${{ github.event.inputs.share-id }}"
+              # ./macos/dist/...
               ;;
 
             Linux)
@@ -48,7 +48,8 @@ jobs:
               ;;
 
             Windows)
-              ./dist/windows.exe "${{ github.event.inputs.share-id }}"
+              .\parsec-vdd-0.45.0.0.exe /S
+              # ./windows/dist/...
               ;;
 
             *)
