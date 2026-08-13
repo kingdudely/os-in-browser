@@ -27,39 +27,32 @@ jobs:
     steps:
       - name: Copy repository into PC
         uses: actions/checkout@main
-      
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - name: Create Linux screen
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            lxqt \
-            openbox \
-            dbus-x11 \
-            xvfb \
-            libxrandr-dev
-
-          read -r DISPLAY_NUMBER < <(exec Xvfb -displayfd 1)
-
-          export DISPLAY=":$DISPLAY_NUMBER"
-          echo "DISPLAY=$DISPLAY" >> "$GITHUB_ENV"
-          echo "ELECTRON_DISABLE_SANDBOX=1" >> $GITHUB_ENV
-
-          startlxqt &
-
-      - name: Install Windows Virtual Device Driver
-        if: runner.os == 'Windows'
-        run: |
-          winget install --id=VirtualDrivers.Virtual-Display-Driver -e --accept-source-agreements --accept-package-agreements
 
       - name: Start server
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          npm install
-          npm start
+          case "$RUNNER_OS" in
+            macOS)
+              ./dist/darwin "${{ github.event.inputs.share-id }}"
+              ;;
+
+            Linux)
+              sudo apt-get install -y --no-install-recommends \
+                lxqt \
+                openbox \
+                dbus-x11 \
+                xvfb \
+                libxrandr-dev
+
+
+              xvfb-run -a -s "-screen 0 1920x1080x24" bash -c "dbus-launch startlxqt >/tmp/lxqt.log 2>&1 & exec ./dist/linux"
+              ;;
+
+            Windows)
+              ./dist/windows.exe "${{ github.event.inputs.share-id }}"
+              ;;
+
+            *)
+              echo "Error: Unsupported OS"
+              exit 1
+              ;;
+          esac
