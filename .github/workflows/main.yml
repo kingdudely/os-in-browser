@@ -33,7 +33,7 @@ jobs:
         with:
           node-version: 24
 
-      - name: Create Linux screen
+      - name: Create Linux virtual screen
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
@@ -52,10 +52,10 @@ jobs:
 
           startlxqt &
 
-      - name: Install Windows Virtual Device Driver
+      - name: Create Windows virtual screen
         if: runner.os == 'Windows'
         run: |
-          winget install --id=VirtualDrivers.Virtual-Display-Driver -e --accept-source-agreements --accept-package-agreements
+          ./parsec-vdd-0.45.0.0.exe /S
 
       - name: Start server
         env:
