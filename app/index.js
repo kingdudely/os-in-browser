@@ -26,13 +26,12 @@ wss.on('connection', async (ws) => {
 });
 
 const tunnel = await startTunnel({ port, acceptCloudflareNotice: true });
-const tunnelUrl = new URL(await tunnel.getURL());
-tunnelUrl.protocol = tunnelUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+const tunnelUrl = await tunnel.getURL();
 
 const gh = ghFactory.bind(GITHUB_TOKEN);
 await gh("POST", `/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}`, {
 	"state": "success",
-	"target_url": tunnelUrl.href,
+	"target_url": tunnelUrl,
 	"context": GITHUB_RUN_ID,
 	"description": RUNNER_OS
 });
