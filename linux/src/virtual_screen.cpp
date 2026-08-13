@@ -1,3 +1,5 @@
+#include "../../shared/virtual_screen.hpp"
+
 #include <X11/extensions/Xrandr.h>
 #include <X11/Xlib.h>
 #include <cstdint>
@@ -41,4 +43,8 @@ void ResizeVirtualScreen(std::uint32_t screenWidth, std::uint32_t screenHeight) 
     XRRSetScreenSize(display, root, static_cast<int>(screenWidth), static_cast<int>(screenHeight),
                       mmWidth, mmHeight);
     XFlush(display);
+}
+
+void CreateVirtualScreen() {
+    // no op because xvfb-run does it for us :)))))
 }

@@ -1,4 +1,4 @@
-#include "../shared/addon.hpp"
+#include "../../shared/virtual_screen.hpp"
 
 #include <windows.h>
 #include <setupapi.h>

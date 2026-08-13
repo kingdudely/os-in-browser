@@ -1,4 +1,5 @@
-#include "../shared/addon.hpp"
+#include "../../shared/keyboard.hpp"
+
 #include "uinput.hpp"
 
 #include <linux/input-event-codes.h>

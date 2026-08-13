@@ -1,4 +1,4 @@
-#include "../shared/addon.hpp"
+#include "../../shared/virtual_screen.hpp"
 
 #include <Carbon/Carbon.h>
 #import <Foundation/Foundation.h>
