@@ -10,6 +10,8 @@
 // Requires ARC.
 // Available on macOS 10.14+ (reliable from macOS 11+).
 
+#pragma once
+
 #import <Foundation/Foundation.h>
 #import <CoreGraphics/CoreGraphics.h>
 

@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-void ScrollMouse(uint8_t deltaMode, float deltaX, float deltaY, float deltaZ);
-void SetMouseButton(uint8_t button, bool isDown);
-void SetMousePosition(uint32_t absoluteX, uint32_t absoluteY);
-void MoveMousePosition(int32_t deltaX, int32_t deltaY);
+void ScrollMouse(std::uint8_t deltaMode, float deltaX, float deltaY, float deltaZ);
+void SetMouseButton(std::uint8_t button, bool isDown);
+void SetMousePosition(std::uint32_t absoluteX, std::uint32_t absoluteY);
+void MoveMousePosition(std::int32_t deltaX, std::int32_t deltaY);

@@ -2,4 +2,4 @@
 
 #include <cstdint>
 
-void SetKeyboardKey(uint8_t codeIndex, bool isDown);
+void SetKeyboardKey(std::uint8_t codeValue, bool isDown);

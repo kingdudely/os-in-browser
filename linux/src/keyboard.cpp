@@ -1,103 +1,101 @@
 #include "../../shared/keyboard.hpp"
+#include "../include/virtual_screen.hpp"
 
-#include "uinput.hpp"
-
-#include <linux/input-event-codes.h>
-#include <sys/ioctl.h>
-#include <linux/uinput.h>
+#include <X11/Xlib.h>
+#include <X11/keysym.h>
+#include <X11/XF86keysym.h>
+#include <X11/extensions/XTest.h>
 #include <array>
 #include <cstdint>
 
 namespace {
-inline constexpr std::array<__u16, 174> kLinuxKeyMap = {
+
+// Same 174-entry layout/index scheme as before, now mapping each custom
+// code to an X11 KeySym instead of a Linux KEY_* code. NoSymbol marks
+// codes with no clean X11 equivalent (mirrors the old KEY_UNKNOWN slots).
+inline constexpr std::array<KeySym, 174> kX11KeySymMap = {
     // 0-5 Hyper, Super, FnLock, Suspend, Resume, Turbo
-    KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN,
+    NoSymbol, NoSymbol, NoSymbol, NoSymbol, NoSymbol, NoSymbol,
     // 6-9 Sleep, WakeUp, Fn, DisplayToggleIntExt
-    KEY_SLEEP, KEY_WAKEUP, KEY_FN, KEY_SWITCHVIDEOMODE,
+    XF86XK_Sleep, XF86XK_WakeUp, NoSymbol, XF86XK_Display,
     // 10-35 KeyA-KeyZ
-    KEY_A, KEY_B, KEY_C, KEY_D, KEY_E, KEY_F, KEY_G, KEY_H, KEY_I, KEY_J,
-    KEY_K, KEY_L, KEY_M, KEY_N, KEY_O, KEY_P, KEY_Q, KEY_R, KEY_S, KEY_T,
-    KEY_U, KEY_V, KEY_W, KEY_X, KEY_Y, KEY_Z,
+    XK_a, XK_b, XK_c, XK_d, XK_e, XK_f, XK_g, XK_h, XK_i, XK_j,
+    XK_k, XK_l, XK_m, XK_n, XK_o, XK_p, XK_q, XK_r, XK_s, XK_t,
+    XK_u, XK_v, XK_w, XK_x, XK_y, XK_z,
     // 36-45 Digit1-Digit9, Digit0
-    KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0,
+    XK_1, XK_2, XK_3, XK_4, XK_5, XK_6, XK_7, XK_8, XK_9, XK_0,
     // 46-50 Enter, Escape, Backspace, Tab, Space
-    KEY_ENTER, KEY_ESC, KEY_BACKSPACE, KEY_TAB, KEY_SPACE,
+    XK_Return, XK_Escape, XK_BackSpace, XK_Tab, XK_space,
     // 51-61 Minus, Equal, BracketLeft, BracketRight, Backslash, Semicolon,
     //        Quote, Backquote, Comma, Period, Slash
-    KEY_MINUS, KEY_EQUAL, KEY_LEFTBRACE, KEY_RIGHTBRACE, KEY_BACKSLASH,
-    KEY_SEMICOLON, KEY_APOSTROPHE, KEY_GRAVE, KEY_COMMA, KEY_DOT, KEY_SLASH,
+    XK_minus, XK_equal, XK_bracketleft, XK_bracketright, XK_backslash,
+    XK_semicolon, XK_apostrophe, XK_grave, XK_comma, XK_period, XK_slash,
     // 62 CapsLock
-    KEY_CAPSLOCK,
+    XK_Caps_Lock,
     // 63-74 F1-F12
-    KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEY_F7, KEY_F8, KEY_F9,
-    KEY_F10, KEY_F11, KEY_F12,
+    XK_F1, XK_F2, XK_F3, XK_F4, XK_F5, XK_F6, XK_F7, XK_F8, XK_F9,
+    XK_F10, XK_F11, XK_F12,
     // 75-77 PrintScreen, ScrollLock, Pause
-    KEY_SYSRQ, KEY_SCROLLLOCK, KEY_PAUSE,
+    XK_Print, XK_Scroll_Lock, XK_Pause,
     // 78-83 Insert, Home, PageUp, Delete, End, PageDown
-    KEY_INSERT, KEY_HOME, KEY_PAGEUP, KEY_DELETE, KEY_END, KEY_PAGEDOWN,
+    XK_Insert, XK_Home, XK_Page_Up, XK_Delete, XK_End, XK_Page_Down,
     // 84-87 ArrowRight, ArrowLeft, ArrowDown, ArrowUp
-    KEY_RIGHT, KEY_LEFT, KEY_DOWN, KEY_UP,
+    XK_Right, XK_Left, XK_Down, XK_Up,
     // 88-92 NumLock, NumpadDivide, NumpadMultiply, NumpadSubtract, NumpadAdd
-    KEY_NUMLOCK, KEY_KPSLASH, KEY_KPASTERISK, KEY_KPMINUS, KEY_KPPLUS,
+    XK_Num_Lock, XK_KP_Divide, XK_KP_Multiply, XK_KP_Subtract, XK_KP_Add,
     // 93 NumpadEnter
-    KEY_KPENTER,
+    XK_KP_Enter,
     // 94-102 Numpad1-Numpad9
-    KEY_KP1, KEY_KP2, KEY_KP3, KEY_KP4, KEY_KP5, KEY_KP6, KEY_KP7, KEY_KP8, KEY_KP9,
+    XK_KP_1, XK_KP_2, XK_KP_3, XK_KP_4, XK_KP_5, XK_KP_6, XK_KP_7, XK_KP_8, XK_KP_9,
     // 103-104 Numpad0, NumpadDecimal
-    KEY_KP0, KEY_KPDOT,
+    XK_KP_0, XK_KP_Decimal,
     // 105-108 IntlBackslash, ContextMenu, Power, NumpadEqual
-    KEY_102ND, KEY_COMPOSE, KEY_POWER, KEY_KPEQUAL,
+    XK_less, XK_Menu, XF86XK_PowerOff, XK_KP_Equal,
     // 109-120 F13-F24
-    KEY_F13, KEY_F14, KEY_F15, KEY_F16, KEY_F17, KEY_F18,
-    KEY_F19, KEY_F20, KEY_F21, KEY_F22, KEY_F23, KEY_F24,
+    XK_F13, XK_F14, XK_F15, XK_F16, XK_F17, XK_F18,
+    XK_F19, XK_F20, XK_F21, XK_F22, XK_F23, XK_F24,
     // 121-129 Open, Help, Select, Again, Undo, Cut, Copy, Paste, Find
-    KEY_OPEN, KEY_HELP, KEY_SELECT, KEY_AGAIN, KEY_UNDO,
-    KEY_CUT, KEY_COPY, KEY_PASTE, KEY_FIND,
+    XK_Open, XK_Help, XK_Select, XK_Redo, XK_Undo,
+    XF86XK_Cut, XF86XK_Copy, XF86XK_Paste, XK_Find,
     // 130-132 AudioVolumeMute, AudioVolumeUp, AudioVolumeDown
-    KEY_MUTE, KEY_VOLUMEUP, KEY_VOLUMEDOWN,
+    XF86XK_AudioMute, XF86XK_AudioRaiseVolume, XF86XK_AudioLowerVolume,
     // 133-138 NumpadComma, IntlRo, KanaMode, IntlYen, Convert, NonConvert
-    KEY_KPCOMMA, KEY_RO, KEY_KATAKANA, KEY_YEN, KEY_HENKAN, KEY_MUHENKAN,
+    //         (IntlRo/IntlYen have no standalone X11 keysym; left unmapped)
+    XK_KP_Separator, NoSymbol, XK_Kana_Shift, NoSymbol, XK_Henkan, XK_Muhenkan,
     // 139-143 Lang1-Lang5 (layout-specific; left unmapped)
-    KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN,
+    NoSymbol, NoSymbol, NoSymbol, NoSymbol, NoSymbol,
     // 144-147 Abort, Props, NumpadParenLeft, NumpadParenRight
-    KEY_UNKNOWN, KEY_PROPS, KEY_KPLEFTPAREN, KEY_KPRIGHTPAREN,
+    //         (no standard X11 keysyms for these; left unmapped)
+    NoSymbol, XK_3270_ExSelect, NoSymbol, NoSymbol,
     // 148-155 ControlLeft, ShiftLeft, AltLeft, MetaLeft,
     //         ControlRight, ShiftRight, AltRight, MetaRight
-    KEY_LEFTCTRL, KEY_LEFTSHIFT, KEY_LEFTALT, KEY_LEFTMETA,
-    KEY_RIGHTCTRL, KEY_RIGHTSHIFT, KEY_RIGHTALT, KEY_RIGHTMETA,
+    XK_Control_L, XK_Shift_L, XK_Alt_L, XK_Super_L,
+    XK_Control_R, XK_Shift_R, XK_Alt_R, XK_Super_R,
     // 156-160 MediaTrackNext, MediaTrackPrevious, MediaStop, MediaPlayPause, MediaSelect
-    KEY_NEXTSONG, KEY_PREVIOUSSONG, KEY_STOPCD, KEY_PLAYPAUSE, KEY_MEDIA,
+    XF86XK_AudioNext, XF86XK_AudioPrev, XF86XK_AudioStop, XF86XK_AudioPlay, XF86XK_Select,
     // 161-162 MediaFastForward, MediaRewind
-    KEY_FASTFORWARD, KEY_REWIND,
+    XF86XK_AudioForward, XF86XK_AudioRewind,
     // 163-169 BrowserBack, BrowserForward, BrowserRefresh, BrowserStop,
     //         BrowserSearch, BrowserFavorites, BrowserHome
-    KEY_BACK, KEY_FORWARD, KEY_REFRESH, KEY_STOP,
-    KEY_SEARCH, KEY_BOOKMARKS, KEY_HOMEPAGE,
+    XF86XK_Back, XF86XK_Forward, XF86XK_Refresh, XF86XK_Stop,
+    XF86XK_Search, XF86XK_Favorites, XF86XK_HomePage,
     // 170-173 ZoomToggle, Mail, LaunchApp2, LaunchApp1
-    KEY_UNKNOWN, KEY_MAIL, KEY_PROG2, KEY_PROG1,
+    NoSymbol, XF86XK_Mail, XF86XK_MyComputer, XF86XK_Explorer,
 };
 
 } // namespace
 
-// Registers a UI_SET_KEYBIT for every real code in kLinuxKeyMap. Called by
-// GetUinputFd() (uinput.cpp) before UI_DEV_CREATE.
-void RegisterKeyboardKeyBits(int fd) {
-    for (auto code : kLinuxKeyMap) {
-        if (code != KEY_UNKNOWN) ioctl(fd, UI_SET_KEYBIT, code);
-    }
-}
+void SetKeyboardKey(std::uint8_t code, bool isDown) {
+    if (code >= kX11KeySymMap.size()) return;
+    KeySym keysym = kX11KeySymMap[code];
+    if (keysym == NoSymbol) return;
 
-void SetKeyboardKey(const Napi::CallbackInfo& info) {
-    std::uint8_t codeValue = static_cast<std::uint8_t>(info[0].As<Napi::Number>().Uint32Value());
-    bool isDown = info[1].As<Napi::Boolean>().Value();
+    Display* display = GetX11Display();
+    if (!display) return;
 
-    if (codeValue >= kLinuxKeyMap.size()) return;
-    __u16 code = kLinuxKeyMap[codeValue];
-    if (code == KEY_UNKNOWN) return;
+    KeyCode keycode = XKeysymToKeycode(display, keysym);
+    if (keycode == 0) return;
 
-    int fd = GetUinputFd();
-    if (fd < 0) return;
-
-    EmitEvent(fd, EV_KEY, code, isDown ? 1 : 0);
-    EmitSyn(fd);
+    XTestFakeKeyEvent(display, keycode, isDown ? True : False, CurrentTime);
+    XFlush(display);
 }

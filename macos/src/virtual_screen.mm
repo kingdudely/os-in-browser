@@ -2,33 +2,16 @@
 
 #include <Carbon/Carbon.h>
 #import <Foundation/Foundation.h>
-
-@interface CGVirtualDisplayDescriptor : NSObject
-@property(copy) NSString *name;
-@property CGSize sizeInMillimeters;
-@property uint32_t maxPixelsWide;
-@property uint32_t maxPixelsHigh;
-@property uint32_t productID;
-@property uint32_t vendorID;
-@property uint32_t serialNum;
-@end
-
-@interface CGVirtualDisplayMode : NSObject
-- (instancetype)initWithWidth:(uint32_t)width height:(uint32_t)height refreshRate:(double)refreshRate;
-@end
-
-@interface CGVirtualDisplaySettings : NSObject
-@property(copy) NSArray<CGVirtualDisplayMode *> *modes;
-@end
-
-@interface CGVirtualDisplay : NSObject
-- (instancetype)initWithDescriptor:(CGVirtualDisplayDescriptor *)descriptor;
-- (BOOL)applySettings:(CGVirtualDisplaySettings *)settings;
-@property(readonly) CGDirectDisplayID displayID;
-@end
+#import "../include/CGVirtualDisplay.mm"
 
 namespace {
 CGVirtualDisplay* g_virtualDisplay = nil;
+
+// Fallback size used when the display is first created, before any
+// explicit ResizeVirtualScreen() call.
+constexpr std::uint32_t kDefaultWidth = 1920;
+constexpr std::uint32_t kDefaultHeight = 1080;
+
 void ApplyVirtualDisplayMode(CGVirtualDisplay* virtualDisplay, size_t screenWidth, size_t screenHeight, double refreshRate = 60.0) {
     CGVirtualDisplayMode* mode = [[CGVirtualDisplayMode alloc] initWithWidth:screenWidth height:screenHeight refreshRate:refreshRate];
     CGVirtualDisplaySettings* settings = [[CGVirtualDisplaySettings alloc] init];
@@ -37,37 +20,27 @@ void ApplyVirtualDisplayMode(CGVirtualDisplay* virtualDisplay, size_t screenWidt
 }
 } // namespace
 
-void CreateVirtualScreen(const Napi::CallbackInfo& info) {
-    std::uint32_t screenWidth = info[0].As<Napi::Number>().Uint32Value();
-    std::uint32_t screenHeight = info[1].As<Napi::Number>().Uint32Value();
-
+void CreateVirtualScreen() {
     if (g_virtualDisplay != nil) return;
 
     CGVirtualDisplayDescriptor *descriptor = [[CGVirtualDisplayDescriptor alloc] init];
     descriptor.name = @"Virtual Display";
-    descriptor.sizeInMillimeters = CGSizeMake(screenWidth / 4, screenHeight / 4);
-    descriptor.maxPixelsWide = screenWidth;
-    descriptor.maxPixelsHigh = screenHeight;
+    descriptor.sizeInMillimeters = CGSizeMake(kDefaultWidth / 4, kDefaultHeight / 4);
+    descriptor.maxPixelsWide = kDefaultWidth;
+    descriptor.maxPixelsHigh = kDefaultHeight;
     descriptor.serialNum = 1;
     descriptor.vendorID = 0x1234;
     descriptor.productID = 0x5678;
 
     g_virtualDisplay = [[CGVirtualDisplay alloc] initWithDescriptor:descriptor];
 
-    ApplyVirtualDisplayMode(g_virtualDisplay, screenWidth, screenHeight);
+    ApplyVirtualDisplayMode(g_virtualDisplay, kDefaultWidth, kDefaultHeight);
 }
 
-void ResizeVirtualScreen(const Napi::CallbackInfo& info) {
+void ResizeVirtualScreen(std::uint32_t width, std::uint32_t height) {
     if (g_virtualDisplay == nil) return;
 
-    std::uint32_t screenWidth = info[0].As<Napi::Number>().Uint32Value();
-    std::uint32_t screenHeight = info[1].As<Napi::Number>().Uint32Value();
-
-    ApplyVirtualDisplayMode(g_virtualDisplay, screenWidth, screenHeight);
-}
-
-void DestroyVirtualScreen(const Napi::CallbackInfo& info) {
-    g_virtualDisplay = nil; // ARC releases; display disappears once deallocated
+    ApplyVirtualDisplayMode(g_virtualDisplay, width, height);
 }
 
 // Live current resolution of the virtual display, queried fresh -- used by

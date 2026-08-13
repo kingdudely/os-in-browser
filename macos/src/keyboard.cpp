@@ -47,10 +47,7 @@ inline constexpr std::array<std::optional<CGKeyCode>, 174> kMacVirtualKeyMap = {
 
 } // namespace
 
-void SetKeyboardKey(const Napi::CallbackInfo& info) {
-    std::uint8_t codeValue = static_cast<std::uint8_t>(info[0].As<Napi::Number>().Uint32Value());
-    bool isDown = info[1].As<Napi::Boolean>().Value();
-
+void SetKeyboardKey(std::uint8_t codeValue, bool isDown) {
     if (codeValue >= kMacVirtualKeyMap.size()) return;
     auto vk = kMacVirtualKeyMap[codeValue];
     if (!vk) return;

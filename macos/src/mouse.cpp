@@ -6,16 +6,8 @@
 #include <IOKit/hidsystem/IOLLEvent.h>
 #include <IOKit/hidsystem/IOHIDLib.h>
 #include <IOKit/hidsystem/IOHIDParameter.h>
-
-extern "C" {
-    kern_return_t IOHIDPostEvent(io_connect_t connect, UInt32 eventType,
-                                  IOGPoint location, const NXEventData *eventData,
-                                  UInt32 eventDataVersion, IOOptionBits eventFlags,
-                                  IOOptionBits options);
-}
-
-// Declared/defined in virtual_screen.mm.
-void GetVirtualScreenSize(std::uint32_t& outWidth, std::uint32_t& outHeight);
+#include "../include/IOHIDPostEvent.hpp"
+#include "../include/virtual_screen.hpp"
 
 namespace {
 
@@ -61,12 +53,7 @@ void CleanupHIDConnect() {
     }
 }
 
-void ScrollMouse(const Napi::CallbackInfo& info) {
-    std::uint8_t deltaMode = static_cast<std::uint8_t>(info[0].As<Napi::Number>().Uint32Value());
-    float deltaX = info[1].As<Napi::Number>().FloatValue();
-    float deltaY = info[2].As<Napi::Number>().FloatValue();
-    float deltaZ = info[3].As<Napi::Number>().FloatValue();
-
+void ScrollMouse(std::uint8_t deltaMode, float deltaX, float deltaY, float deltaZ) {
     CGScrollEventUnit unit;
     float scaleX, scaleY;
     switch (deltaMode) {
@@ -100,10 +87,7 @@ void ScrollMouse(const Napi::CallbackInfo& info) {
     CFRelease(event);
 }
 
-void SetMouseButton(const Napi::CallbackInfo& info) {
-    std::uint8_t button = static_cast<std::uint8_t>(info[0].As<Napi::Number>().Uint32Value());
-    bool isDown = info[1].As<Napi::Boolean>().Value();
-
+void SetMouseButton(std::uint8_t button, bool isDown) {
     CGPoint location = CurrentMouseLocation();
     CGMouseButton cgButton;
     CGEventType type;
@@ -138,18 +122,12 @@ void SetMouseButton(const Napi::CallbackInfo& info) {
 
 // CGEventCreateMouseEvent takes absolute screen coordinates directly --
 // no relative-delta conversion needed here.
-void SetMousePosition(const Napi::CallbackInfo& info) {
-    std::uint32_t x = info[0].As<Napi::Number>().Uint32Value();
-    std::uint32_t y = info[1].As<Napi::Number>().Uint32Value();
-
+void SetMousePosition(std::uint32_t x, std::uint32_t y) {
     CGPoint location = CGPointMake(static_cast<CGFloat>(x), static_cast<CGFloat>(y));
     PostMouseEvent(kCGEventMouseMoved, location, kCGMouseButtonLeft);
 }
 
-void MoveMousePosition(const Napi::CallbackInfo& info) {
-    std::int32_t dx = info[0].As<Napi::Number>().Int32Value();
-    std::int32_t dy = info[1].As<Napi::Number>().Int32Value();
-
+void MoveMousePosition(std::int32_t dx, std::int32_t dy) {
     io_connect_t conn = GetHIDConnect();
     if (conn == MACH_PORT_NULL) {
         // don't spam retries at input rate; caller/UI layer should
