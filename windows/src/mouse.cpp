@@ -14,11 +14,7 @@ void GetVirtualScreenSize(std::uint32_t& outWidth, std::uint32_t& outHeight) {
 
 } // namespace
 
-void ScrollMouse(const Napi::CallbackInfo& info) {
-    std::uint8_t deltaMode = static_cast<std::uint8_t>(info[0].As<Napi::Number>().Uint32Value());
-    float deltaX = info[1].As<Napi::Number>().FloatValue();
-    float deltaY = info[2].As<Napi::Number>().FloatValue();
-
+void ScrollMouse(std::uint8_t deltaMode, float deltaX, float deltaY) {
     float scaleX, scaleY;
     switch (deltaMode) {
         case 0: // pixel
@@ -51,10 +47,7 @@ void ScrollMouse(const Napi::CallbackInfo& info) {
     }
 }
 
-void SetMouseButton(const Napi::CallbackInfo& info) {
-    std::uint8_t button = static_cast<std::uint8_t>(info[0].As<Napi::Number>().Uint32Value());
-    bool isDown = info[1].As<Napi::Boolean>().Value();
-
+void SetMouseButton(std::uint8_t button, bool isDown) {
     INPUT input{};
     input.type = INPUT_MOUSE;
 
@@ -81,10 +74,7 @@ void SetMouseButton(const Napi::CallbackInfo& info) {
 // against the live current resolution (queried fresh, not cached) so it
 // can't go stale if the resolution changes outside Create/ResizeVirtualScreen.
 // Assumes the VDD is the only display -- origin is always (0,0).
-void SetMousePosition(const Napi::CallbackInfo& info) {
-    std::int32_t x = info[0].As<Napi::Number>().Int32Value();
-    std::int32_t y = info[1].As<Napi::Number>().Int32Value();
-
+void SetMousePosition(std::int32_t x, std::int32_t y) {
     std::uint32_t screenWidth = 0, screenHeight = 0;
     GetVirtualScreenSize(screenWidth, screenHeight);
     if (!screenWidth || !screenHeight) return;
@@ -100,10 +90,7 @@ void SetMousePosition(const Napi::CallbackInfo& info) {
     SendInput(1, &input, sizeof(INPUT));
 }
 
-void MoveMousePosition(const Napi::CallbackInfo& info) {
-    std::int32_t x = info[0].As<Napi::Number>().Int32Value();
-    std::int32_t y = info[1].As<Napi::Number>().Int32Value();
-
+void MoveMousePosition(std::int32_t x, std::int32_t y) {
     INPUT input{};
     input.type = INPUT_MOUSE;
     input.mi.dx = x;

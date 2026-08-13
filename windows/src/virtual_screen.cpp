@@ -1,174 +1,206 @@
-#include "../../shared/virtual_screen.hpp"
+#include "virtual_screen.hpp"
+#include "parser-vdd.hpp"
 
 #include <windows.h>
-#include <setupapi.h>
-#include <cfgmgr32.h>
-
-#include <cstdint>
-#include <fstream>
+#include <cstdio>
+#include <thread>
+#include <chrono>
+#include <atomic>
 #include <string>
 
-#pragma comment(lib, "setupapi.lib")
-#pragma comment(lib, "cfgmgr32.lib")
-#pragma comment(lib, "advapi32.lib")
+using namespace parsec_vdd;
+
+// -----------------------------------------------------------------------------
+// Assumes parsec-vdd-0.45.0.0.exe has already been run on the host, i.e. the
+// "Parsec Virtual Display Adapter" driver (VDD_ADAPTER_GUID) is installed and
+// enumerable. This file only talks to the already-installed driver.
+//
+// Resizing strategy:
+// VDD does not accept an arbitrary resolution over IOCTL — it only ever
+// offers whatever modes are listed in HKLM\SOFTWARE\Parsec\vdd (up to 5
+// preset slots, keys "0".."4", each a REG_BINARY of {width,height,hz}).
+// So to get an arbitrary WxH we:
+//   1. Write the requested {width, height, 60} into preset slot 0.
+//   2. Remove and re-add the virtual display so it re-reads the registry
+//      and advertises the new mode.
+//   3. Apply that mode via ChangeDisplaySettingsEx, matching on the
+//      driver's known-good preset (now == our arbitrary size) instead of
+//      hoping CDS accepts an out-of-list custom DEVMODE.
+// -----------------------------------------------------------------------------
 
 namespace {
 
-// Resolves the driver's actual config directory. Checks
-// HKLM\SOFTWARE\MikeTheTech\VirtualDisplayDriver\VDDPATH first, since a
-// custom install path overrides the C:\VirtualDisplayDriver default (see
-// project wiki / discussion #144 -- hardcoding the default silently
-// no-ops on nondefault installs).
-std::wstring GetVddConfigDir() {
-    HKEY hKey;
-    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
-                       L"SOFTWARE\\MikeTheTech\\VirtualDisplayDriver",
-                       0, KEY_READ, &hKey) == ERROR_SUCCESS) {
-        wchar_t buffer[MAX_PATH]{};
-        DWORD size = sizeof(buffer);
-        DWORD type = 0;
-        LONG result = RegQueryValueExW(hKey, L"VDDPATH", nullptr, &type,
-                                        reinterpret_cast<LPBYTE>(buffer), &size);
-        RegCloseKey(hKey);
-        if (result == ERROR_SUCCESS && type == REG_SZ && buffer[0] != L'\0') {
-            return std::wstring(buffer);
-        }
-    }
-    return L"C:\\VirtualDisplayDriver";
-}
+constexpr wchar_t kVddRegPath[] = L"SOFTWARE\\Parsec\\vdd";
 
-// Device instance/hardware ID the installer registers the driver under.
-const wchar_t* kVddHardwareId = L"Root\\MttVDD";
+HANDLE            g_vdd        = nullptr;
+int               g_displayIdx = -1;
+std::atomic<bool> g_keepAlive  { false };
+std::thread       g_pingThread;
 
-// Full config schema per VirtualDrivers wiki "How to configure the driver"
-// (previous version only wrote <resolutions>, which is incomplete).
-void WriteVddConfig(std::uint32_t x, std::uint32_t y) {
-    std::wstring configPath = GetVddConfigDir() + L"\\vdd_settings.xml";
-    std::wofstream file(configPath);
-    if (!file.is_open()) return;
-
-    file << L"<?xml version='1.0' encoding='utf-8'?>\n";
-    file << L"<vdd_settings>\n"
-         << L"  <monitors>\n"
-         << L"    <count>1</count>\n"
-         << L"  </monitors>\n"
-         << L"  <gpu>\n"
-         << L"    <friendlyname>default</friendlyname>\n"
-         << L"  </gpu>\n"
-         << L"  <global>\n"
-         << L"    <g_refresh_rate>60</g_refresh_rate>\n"
-         << L"  </global>\n"
-         << L"  <resolutions>\n"
-         << L"    <resolution>\n"
-         << L"      <width>" << x << L"</width>\n"
-         << L"      <height>" << y << L"</height>\n"
-         << L"      <refresh_rate>60</refresh_rate>\n"
-         << L"    </resolution>\n"
-         << L"  </resolutions>\n"
-         << L"  <options>\n"
-         << L"    <CustomEdid>false</CustomEdid>\n"
-         << L"    <PreventSpoof>false</PreventSpoof>\n"
-         << L"    <EdidCeaOverride>false</EdidCeaOverride>\n"
-         << L"    <HardwareCursor>true</HardwareCursor>\n"
-         << L"    <SDR10bit>false</SDR10bit>\n"
-         << L"    <HDRPlus>false</HDRPlus>\n"
-         << L"    <logging>false</logging>\n"
-         << L"    <debuglogging>false</debuglogging>\n"
-         << L"  </options>\n"
-         << L"</vdd_settings>\n";
-
-    file.close();
-}
-
-// Finds the VDD device node via SetupAPI by matching its hardware ID, then
-// toggles it enabled/disabled through the class installer. No devcon.exe
-// dependency -- devcon's path isn't stable/discoverable after a
-// winget/VDC install, so shelling out to it is unreliable. SetupAPI /
-// CfgMgr32 ship with Windows and need no external binary.
-bool SetVddDeviceEnabled(bool enable) {
-    HDEVINFO deviceInfoSet = SetupDiGetClassDevsW(
-        nullptr, nullptr, nullptr, DIGCF_ALLCLASSES | DIGCF_PRESENT);
-    if (deviceInfoSet == INVALID_HANDLE_VALUE) return false;
-
-    bool found = false;
-    SP_DEVINFO_DATA devInfoData{};
-    devInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
-
-    for (DWORD i = 0; SetupDiEnumDeviceInfo(deviceInfoSet, i, &devInfoData); ++i) {
-        wchar_t hwIdBuffer[512]{};
-        if (!SetupDiGetDeviceRegistryPropertyW(
-                deviceInfoSet, &devInfoData, SPDRP_HARDWAREID, nullptr,
-                reinterpret_cast<PBYTE>(hwIdBuffer), sizeof(hwIdBuffer), nullptr)) {
-            continue;
-        }
-
-        for (wchar_t* id = hwIdBuffer; *id; id += wcslen(id) + 1) {
-            if (_wcsicmp(id, kVddHardwareId) == 0) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) continue;
-
-        SP_PROPCHANGE_PARAMS propChangeParams{};
-        propChangeParams.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
-        propChangeParams.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
-        propChangeParams.StateChange = enable ? DICS_ENABLE : DICS_DISABLE;
-        propChangeParams.Scope = DICS_FLAG_GLOBAL;
-        propChangeParams.HwProfile = 0;
-
-        if (!SetupDiSetClassInstallParamsW(
-                deviceInfoSet, &devInfoData,
-                reinterpret_cast<SP_CLASSINSTALL_HEADER*>(&propChangeParams),
-                sizeof(propChangeParams))) {
-            break;
-        }
-        if (!SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, deviceInfoSet, &devInfoData)) {
-            found = false;
-        }
-        break;
-    }
-
-    SetupDiDestroyDeviceInfoList(deviceInfoSet);
-    return found;
-}
-
-// Disables then re-enables the VDD device node so it re-reads the config
-// and re-enumerates with the new resolution. Confirmed as an officially
-// valid reload method per the VDD wiki.
-void ReloadVddDevice() {
-    if (SetVddDeviceEnabled(false)) {
-        Sleep(500);
-        SetVddDeviceEnabled(true);
+void PingLoop() {
+    while (g_keepAlive.load(std::memory_order_relaxed)) {
+        VddUpdate(g_vdd);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 }
 
-bool g_virtualDisplayCreated = false;
+// Write width/height/hz DWORD values into preset slot 0, i.e. the subkey
+// HKLM\SOFTWARE\Parsec\vdd\0, each field its own named DWORD value. This
+// matches Parsec's official "VDD Advanced Configuration" instructions:
+// one subkey per slot (named "0".."4"), each containing three DWORD
+// values named "width", "height", "hz".
+bool WritePresetSlot0(std::uint32_t width, std::uint32_t height, std::uint32_t hz = 60) {
+    const std::wstring slotPath = std::wstring(kVddRegPath) + L"\\0";
+
+    HKEY key = nullptr;
+    LONG rc = RegCreateKeyExW(HKEY_LOCAL_MACHINE, slotPath.c_str(), 0, nullptr,
+                               REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, nullptr,
+                               &key, nullptr);
+    if (rc != ERROR_SUCCESS) {
+        std::fprintf(stderr, "virtual_screen: failed to open/create VDD preset key (err=%ld)\n", rc);
+        return false;
+    }
+
+    DWORD w = width, h = height, r = hz;
+    bool ok = true;
+    ok &= RegSetValueExW(key, L"width",  0, REG_DWORD, reinterpret_cast<const BYTE*>(&w), sizeof(w)) == ERROR_SUCCESS;
+    ok &= RegSetValueExW(key, L"height", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&h), sizeof(h)) == ERROR_SUCCESS;
+    ok &= RegSetValueExW(key, L"hz",     0, REG_DWORD, reinterpret_cast<const BYTE*>(&r), sizeof(r)) == ERROR_SUCCESS;
+    RegCloseKey(key);
+
+    if (!ok) {
+        std::fprintf(stderr, "virtual_screen: failed to write preset slot 0 values\n");
+        return false;
+    }
+    return true;
+}
+
+bool FindVirtualDisplayDeviceName(wchar_t* outName, DWORD outLen) {
+    DISPLAY_DEVICEW dd{};
+    dd.cb = sizeof(dd);
+
+    for (DWORD i = 0; EnumDisplayDevicesW(nullptr, i, &dd, 0); ++i) {
+        if (wcsstr(dd.DeviceString, L"ParsecVDA") != nullptr ||
+            wcsstr(dd.DeviceString, L"Parsec Virtual Display") != nullptr) {
+            wcsncpy_s(outName, outLen, dd.DeviceName, _TRUNCATE);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ApplyMode(std::uint32_t width, std::uint32_t height, std::uint32_t hz = 60) {
+    wchar_t deviceName[64]{};
+    if (!FindVirtualDisplayDeviceName(deviceName, 64)) {
+        std::fprintf(stderr, "virtual_screen: could not locate VDD device\n");
+        return false;
+    }
+
+    DEVMODEW dm{};
+    dm.dmSize             = sizeof(dm);
+    dm.dmPelsWidth        = width;
+    dm.dmPelsHeight       = height;
+    dm.dmBitsPerPel       = 32;
+    dm.dmDisplayFrequency = hz;
+    dm.dmFields = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL | DM_DISPLAYFREQUENCY;
+
+    LONG result = ChangeDisplaySettingsExW(deviceName, &dm, nullptr, CDS_TEST, nullptr);
+    if (result != DISP_CHANGE_SUCCESSFUL) {
+        std::fprintf(stderr, "virtual_screen: mode %ux%u rejected (CDS_TEST=%ld)\n",
+                     width, height, result);
+        return false;
+    }
+
+    result = ChangeDisplaySettingsExW(deviceName, &dm, nullptr,
+                                       CDS_UPDATEREGISTRY | CDS_NORESET, nullptr);
+    if (result != DISP_CHANGE_SUCCESSFUL) {
+        std::fprintf(stderr, "virtual_screen: failed to apply mode (err=%ld)\n", result);
+        return false;
+    }
+
+    ChangeDisplaySettingsExW(nullptr, nullptr, nullptr, 0, nullptr);
+    return true;
+}
+
+// Re-plug the display so the driver re-reads the registry preset table
+// and advertises the newly written slot-0 resolution.
+bool ReplugDisplay() {
+    if (g_displayIdx != -1) {
+        VddRemoveDisplay(g_vdd, g_displayIdx);
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+
+    g_displayIdx = VddAddDisplay(g_vdd);
+    if (g_displayIdx == -1) {
+        std::fprintf(stderr, "virtual_screen: VddAddDisplay failed on replug\n");
+        return false;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    return true;
+}
 
 } // namespace
 
-void CreateVirtualScreen(const Napi::CallbackInfo& info) {
-    std::uint32_t screenWidth = info[0].As<Napi::Number>().Uint32Value();
-    std::uint32_t screenHeight = info[1].As<Napi::Number>().Uint32Value();
+void CreateVirtualScreen() {
+    if (g_vdd) {
+        std::fprintf(stderr, "virtual_screen: already created\n");
+        return;
+    }
 
-    WriteVddConfig(screenWidth, screenHeight);
-    ReloadVddDevice();
-    g_virtualDisplayCreated = true;
+    DeviceStatus status = QueryDeviceStatus(&VDD_CLASS_GUID, VDD_HARDWARE_ID);
+    if (status != DEVICE_OK) {
+        std::fprintf(stderr, "virtual_screen: VDD driver not ready (status=%d). "
+                              "Make sure parsec-vdd-0.45.0.0.exe was run to install it.\n",
+                     static_cast<int>(status));
+        return;
+    }
+
+    g_vdd = OpenDeviceHandle(&VDD_ADAPTER_GUID);
+    if (g_vdd == nullptr || g_vdd == INVALID_HANDLE_VALUE) {
+        std::fprintf(stderr, "virtual_screen: failed to open VDD device handle\n");
+        g_vdd = nullptr;
+        return;
+    }
+
+    g_keepAlive  = true;
+    g_pingThread = std::thread(PingLoop);
+
+    g_displayIdx = VddAddDisplay(g_vdd);
+    if (g_displayIdx == -1) {
+        std::fprintf(stderr, "virtual_screen: VddAddDisplay failed\n");
+        g_keepAlive = false;
+        if (g_pingThread.joinable()) g_pingThread.join();
+        CloseDeviceHandle(g_vdd);
+        g_vdd = nullptr;
+        return;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    std::printf("virtual_screen: created display index %d\n", g_displayIdx);
 }
 
-void ResizeVirtualScreen(const Napi::CallbackInfo& info) {
-    if (!g_virtualDisplayCreated) return;
+void ResizeVirtualScreen(std::uint32_t width, std::uint32_t height) {
+    if (!g_vdd || g_displayIdx == -1) {
+        std::fprintf(stderr, "virtual_screen: no virtual display to resize "
+                              "(call CreateVirtualScreen first)\n");
+        return;
+    }
 
-    std::uint32_t screenWidth = info[0].As<Napi::Number>().Uint32Value();
-    std::uint32_t screenHeight = info[1].As<Napi::Number>().Uint32Value();
+    // Stamp the arbitrary resolution into preset slot 0, then replug so the
+    // driver's mode list actually contains it before we try to select it.
+    if (!WritePresetSlot0(width, height)) {
+        return;
+    }
 
-    WriteVddConfig(screenWidth, screenHeight);
-    ReloadVddDevice();
-}
+    if (!ReplugDisplay()) {
+        return;
+    }
 
-void DestroyVirtualScreen(const Napi::CallbackInfo& info) {
-    if (!g_virtualDisplayCreated) return;
+    if (!ApplyMode(width, height)) {
+        std::fprintf(stderr, "virtual_screen: resize to %ux%u failed\n", width, height);
+        return;
+    }
 
-    SetVddDeviceEnabled(false);
-    g_virtualDisplayCreated = false;
+    std::printf("virtual_screen: resized to %ux%u\n", width, height);
 }

@@ -82,10 +82,7 @@ inline constexpr std::array<std::optional<WORD>, 174> kWindowsVirtualKeyMap = {
 
 } // namespace
 
-void SetKeyboardKey(const Napi::CallbackInfo& info) {
-    std::uint8_t codeValue = static_cast<std::uint8_t>(info[0].As<Napi::Number>().Uint32Value());
-    bool isDown = info[1].As<Napi::Boolean>().Value();
-
+void SetKeyboardKey(std::uint8_t codeValue, bool isDown) {
     if (codeValue >= kWindowsVirtualKeyMap.size()) return;
     auto vk = kWindowsVirtualKeyMap[codeValue];
     if (!vk) return;
