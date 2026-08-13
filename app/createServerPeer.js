@@ -1,4 +1,5 @@
 const nativeApis = require("native-apis");
+nativeApis.createVirtualScreen();
 
 const RTCPeerConnectionInit = {
     iceServers: [
@@ -134,18 +135,11 @@ async function onKeyboardType(event) {
 }
 
 async function onScreenResize(event) {
-    /* no op for now
     const view = new DataView(event.data);
     const innerWidth = view.getUint32(0, true);
     const innerHeight = view.getUint32(4, true);
 
-    if (!screenCreated) {
-        nativeApis.createVirtualScreen(innerWidth, innerHeight);
-        screenCreated = true;
-    } else {
-        nativeApis.resizeVirtualScreen(innerWidth, innerHeight);
-    }
-    */
+    nativeApis.resizeVirtualScreen(innerWidth, innerHeight);
 }
 
 /*
