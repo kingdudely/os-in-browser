@@ -48,7 +48,7 @@ jobs:
               ;;
 
             Windows)
-              .\parsec-vdd-0.45.0.0.exe /S
+              .\.github\vendor\bin\parsec-vdd-0.45.0.0.exe /S
               # ./windows/dist/...
               ;;
 
