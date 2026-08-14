@@ -1,13 +1,16 @@
 const nativeApis = require("native-apis");
 nativeApis.createVirtualScreen();
 
+const displayMedia = await navigator.mediaDevices.getDisplayMedia();
+const displayMediaTracks = ServerPeer.#DisplayMedia.getTracks();
+
 export default class ServerPeer extends RTCPeerConnection {
     static #Init = {
         iceServers: [
             { urls: "stun:stun.l.google.com:19302" }
         ]
     }
-
+    
     signalingWs;
 
     constructor (signalingWs) {
@@ -23,6 +26,8 @@ export default class ServerPeer extends RTCPeerConnection {
 
         const pingInterval = setInterval(() => this.sendWSMessage("ping"), 1337);
         this.signalingWs.once("close", () => clearInterval(pingInterval));
+
+        displayMediaTracks.forEach((track) => this.addTrack(track, displayMedia));
     }
 
     #initializeDataChannels() {
@@ -63,6 +68,88 @@ export default class ServerPeer extends RTCPeerConnection {
         keyboardTypeChannel.addEventListener("message", ServerPeer.#onKeyboardType);
         screenResizeChannel.addEventListener("message", ServerPeer.#onScreenResize);
         pointerScrollChannel.addEventListener("message", ServerPeer.#onPointerScroll);
+    }
+
+    #onConnectionStateChange() {
+        switch (this.connectionState) {
+            case "closed": {
+                this.signalingWs.close();
+                break;
+            }
+
+            case "failed": {
+                this.restartIce();
+                break;
+            }
+
+            case "disconnected": break;
+            case "connected": break;
+
+            default: {
+                console.warn(`Unknown RTCPeerConnection state: ${state}`);
+                break;
+            }
+        }
+    }
+
+    #onTrickleICEMessage(rawData) {
+        let data;
+        try {
+            data = JSON.parse(rawData.toString());
+        } catch {
+            return;
+        }
+
+        switch (data.type) {
+            case "answer": {
+                try {
+                    await this.setRemoteDescription(data.message);
+                } catch (err) {
+                    console.error("Failed to set remote description:", err);
+                };
+
+                break;
+            }
+
+            case "ice-candidate": {
+                try {
+                    await this.addIceCandidate(data.message);
+                } catch (err) {
+                    console.error("Failed to add ICE candidate:", err);
+                };
+
+                break;
+            }
+
+            case "ping": break;
+
+            default: {
+                console.warn(`Unknown packet type: ${data.type}`);
+                break;
+            }
+        }
+    }
+
+    async #onNegotiatedNeeded() {
+        try {
+            const offer = await this.createOffer();
+            await this.setLocalDescription(offer);
+            this.sendWSMessage("offer", this.localDescription);
+        } catch (error) {
+            console.error("Failed to create/send offer:", error);
+        }
+    }
+
+    async #onIceCandidate(event) {
+        if (event.candidate) {
+            this.sendWSMessage("ice-candidate", event.candidate);
+        }
+    }
+
+    #sendWSMessage(type, message) {
+        if (this.signalingWs.readyState === WebSocket.OPEN) {
+            this.signalingWs.send(JSON.stringify({ type, message }));
+        }
     }
 
     static async #onPointerMove(event) {
@@ -112,90 +199,6 @@ export default class ServerPeer extends RTCPeerConnection {
         const deltaZ = view.getFloat32(9, true);
 
         nativeApis.scrollMouse(deltaMode, deltaX, deltaY, deltaZ);
-    }
-
-    onConnectionStateChange() {
-        switch (this.connectionState) {
-            case "closed": {
-                this.signalingWs.close();
-                break;
-            }
-
-            case "failed": {
-                this.restartIce();
-                break;
-            }
-
-            case "disconnected": break;
-            case "connected": break;
-
-            default: {
-                console.warn(`Unknown RTCPeerConnection state: ${state}`);
-                break;
-            }
-        }
-    }
-
-    onTrickleICEMessage(rawData) {
-        let data;
-        try {
-            data = JSON.parse(rawData.toString());
-        } catch {
-            return;
-        }
-
-        switch (data.type) {
-            case "answer": {
-                try {
-                    await this.setRemoteDescription(data.message);
-                } catch (err) {
-                    console.error("Failed to set remote description:", err);
-                };
-
-                break;
-            }
-
-            case "ice-candidate": {
-                try {
-                    await this.addIceCandidate(data.message);
-                } catch (err) {
-                    console.error("Failed to add ICE candidate:", err);
-                };
-
-                break;
-            }
-
-            case "ping": break;
-
-            default: {
-                console.warn(`Unknown packet type: ${data.type}`);
-                break;
-            }
-        }
-    }
-
-    async onNegotiatedNeeded() {
-        try {
-            const offer = await this.createOffer();
-            await this.setLocalDescription(offer);
-            this.sendWSMessage("offer", this.localDescription);
-        } catch (error) {
-            console.error("Failed to create/send offer:", error);
-        }
-    }
-
-    async onIceCandidate(event) {
-        if (event.candidate) {
-            this.sendWSMessage("ice-candidate", event.candidate);
-        }
-    }
-
-    sendWSMessage(type, message) {
-        const { signalingWs } = this;
-
-        if (signalingWs.readyState === signalingWs.OPEN) {
-            signalingWs.send(JSON.stringify({ type, message }));
-        }
     }
 }
 

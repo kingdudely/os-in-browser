@@ -4,71 +4,42 @@ const { GITHUB_TOKEN, GITHUB_SHA, GITHUB_RUN_ID, GITHUB_REPOSITORY, RUNNER_OS } 
 const { WebSocketServer } = require('ws');
 const { startTunnel } = require("untun");
 import ServerPeer from "./ServerPeer.js";
+import { Octokit } from "https://esm.sh/@octokit/rest?bundle";
 
 const port = 8080;
+const [owner, repo] = GITHUB_REPOSITORY.split("/");
 const wss = new WebSocketServer({ port });
-const stream = await navigator.mediaDevices.getDisplayMedia();
-const tracks = stream.getTracks();
 const etagCache = new Map(); // path -> { etag, data }
 
 wss.on('connection', async (ws) => {
 	const accessToken = await new Promise((resolve) => ws.once('message', resolve));
-    const gh = ghFactory.bind(accessToken);
+    const githubUser = new Octokit({
+		auth: accessToken,
+	});
+
     try {
-        await gh("GET", "/user");
+        await githubUser.rest.users.getAuthenticated();
     } catch {
         ws.close();
         return;
     }
 
-	const peer = new ServerPeer(ws);
-    tracks.forEach((track) => peer.addTrack(track, stream));
+	new ServerPeer(ws);
 });
 
 const tunnel = await startTunnel({ port, acceptCloudflareNotice: true });
 const tunnelUrl = await tunnel.getURL();
 
-const gh = ghFactory.bind(GITHUB_TOKEN);
-await gh("POST", `/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}`, {
-	"state": "success",
-	"target_url": tunnelUrl,
-	"context": GITHUB_RUN_ID,
-	"description": RUNNER_OS
+const actionUser = new Octokit({
+    auth: GITHUB_TOKEN
 });
 
-async function ghFactory(method, path, body) {
-	const cacheKey = `${this}:${path}`;
-	const cached = etagCache.get(cacheKey);
-	
-	const headers = {
-		"Authorization": `Bearer ${this}`,
-		"Accept": "application/vnd.github+json",
-		"Content-Type": "application/json",
-		// browser sets useragent for us
-	};
-	if (method === "GET" && cached) headers["If-None-Match"] = cached.etag;
-
-	const response = await fetch(`https://api.github.com${path}`, {
-		"method": method,
-		"headers": headers,
-		"body": body !== undefined ? JSON.stringify(body) : undefined
-	});
-
-	if (response.status === 304) return cached.data;
-
-	let json;
-	try {
-		json = await response.json();
-	} catch {
-		json = null;
-	};
-
-	if (!response.ok) {
-		throw new Error(`Got HTTP status code ${response.status}${json?.message ? `, error message: ${json.message}` : ""}`);
-	}
-
-	const etag = response.headers.get("ETag");
-	if (method === "GET" && etag) etagCache.set(cacheKey, { etag, data: json });
-
-	return json;
-}
+await actionUser.rest.repos.createCommitStatus({
+	owner,
+	repo,
+	sha: GITHUB_SHA,
+	state: "success",
+	target_url: tunnelUrl,
+	context: GITHUB_RUN_ID,
+	description: RUNNER_OS
+});
