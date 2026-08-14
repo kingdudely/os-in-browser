@@ -98,7 +98,7 @@ export default function createServerPeer(ws) {
         }
     });
 
-    ws.once("close", () => peer.close());
+    // ws.once("close", () => peer.close());
 
     return peer;
 }
