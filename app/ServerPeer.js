@@ -1,8 +1,8 @@
 const nativeApis = require("native-apis");
 nativeApis.createVirtualScreen();
 
-const displayMedia = await navigator.mediaDevices.getDisplayMedia();
-const displayMediaTracks = ServerPeer.#DisplayMedia.getTracks();
+const stream = await navigator.mediaDevices.getDisplayMedia();
+const tracks = stream.getTracks();
 
 export default class ServerPeer extends RTCPeerConnection {
     static #Init = {
@@ -19,15 +19,15 @@ export default class ServerPeer extends RTCPeerConnection {
 
         this.#initializeDataChannels();
 
-        this.addEventListener("icecandidate", this.onIceCandidate.bind(this));
-        this.addEventListener("negotiationneeded", this.onNegotiatedNeeded.bind(this));
-        this.addEventListener("connectionstatechange", this.onConnectionStateChange.bind(this));
-        this.signalingWs.on("message", this.onTrickleICEMessage.bind(this));
+        this.addEventListener("icecandidate", this.#onIceCandidate.bind(this));
+        this.addEventListener("negotiationneeded", this.#onNegotiatedNeeded.bind(this));
+        this.addEventListener("connectionstatechange", this.#onConnectionStateChange.bind(this));
+        this.signalingWs.on("message", this.#onTrickleICEMessage.bind(this));
 
         const pingInterval = setInterval(() => this.#sendWSMessage("ping"), 1337);
         this.signalingWs.once("close", () => clearInterval(pingInterval));
 
-        displayMediaTracks.forEach((track) => this.addTrack(track, displayMedia));
+        tracks.forEach((track) => this.addTrack(track, stream));
     }
 
     #initializeDataChannels() {
@@ -86,13 +86,13 @@ export default class ServerPeer extends RTCPeerConnection {
             case "connected": break;
 
             default: {
-                console.warn(`Unknown RTCPeerConnection state: ${state}`);
+                console.warn(`Unknown connection state: ${this.connectionState}`);
                 break;
             }
         }
     }
 
-    #onTrickleICEMessage(rawData) {
+    async #onTrickleICEMessage(rawData) {
         let data;
         try {
             data = JSON.parse(rawData.toString());
@@ -134,7 +134,7 @@ export default class ServerPeer extends RTCPeerConnection {
         try {
             const offer = await this.createOffer();
             await this.setLocalDescription(offer);
-            this.sendWSMessage("offer", this.localDescription);
+            this.#sendWSMessage("offer", this.localDescription);
         } catch (error) {
             console.error("Failed to create/send offer:", error);
         }
@@ -142,7 +142,7 @@ export default class ServerPeer extends RTCPeerConnection {
 
     async #onIceCandidate(event) {
         if (event.candidate) {
-            this.sendWSMessage("ice-candidate", event.candidate);
+            this.#sendWSMessage("ice-candidate", event.candidate);
         }
     }
 
