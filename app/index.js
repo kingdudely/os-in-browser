@@ -14,7 +14,7 @@ const etagCache = new Map(); // path -> { etag, data }
 wss.on('connection', async (ws) => {
 	const accessToken = await new Promise((resolve) => ws.once('message', resolve));
     const githubUser = new Octokit({
-		auth: accessToken,
+		auth: accessToken.toString(),
 	});
 
     try {
