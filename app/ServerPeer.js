@@ -16,13 +16,13 @@ export default class ServerPeer extends RTCPeerConnection {
 
         this.#initializeDataChannels();
 
-        peer.addEventListener("icecandidate", this.onIceCandidate.bind(this));
-        peer.addEventListener("negotiationneeded", this.onNegotiatedNeeded.bind(this));
-        peer.addEventListener("connectionstatechange", this.onConnectionStateChange.bind(this));
-        ws.on("message", this.onTrickleICEMessage.bind(this));
+        this.addEventListener("icecandidate", this.onIceCandidate.bind(this));
+        this.addEventListener("negotiationneeded", this.onNegotiatedNeeded.bind(this));
+        this.addEventListener("connectionstatechange", this.onConnectionStateChange.bind(this));
+        this.signalingWs.on("message", this.onTrickleICEMessage.bind(this));
 
         const pingInterval = setInterval(() => this.sendWSMessage("ping"), 1337);
-        ws.once("close", () => clearInterval(pingInterval));
+        this.signalingWs.once("close", () => clearInterval(pingInterval));
     }
 
     #initializeDataChannels() {
