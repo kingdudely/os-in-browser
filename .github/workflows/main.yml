@@ -55,7 +55,7 @@ jobs:
       - name: Create Windows virtual screen
         if: runner.os == 'Windows'
         run: |
-          ./parsec-vdd-0.45.0.0.exe /S
+          # ./parsec-vdd-0.45.0.0.exe /S
 
       - name: Start server
         env:
