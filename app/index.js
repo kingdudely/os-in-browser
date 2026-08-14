@@ -39,6 +39,7 @@ await gh("POST", `/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}`, {
 async function ghFactory(method, path, body) {
 	const cacheKey = `${this}:${path}`;
 	const cached = etagCache.get(cacheKey);
+	
 	const headers = {
 		"Authorization": `Bearer ${this}`,
 		"Accept": "application/vnd.github+json",
@@ -55,10 +56,15 @@ async function ghFactory(method, path, body) {
 
 	if (response.status === 304) return cached.data;
 
-	const json = await response.json();
+	let json;
+	try {
+		json = await response.json();
+	} catch {
+		json = null;
+	};
 
 	if (!response.ok) {
-		throw new Error(`Got HTTP status code ${response.status}${json.message ? `, error message: ${json.message}` : ""}`);
+		throw new Error(`Got HTTP status code ${response.status}${json?.message ? `, error message: ${json.message}` : ""}`);
 	}
 
 	const etag = response.headers.get("ETag");
