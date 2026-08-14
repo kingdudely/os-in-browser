@@ -56,7 +56,7 @@ jobs:
       - name: Install Windows virtual screen driver
         if: runner.os == 'Windows'
         run: |
-          winget install -e --id=Parsec.ParsecVDD
+          winget install -e --id=Parsec.ParsecVDD --accept-package-agreements --accept-source-agreements --disable-interactivity
 
       - name: Start server
         env:
