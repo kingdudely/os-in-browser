@@ -52,7 +52,7 @@ jobs:
 
           startlxqt &
 
-      - name: Create Windows virtual screen
+      - name: Install Windows virtual screen driver
         if: runner.os == 'Windows'
         run: |
           winget install -e --id=Parsec.ParsecVDD
