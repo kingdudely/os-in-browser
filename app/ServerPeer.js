@@ -20,7 +20,7 @@ export default class ServerPeer extends RTCPeerConnection {
         this.#initializeDataChannels();
 
         this.addEventListener("icecandidate", this.#onIceCandidate.bind(this));
-        this.addEventListener("negotiationneeded", this.#onNegotiatedNeeded.bind(this));
+        this.addEventListener("negotiationneeded", this.#onNegotiationNeeded.bind(this));
         this.addEventListener("connectionstatechange", this.#onConnectionStateChange.bind(this));
         this.signalingWs.on("message", this.#onTrickleICEMessage.bind(this));
 
@@ -130,7 +130,7 @@ export default class ServerPeer extends RTCPeerConnection {
         }
     }
 
-    async #onNegotiatedNeeded() {
+    async #onNegotiationNeeded() {
         try {
             const offer = await this.createOffer();
             await this.setLocalDescription(offer);
