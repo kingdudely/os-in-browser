@@ -42,9 +42,10 @@ jobs:
             openbox \
             dbus-x11 \
             xvfb \
-            libxrandr-dev
+            libxrandr-dev \
+            libxtst-dev
 
-          read -r DISPLAY_NUMBER < <(exec Xvfb -displayfd 1)
+          read -r DISPLAY_NUMBER < <(exec Xvfb -displayfd 1 -screen 0 1920x1080x24 +extension RANDR +extension XTEST -nolisten tcp)
 
           export DISPLAY=":$DISPLAY_NUMBER"
           echo "DISPLAY=$DISPLAY" >> "$GITHUB_ENV"
