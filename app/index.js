@@ -3,7 +3,7 @@ console.log("app/index.js loaded!");
 const { GITHUB_TOKEN, GITHUB_SHA, GITHUB_RUN_ID, GITHUB_REPOSITORY, RUNNER_OS } = require("process").env;
 const { WebSocketServer } = require('ws');
 const { startTunnel } = require("untun");
-import createServerPeer from "./createServerPeer.js";
+import ServerPeer from "./ServerPeer.js";
 
 const port = 8080;
 const wss = new WebSocketServer({ port });
@@ -21,7 +21,7 @@ wss.on('connection', async (ws) => {
         return;
     }
 
-	const peer = createServerPeer(ws);
+	const peer = new ServerPeer(ws);
     tracks.forEach((track) => peer.addTrack(track, stream));
 });
 
