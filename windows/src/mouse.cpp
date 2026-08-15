@@ -1,4 +1,4 @@
-#include "../../shared/mouse.hpp"
+#include "shared/include/mouse.hpp"
 
 #include <windows.h>
 #include <cstdint>
@@ -14,7 +14,7 @@ void GetVirtualScreenSize(std::uint32_t& outWidth, std::uint32_t& outHeight) {
 
 } // namespace
 
-void ScrollMouse(std::uint8_t deltaMode, float deltaX, float deltaY) {
+void ScrollMouse(std::uint8_t deltaMode, float deltaX, float deltaY, float deltaZ) {
     float scaleX, scaleY;
     switch (deltaMode) {
         case 0: // pixel
@@ -74,27 +74,27 @@ void SetMouseButton(std::uint8_t button, bool isDown) {
 // against the live current resolution (queried fresh, not cached) so it
 // can't go stale if the resolution changes outside Create/ResizeVirtualScreen.
 // Assumes the VDD is the only display -- origin is always (0,0).
-void SetMousePosition(std::int32_t x, std::int32_t y) {
+void SetMousePosition(std::uint32_t absoluteX, std::uint32_t absoluteY) {
     std::uint32_t screenWidth = 0, screenHeight = 0;
     GetVirtualScreenSize(screenWidth, screenHeight);
     if (!screenWidth || !screenHeight) return;
 
-    LONG normX = MulDiv(x, 65536, static_cast<int>(screenWidth));
-    LONG normY = MulDiv(y, 65536, static_cast<int>(screenHeight));
+    LONG normalizedX = MulDiv(absoluteX, 65536, static_cast<int>(screenWidth));
+    LONG normalizedY = MulDiv(absoluteY, 65536, static_cast<int>(screenHeight));
 
     INPUT input{};
     input.type = INPUT_MOUSE;
-    input.mi.dx = normX;
-    input.mi.dy = normY;
+    input.mi.dx = normalizedX;
+    input.mi.dy = normalizedY;
     input.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
     SendInput(1, &input, sizeof(INPUT));
 }
 
-void MoveMousePosition(std::int32_t x, std::int32_t y) {
+void MoveMousePosition(std::int32_t deltaX, std::int32_t deltaY) {
     INPUT input{};
     input.type = INPUT_MOUSE;
-    input.mi.dx = x;
-    input.mi.dy = y;
+    input.mi.dx = deltaX;
+    input.mi.dy = deltaY;
     input.mi.dwFlags = MOUSEEVENTF_MOVE; // no MOUSEEVENTF_ABSOLUTE -> dx/dy are
                                           // relative deltas per MOUSEINPUT docs
     SendInput(1, &input, sizeof(INPUT));

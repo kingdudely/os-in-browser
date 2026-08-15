@@ -1,8 +1,8 @@
-#include "../../shared/virtual_screen.hpp"
+#include "shared/include/virtual_screen.hpp"
 
 #include <Carbon/Carbon.h>
 #import <Foundation/Foundation.h>
-#import "../include/CGVirtualDisplay.mm"
+#import "macos/include/CGVirtualDisplay.mm"
 
 namespace {
 CGVirtualDisplay* g_virtualDisplay = nil;

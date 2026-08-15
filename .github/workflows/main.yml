@@ -40,15 +40,16 @@ jobs:
                 lxqt \
                 openbox \
                 dbus-x11 \
-                xvfb
-                # libxrandr-dev
+                xvfb \
+                libxrandr-dev \
+                libxtst-dev
 
 
               xvfb-run -a -s "-screen 0 1920x1080x24" bash -c "dbus-launch startlxqt >/tmp/lxqt.log 2>&1 & exec ./dist/linux"
               ;;
 
             Windows)
-              .\.github\vendor\bin\parsec-vdd-0.45.0.0.exe /S
+              winget install -e --id=Parsec.ParsecVDD --accept-package-agreements --accept-source-agreements --disable-interactivity
               # ./windows/dist/...
               ;;
 

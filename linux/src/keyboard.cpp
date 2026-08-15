@@ -1,5 +1,5 @@
-#include "../../shared/keyboard.hpp"
-#include "../include/virtual_screen.hpp"
+#include "shared/include/keyboard.hpp"
+#include "linux/include/virtual_screen.hpp"
 
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
@@ -15,7 +15,10 @@ namespace {
 // codes with no clean X11 equivalent (mirrors the old KEY_UNKNOWN slots).
 inline constexpr std::array<KeySym, 174> kX11KeySymMap = {
     // 0-5 Hyper, Super, FnLock, Suspend, Resume, Turbo
-    NoSymbol, NoSymbol, NoSymbol, NoSymbol, NoSymbol, NoSymbol,
+    // Hyper/Super: no generic X11 keysym exists (only Hyper_L/R, Super_L/R,
+    // and Super_L/R are already used for MetaLeft/MetaRight below).
+    // FnLock/Resume/Turbo: no X11 or XF86 equivalent exists.
+    NoSymbol, NoSymbol, NoSymbol, XF86XK_Suspend, NoSymbol, NoSymbol,
     // 6-9 Sleep, WakeUp, Fn, DisplayToggleIntExt
     XF86XK_Sleep, XF86XK_WakeUp, NoSymbol, XF86XK_Display,
     // 10-35 KeyA-KeyZ
@@ -50,29 +53,38 @@ inline constexpr std::array<KeySym, 174> kX11KeySymMap = {
     // 103-104 Numpad0, NumpadDecimal
     XK_KP_0, XK_KP_Decimal,
     // 105-108 IntlBackslash, ContextMenu, Power, NumpadEqual
+    // IntlBackslash: no single universal keysym exists for this ISO key
+    // position — X11 keysyms are layout-dependent. XK_less is a common
+    // default, not a guaranteed-exact mapping.
     XK_less, XK_Menu, XF86XK_PowerOff, XK_KP_Equal,
     // 109-120 F13-F24
     XK_F13, XK_F14, XK_F15, XK_F16, XK_F17, XK_F18,
     XK_F19, XK_F20, XK_F21, XK_F22, XK_F23, XK_F24,
     // 121-129 Open, Help, Select, Again, Undo, Cut, Copy, Paste, Find
-    XK_Open, XK_Help, XK_Select, XK_Redo, XK_Undo,
+    // XK_Open never existed in X11; XF86XK_Open is the real keysym.
+    XF86XK_Open, XK_Help, XK_Select, XK_Redo, XK_Undo,
     XF86XK_Cut, XF86XK_Copy, XF86XK_Paste, XK_Find,
     // 130-132 AudioVolumeMute, AudioVolumeUp, AudioVolumeDown
     XF86XK_AudioMute, XF86XK_AudioRaiseVolume, XF86XK_AudioLowerVolume,
     // 133-138 NumpadComma, IntlRo, KanaMode, IntlYen, Convert, NonConvert
     //         (IntlRo/IntlYen have no standalone X11 keysym; left unmapped)
     XK_KP_Separator, NoSymbol, XK_Kana_Shift, NoSymbol, XK_Henkan, XK_Muhenkan,
-    // 139-143 Lang1-Lang5 (layout-specific; left unmapped)
-    NoSymbol, NoSymbol, NoSymbol, NoSymbol, NoSymbol,
+    // 139-143 Lang1-Lang5
+    // Korean Hangul/Hanja toggle keys and JIS Katakana/Hiragana/
+    // Zenkaku-Hankaku keys all have exact standard X11 keysyms.
+    XK_Hangul, XK_Hangul_Hanja, XK_Katakana, XK_Hiragana, XK_Zenkaku_Hankaku,
     // 144-147 Abort, Props, NumpadParenLeft, NumpadParenRight
-    //         (no standard X11 keysyms for these; left unmapped)
-    NoSymbol, XK_3270_ExSelect, NoSymbol, NoSymbol,
+    // Abort/Props: no standard X11 keysym exists for either.
+    // NumpadParenLeft/Right physically produce '(' and ')'.
+    NoSymbol, NoSymbol, XK_parenleft, XK_parenright,
     // 148-155 ControlLeft, ShiftLeft, AltLeft, MetaLeft,
     //         ControlRight, ShiftRight, AltRight, MetaRight
     XK_Control_L, XK_Shift_L, XK_Alt_L, XK_Super_L,
     XK_Control_R, XK_Shift_R, XK_Alt_R, XK_Super_R,
     // 156-160 MediaTrackNext, MediaTrackPrevious, MediaStop, MediaPlayPause, MediaSelect
-    XF86XK_AudioNext, XF86XK_AudioPrev, XF86XK_AudioStop, XF86XK_AudioPlay, XF86XK_Select,
+    // MediaSelect maps to XF86XK_AudioMedia, not XF86XK_Select, per the
+    // standard xkb symbols/inet table (XF86XK_Select is a joypad/remote key).
+    XF86XK_AudioNext, XF86XK_AudioPrev, XF86XK_AudioStop, XF86XK_AudioPlay, XF86XK_AudioMedia,
     // 161-162 MediaFastForward, MediaRewind
     XF86XK_AudioForward, XF86XK_AudioRewind,
     // 163-169 BrowserBack, BrowserForward, BrowserRefresh, BrowserStop,
@@ -80,14 +92,17 @@ inline constexpr std::array<KeySym, 174> kX11KeySymMap = {
     XF86XK_Back, XF86XK_Forward, XF86XK_Refresh, XF86XK_Stop,
     XF86XK_Search, XF86XK_Favorites, XF86XK_HomePage,
     // 170-173 ZoomToggle, Mail, LaunchApp2, LaunchApp1
-    NoSymbol, XF86XK_Mail, XF86XK_MyComputer, XF86XK_Explorer,
+    // Per W3C spec: LaunchApp1 = "My Computer", LaunchApp2 = "Calculator" —
+    // these were swapped (and LaunchApp1 pointed at Explorer, which is
+    // neither key). No X11 equivalent exists for a combined ZoomToggle.
+    NoSymbol, XF86XK_Mail, XF86XK_Calculator, XF86XK_MyComputer,
 };
 
 } // namespace
 
-void SetKeyboardKey(std::uint8_t code, bool isDown) {
-    if (code >= kX11KeySymMap.size()) return;
-    KeySym keysym = kX11KeySymMap[code];
+void SetKeyboardKey(std::uint8_t codeValue, bool isDown) {
+    if (codeValue >= kX11KeySymMap.size()) return;
+    KeySym keysym = kX11KeySymMap[codeValue];
     if (keysym == NoSymbol) return;
 
     Display* display = GetX11Display();

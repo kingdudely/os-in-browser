@@ -1,4 +1,4 @@
-#include "../../shared/mouse.hpp"
+#include "shared/include/mouse.hpp"
 
 #include <Carbon/Carbon.h>
 #include <cmath>
@@ -6,8 +6,8 @@
 #include <IOKit/hidsystem/IOLLEvent.h>
 #include <IOKit/hidsystem/IOHIDLib.h>
 #include <IOKit/hidsystem/IOHIDParameter.h>
-#include "../include/IOHIDPostEvent.hpp"
-#include "../include/virtual_screen.hpp"
+#include "macos/include/IOHIDPostEvent.hpp"
+#include "macos/include/virtual_screen.hpp"
 
 namespace {
 
@@ -122,12 +122,12 @@ void SetMouseButton(std::uint8_t button, bool isDown) {
 
 // CGEventCreateMouseEvent takes absolute screen coordinates directly --
 // no relative-delta conversion needed here.
-void SetMousePosition(std::uint32_t x, std::uint32_t y) {
-    CGPoint location = CGPointMake(static_cast<CGFloat>(x), static_cast<CGFloat>(y));
+void SetMousePosition(std::uint32_t absoluteX, std::uint32_t absoluteY) {
+    CGPoint location = CGPointMake(static_cast<CGFloat>(absoluteX), static_cast<CGFloat>(absoluteY));
     PostMouseEvent(kCGEventMouseMoved, location, kCGMouseButtonLeft);
 }
 
-void MoveMousePosition(std::int32_t dx, std::int32_t dy) {
+void MoveMousePosition(std::int32_t deltaX, std::int32_t deltaY) {
     io_connect_t conn = GetHIDConnect();
     if (conn == MACH_PORT_NULL) {
         // don't spam retries at input rate; caller/UI layer should
@@ -136,8 +136,8 @@ void MoveMousePosition(std::int32_t dx, std::int32_t dy) {
     }
 
     NXEventData ev = {};
-    ev.mouseMove.dx = dx;
-    ev.mouseMove.dy = dy;
+    ev.mouseMove.dx = deltaX;
+    ev.mouseMove.dy = deltaY;
 
     IOGPoint loc = {0, 0}; // ignored when kIOHIDSetRelativeCursorPosition is set
 
