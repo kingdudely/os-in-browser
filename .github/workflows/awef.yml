@@ -7,13 +7,25 @@ jobs:
   listen:
     runs-on: ubuntu-latest
     steps:
-
       - name: Write file with dynamic name
-        run: echo "some content" > "nah"
+        id: step
+        run: |
+          sudo mkdir -p --mode=0755 /usr/share/keyrings
+          curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
+          echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
+          cloudflared tunnel --metrics 127.0.0.1:60123 --url http://localhost:8080 &
+
+          until cloudflared tunnel --metrics 127.0.0.1:60123 ready; do
+            sleep 0.5
+          done
+
+          TARGET_METRIC="http_requests_total"
+          TARGET_METHOD="POST"
+
+          echo "url=$(curl -s http://localhost:55555/quicktunnel | jq -r '.hostname')" >> "${GITHUB_OUTPUT}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: awef
-          path: nah
+          path: ${{ steps.step.outputs.url }}
           archive: false
