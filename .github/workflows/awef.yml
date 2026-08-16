@@ -20,10 +20,9 @@ jobs:
             sleep 0.5
           done
 
-          TARGET_METRIC="http_requests_total"
-          TARGET_METHOD="POST"
-
-          echo "url=$(curl -s http://127.0.0.1:60123/quicktunnel | jq -r '.hostname')" >> "${GITHUB_OUTPUT}"
+          TUNNEL_URL=curl -s http://127.0.0.1:60123/quicktunnel | jq -r '.hostname'
+          touch "${TUNNEL_URL}"
+          echo "url=$(TUNNEL_URL)" >> "${GITHUB_OUTPUT}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
