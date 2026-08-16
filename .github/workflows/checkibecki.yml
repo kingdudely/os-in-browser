@@ -1,0 +1,81 @@
+name: nat-check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check-nat:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check NAT mapping behavior via STUN
+        shell: python
+        run: |
+          import socket, struct, random
+
+          def stun_request(sock, host, port):
+              trans_id = bytes(random.getrandbits(8) for _ in range(12))
+              magic = 0x2112A442
+              msg = struct.pack('!HHI12s', 0x0001, 0, magic, trans_id)
+              sock.sendto(msg, (host, port))
+              data, _ = sock.recvfrom(2048)
+              msg_len = struct.unpack('!H', data[2:4])[0]
+              body = data[20:20 + msg_len]
+              i = 0
+              mapped = None
+              while i < len(body):
+                  attr_type, attr_len = struct.unpack('!HH', body[i:i + 4])
+                  val = body[i + 4:i + 4 + attr_len]
+                  if attr_type in (0x0001, 0x0020):
+                      family = val[1]
+                      port_raw = struct.unpack('!H', val[2:4])[0]
+                      addr_raw = val[4:8]
+                      if attr_type == 0x0020:
+                          port_raw ^= (magic >> 16)
+                          magic_bytes = struct.pack('!I', magic)
+                          addr = bytes(a ^ b for a, b in zip(addr_raw, magic_bytes))
+                      else:
+                          addr = addr_raw
+                      mapped = (socket.inet_ntoa(addr), port_raw)
+                  padding = (4 - (attr_len % 4)) % 4
+                  i += 4 + attr_len + padding
+              return mapped
+
+          # Two independent STUN servers, queried from the SAME local socket/port.
+          # Same external port back from both => endpoint-independent (cone) NAT.
+          # Different external ports => symmetric NAT, hole punching / plain
+          # STUN-derived reachability won't work; you'll need a relay fallback.
+          servers = [
+              ("stun.l.google.com", 19302),
+              ("stun.cloudflare.com", 3478),
+          ]
+
+          sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+          sock.bind(("0.0.0.0", 0))
+          sock.settimeout(5)
+          print(f"local socket bound to port {sock.getsockname()[1]}")
+
+          results = []
+          for host, port in servers:
+              try:
+                  mapped = stun_request(sock, host, port)
+                  print(f"{host}:{port} -> mapped {mapped}")
+                  results.append(mapped)
+              except Exception as e:
+                  print(f"{host}:{port} failed: {e}")
+                  results.append(None)
+
+          if all(results) and results[0] is not None and results[1] is not None:
+              if results[0][1] == results[1][1]:
+                  print("NAT TYPE: cone (endpoint-independent mapping) -- "
+                        "a WebTransport client should be able to reach this "
+                        "socket's mapped port directly, no relay needed")
+              else:
+                  print("NAT TYPE: symmetric (endpoint-dependent mapping) -- "
+                        "external port differs per destination, direct "
+                        "WebTransport reachability will fail; need a relay/tunnel")
+          else:
+              print("Could not determine NAT type -- one or both STUN queries failed "
+                    "(possible UDP egress block on this runner)")
