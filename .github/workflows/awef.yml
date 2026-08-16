@@ -20,7 +20,7 @@ jobs:
             sleep 0.5
           done
 
-          TUNNEL_URL=curl -s http://127.0.0.1:60123/quicktunnel | jq -r '.hostname'
+          TUNNEL_URL=$(curl -s http://127.0.0.1:60123/quicktunnel | jq -r '.hostname')
           touch "${TUNNEL_URL}"
           echo "url=$(TUNNEL_URL)" >> "${GITHUB_OUTPUT}"
 
