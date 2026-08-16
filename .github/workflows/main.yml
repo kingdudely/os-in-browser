@@ -51,6 +51,10 @@ jobs:
           echo "DISPLAY=$DISPLAY" >> "$GITHUB_ENV"
           echo "ELECTRON_DISABLE_SANDBOX=1" >> $GITHUB_ENV
 
+          eval "$(dbus-launch --sh-syntax)"
+          echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_PID=$DBUS_SESSION_BUS_PID" >> "$GITHUB_ENV"
+
           startlxqt &
 
       - name: Install Windows virtual screen driver

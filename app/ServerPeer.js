@@ -83,7 +83,9 @@ export default class ServerPeer extends RTCPeerConnection {
                 break;
             }
 
-            case "disconnected": break;
+            case "disconnected":
+            case "connecting":
+            case "new":
             case "connected": break;
 
             default: {
