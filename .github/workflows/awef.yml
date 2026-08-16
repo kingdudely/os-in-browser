@@ -22,7 +22,7 @@ jobs:
           TARGET_METRIC="http_requests_total"
           TARGET_METHOD="POST"
 
-          echo "url=$(curl -s http://localhost:55555/quicktunnel | jq -r '.hostname')" >> "${GITHUB_OUTPUT}"
+          echo "url=$(curl -s http://127.0.0.1:60123/quicktunnel | jq -r '.hostname')" >> "${GITHUB_OUTPUT}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
