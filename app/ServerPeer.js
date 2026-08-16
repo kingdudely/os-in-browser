@@ -3,6 +3,7 @@ nativeApis.createVirtualScreen();
 
 const stream = await navigator.mediaDevices.getDisplayMedia();
 const tracks = stream.getTracks();
+const [videoTrack] = stream.getVideoTracks();
 
 export default class ServerPeer extends RTCPeerConnection {
     static #Init = {
@@ -189,6 +190,7 @@ export default class ServerPeer extends RTCPeerConnection {
         const innerHeight = view.getUint32(4, true);
 
         nativeApis.resizeVirtualScreen(innerWidth, innerHeight);
+        await videoTrack.applyConstraints({ width: innerWidth, height: innerHeight });
     }
 
     static async #onPointerScroll(event) {
