@@ -1,19 +1,16 @@
-name: nat-check
+name: nat-filtering-check
 
 on:
   workflow_dispatch:
 
 jobs:
-  check-nat:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+  listen:
+    runs-on: ubuntu-latest
     steps:
-      - name: Check NAT mapping behavior via STUN
+      - name: Learn mapped endpoint via STUN, then listen for a cold packet
         shell: python
         run: |
-          import socket, struct, random
+          import socket, struct, random, time
 
           def stun_request(sock, host, port):
               trans_id = bytes(random.getrandbits(8) for _ in range(12))
@@ -29,7 +26,6 @@ jobs:
                   attr_type, attr_len = struct.unpack('!HH', body[i:i + 4])
                   val = body[i + 4:i + 4 + attr_len]
                   if attr_type in (0x0001, 0x0020):
-                      family = val[1]
                       port_raw = struct.unpack('!H', val[2:4])[0]
                       addr_raw = val[4:8]
                       if attr_type == 0x0020:
@@ -43,39 +39,30 @@ jobs:
                   i += 4 + attr_len + padding
               return mapped
 
-          # Two independent STUN servers, queried from the SAME local socket/port.
-          # Same external port back from both => endpoint-independent (cone) NAT.
-          # Different external ports => symmetric NAT, hole punching / plain
-          # STUN-derived reachability won't work; you'll need a relay fallback.
-          servers = [
-              ("stun.l.google.com", 19302),
-              ("stun.cloudflare.com", 3478),
-          ]
-
           sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
           sock.bind(("0.0.0.0", 0))
           sock.settimeout(5)
-          print(f"local socket bound to port {sock.getsockname()[1]}")
 
-          results = []
-          for host, port in servers:
-              try:
-                  mapped = stun_request(sock, host, port)
-                  print(f"{host}:{port} -> mapped {mapped}")
-                  results.append(mapped)
-              except Exception as e:
-                  print(f"{host}:{port} failed: {e}")
-                  results.append(None)
+          mapped = stun_request(sock, "stun.l.google.com", 19302)
+          ip, port = mapped
+          print("=" * 60)
+          print(f"SEND YOUR TEST PACKET TO:  {ip}:{port}")
+          print("from your own machine, e.g.:")
+          print(f"  echo -n 'hello' | nc -u -w1 {ip} {port}")
+          print("You have ~120 seconds from NOW.")
+          print("=" * 60, flush=True)
 
-          if all(results) and results[0] is not None and results[1] is not None:
-              if results[0][1] == results[1][1]:
-                  print("NAT TYPE: cone (endpoint-independent mapping) -- "
-                        "a WebTransport client should be able to reach this "
-                        "socket's mapped port directly, no relay needed")
-              else:
-                  print("NAT TYPE: symmetric (endpoint-dependent mapping) -- "
-                        "external port differs per destination, direct "
-                        "WebTransport reachability will fail; need a relay/tunnel")
-          else:
-              print("Could not determine NAT type -- one or both STUN queries failed "
-                    "(possible UDP egress block on this runner)")
+          sock.settimeout(120)
+          try:
+              data, addr = sock.recvfrom(2048)
+              print(f"RECEIVED from {addr}: {data!r}")
+              print("RESULT: unsolicited inbound UDP got through -- "
+                    "filtering is endpoint-independent (full cone). "
+                    "Direct WebTransport reachability should work.")
+          except socket.timeout:
+              print("RESULT: nothing arrived in the window -- "
+                    "either restricted-cone filtering (only accepts "
+                    "packets from hosts/ports this socket has already "
+                    "sent to) or an NSG is blocking cold inbound UDP. "
+                    "Direct WebTransport reachability will likely fail; "
+                    "plan for a relay/tunnel fallback.")
