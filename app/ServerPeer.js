@@ -1,9 +1,7 @@
 const nativeApis = require("native-apis");
-nativeApis.createVirtualScreen();
 
 const stream = await navigator.mediaDevices.getDisplayMedia();
 const tracks = stream.getTracks();
-const [videoTrack] = stream.getVideoTracks();
 
 export default class ServerPeer extends RTCPeerConnection {
     static #Init = {
@@ -45,30 +43,23 @@ export default class ServerPeer extends RTCPeerConnection {
             id: 1
         });
 
-        const keyboardTypeChannel = this.createDataChannel("keyboard-type", {
-            ordered: true,
-            negotiated: true,
-            id: 2
-        });
-
-        const screenResizeChannel = this.createDataChannel("screen-resize", {
-            ordered: false,
-            negotiated: true,
-            id: 3
-        });
-
         const pointerScrollChannel = this.createDataChannel("pointer-scroll", {
             ordered: false,
             maxRetransmits: 0,
             negotiated: true,
-            id: 4
+            id: 2
+        });
+
+        const keyboardTypeChannel = this.createDataChannel("keyboard-type", {
+            ordered: true,
+            negotiated: true,
+            id: 3
         });
 
         pointerMovementChannel.addEventListener("message", ServerPeer.#onPointerMove);
         pointerClickChannel.addEventListener("message", ServerPeer.#onPointerClick);
-        keyboardTypeChannel.addEventListener("message", ServerPeer.#onKeyboardType);
-        screenResizeChannel.addEventListener("message", ServerPeer.#onScreenResize);
         pointerScrollChannel.addEventListener("message", ServerPeer.#onPointerScroll);
+        keyboardTypeChannel.addEventListener("message", ServerPeer.#onKeyboardType);
     }
 
     #onConnectionStateChange() {
@@ -184,15 +175,6 @@ export default class ServerPeer extends RTCPeerConnection {
         const key = view.getUint8(1);
 
         nativeApis.setKeyboardKey(key, isDown);
-    }
-
-    static async #onScreenResize(event) {
-        const view = new DataView(event.data);
-        const innerWidth = view.getUint32(0, true);
-        const innerHeight = view.getUint32(4, true);
-
-        nativeApis.resizeVirtualScreen(innerWidth, innerHeight);
-        await videoTrack.applyConstraints({ width: innerWidth, height: innerHeight });
     }
 
     static async #onPointerScroll(event) {

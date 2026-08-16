@@ -39,15 +39,12 @@ jobs:
           # Use docker one day
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            lxqt \
-            openbox \
+            xfce4 \
             dbus-x11 \
             xvfb \
-            x11-xserver-utils \
-            libxrandr-dev \
             libxtst-dev
 
-          read -r DISPLAY_NUMBER < <(exec Xvfb -displayfd 1 -screen 0 16384x16384x24 +extension RANDR +extension XTEST -nolisten tcp)
+          read -r DISPLAY_NUMBER < <(exec Xvfb -displayfd 1 -screen 0 1920x1080x24 +extension RANDR +extension XTEST -nolisten tcp)
 
           export DISPLAY=":$DISPLAY_NUMBER"
           echo "DISPLAY=$DISPLAY" >> "$GITHUB_ENV"
@@ -57,16 +54,7 @@ jobs:
           echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> "$GITHUB_ENV"
           echo "DBUS_SESSION_BUS_PID=$DBUS_SESSION_BUS_PID" >> "$GITHUB_ENV"
 
-          startlxqt &
-
-      - name: Check something...
-        if: runner.os == 'Linux'
-        run: xrandr -q | head -1
-
-      - name: Install Windows virtual screen driver
-        if: runner.os == 'Windows'
-        run: |
-          winget install -e --id=Parsec.ParsecVDD --accept-package-agreements --accept-source-agreements --disable-interactivity
+          startxfce4 &
 
       - name: Start server
         env:
