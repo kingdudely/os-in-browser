@@ -13,6 +13,7 @@ jobs:
           sudo mkdir -p --mode=0755 /usr/share/keyrings
           curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
           echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
+          sudo apt update && sudo apt install cloudflared -y
           cloudflared tunnel --metrics 127.0.0.1:60123 --url http://localhost:8080 &
 
           until cloudflared tunnel --metrics 127.0.0.1:60123 ready; do
