@@ -15,5 +15,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: awef
-          file: nah
+          path: nah
           archive: false
