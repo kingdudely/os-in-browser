@@ -43,6 +43,7 @@ jobs:
             openbox \
             dbus-x11 \
             xvfb \
+            x11-xserver-utils \
             libxrandr-dev \
             libxtst-dev
 
