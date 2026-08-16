@@ -58,6 +58,10 @@ jobs:
 
           startlxqt &
 
+      - name: Check something...
+        if: runner.os == 'Linux'
+        run: xrandr -q | head -1
+
       - name: Install Windows virtual screen driver
         if: runner.os == 'Windows'
         run: |
