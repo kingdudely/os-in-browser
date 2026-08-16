@@ -1,0 +1,19 @@
+name: nat-filtering-check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  listen:
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Write file with dynamic name
+        run: echo "some content" > "nah"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: awef
+          file: nah
+          archive: false
