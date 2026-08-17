@@ -9,37 +9,7 @@ import { Octokit } from "https://esm.sh/@octokit/rest?bundle";
 const port = 8080;
 const [owner, repo] = GITHUB_REPOSITORY.split("/");
 const wss = new WebSocketServer({ port });
-const etagCache = new Map(); // path -> { etag, data }
 
 wss.on('connection', async (ws) => {
-	const accessToken = await new Promise((resolve) => ws.once('message', resolve));
-    const githubUser = new Octokit({
-		auth: accessToken.toString(),
-	});
-
-    try {
-        await githubUser.rest.users.getAuthenticated();
-    } catch {
-        ws.close();
-        return;
-    }
-
 	new ServerPeer(ws);
-});
-
-const tunnel = await startTunnel({ port, acceptCloudflareNotice: true });
-const tunnelUrl = await tunnel.getURL();
-
-const actionUser = new Octokit({
-    auth: GITHUB_TOKEN
-});
-
-await actionUser.rest.repos.createCommitStatus({
-	owner,
-	repo,
-	sha: GITHUB_SHA,
-	state: "success",
-	target_url: tunnelUrl,
-	context: GITHUB_RUN_ID,
-	description: RUNNER_OS
 });

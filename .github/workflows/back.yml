@@ -1,5 +1,9 @@
 name: nat-filtering-check
 
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
 on:
   workflow_dispatch:
 
@@ -7,13 +11,26 @@ jobs:
   listen:
     runs-on: ubuntu-latest
     steps:
-      - name: Write file with dynamic name
-        id: step
+      - name: Linux setup
+        if: runner.os == 'Linux'
         run: |
           sudo mkdir -p --mode=0755 /usr/share/keyrings
           curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
           echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
           sudo apt-get update && sudo apt-get install cloudflared -y
+
+      - name: MacOS setup
+        if: runner.os == 'macOS'
+        run: |
+          brew install cloudflared
+
+      - name: Windows setup
+        if: runner.os == 'Windows'
+        run: |
+          winget install -e --id=Cloudflare.cloudflared --accept-package-agreements --accept-source-agreements --disable-interactivity
+
+      - name: Cloudflare tunnel
+        run: |
           cloudflared tunnel --metrics localhost:60123 --url http://localhost:8080 &
           until cloudflared tunnel --metrics localhost:60123 ready; do
             sleep 0.5
@@ -27,4 +44,4 @@ jobs:
           path: ${{ steps.step.outputs.url }}
           archive: false
 
-      - run: sleep infinity
+      - run: sleep 21600
