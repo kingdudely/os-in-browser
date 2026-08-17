@@ -9,7 +9,10 @@ on:
 
 jobs:
   listen:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Linux setup
         if: runner.os == 'Linux'
