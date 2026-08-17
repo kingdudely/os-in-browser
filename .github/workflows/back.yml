@@ -17,30 +17,41 @@ jobs:
       - name: Linux setup
         if: runner.os == 'Linux'
         run: |
-          sudo mkdir -p --mode=0755 /usr/share/keyrings
-          curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
-          echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
-          sudo apt-get update && sudo apt-get install cloudflared -y
+          export CLOUDFLARED="$RUNNER_TEMP/cloudflared"
+          echo "CLOUDFLARED=$CLOUDFLARED" >> "$GITHUB_ENV"
+          curl -fsSLo "$CLOUDFLARED" \
+            https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          chmod +x "$CLOUDFLARED"
 
       - name: MacOS setup
         if: runner.os == 'macOS'
         run: |
-          brew install cloudflared
+          export CLOUDFLARED="$RUNNER_TEMP/cloudflared"
+          echo "CLOUDFLARED=$CLOUDFLARED" >> "$GITHUB_ENV"
+          curl -fsSLo cloudflared.tgz \
+            https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64.tgz
+          tar -xzf cloudflared.tgz -C "$RUNNER_TEMP"
+          chmod +x "$CLOUDFLARED"
 
       - name: Windows setup
         if: runner.os == 'Windows'
         run: |
-          winget install -e --id=Cloudflare.cloudflared --accept-package-agreements --accept-source-agreements --disable-interactivity
+          export CLOUDFLARED="$RUNNER_TEMP/cloudflared.exe"
+          echo "CLOUDFLARED=$CLOUDFLARED" >> "$GITHUB_ENV"
+          curl -fsSLo "$CLOUDFLARED" \
+            https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe
 
       - name: Cloudflare tunnel
+        id: step
         run: |
-          cloudflared tunnel --metrics localhost:60123 --url http://localhost:8080 &
-          until cloudflared tunnel --metrics localhost:60123 ready; do
+          "${CLOUDFLARED}" tunnel --metrics localhost:60123 --url http://localhost:8080 &
+          until "${CLOUDFLARED}" tunnel --metrics localhost:60123 ready; do
             sleep 0.5
           done
           TUNNEL_URL=$(curl -s http://localhost:60123/quicktunnel | jq -r '.hostname')
           touch "${TUNNEL_URL}"
           echo "url=${TUNNEL_URL}" >> "${GITHUB_OUTPUT}"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
