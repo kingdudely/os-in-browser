@@ -4,7 +4,7 @@ const stream = await navigator.mediaDevices.getDisplayMedia();
 const tracks = stream.getTracks();
 
 export default class ServerPeer extends RTCPeerConnection {
-    static #Init = {
+    static Init = {
         iceServers: [
             { urls: "stun:stun.l.google.com:19302" }
         ]
@@ -13,7 +13,7 @@ export default class ServerPeer extends RTCPeerConnection {
     signalingWs;
 
     constructor (signalingWs) {
-        super(ServerPeer.#Init);
+        super(ServerPeer.Init);
         this.signalingWs = signalingWs;
 
         this.#initializeDataChannels();

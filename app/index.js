@@ -1,15 +1,42 @@
-console.log("app/index.js loaded!");
-// Import the WebSocket Server from the 'ws' library
-const { GITHUB_TOKEN, GITHUB_SHA, GITHUB_RUN_ID, GITHUB_REPOSITORY, RUNNER_OS } = require("process").env;
+// remote-desktop-host/index.js
+const http = require('http');
 const { WebSocketServer } = require('ws');
-const { startTunnel } = require("untun");
-import ServerPeer from "./ServerPeer.js";
-import { Octokit } from "https://esm.sh/@octokit/rest?bundle";
+const ServerPeer = require('./ServerPeer.js');
 
-const port = 8080;
-const [owner, repo] = GITHUB_REPOSITORY.split("/");
-const wss = new WebSocketServer({ port });
-
-wss.on('connection', async (ws) => {
+const wss = new WebSocketServer({ noServer: true });
+wss.on('connection', (ws) => {
 	new ServerPeer(ws);
 });
+
+export default class Host extends http.Server {
+	constructor({
+		verifyCredential = (credential) => true
+	} = {}) {
+		super();
+		this.verifyCredential = verifyCredential;
+		this.on("upgrade", this.#handleUpgrade);
+	}
+
+	async #handleUpgrade(request, socket, head) {
+		const protocols = (request.headers['sec-websocket-protocol'] || '').split(',').map(s => s.trim()).filter(Boolean);
+		const credential = protocols[0];
+
+		let ok = true;
+		try {
+			ok = await this.verifyCredential(credential);
+		} catch (err) {
+			console.error('authorize() threw:', err);
+			ok = false;
+		}
+
+		if (!ok) {
+			socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+			socket.destroy();
+			return;
+		}
+
+		wss.handleUpgrade(request, socket, head, (ws) => {
+			wss.emit('connection', ws, request);
+		});
+	}
+}
