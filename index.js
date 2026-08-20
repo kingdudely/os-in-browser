@@ -4,6 +4,7 @@
 console.log("Node.js loaded!")
 import { app, BrowserWindow, desktopCapturer, session } from 'electron';
 import { fileURLToPath } from 'node:url';
+import artifact from '@actions/artifact';
 
 app.whenReady().then(() => {
 	console.log("App loaded!")
@@ -40,3 +41,6 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => app.quit());
+
+// Gotta do this cuz @actions/artifact only supports ESM not CJS, REALLY gotta make IPC one day... .. .. !
+ipcMain.on('upload-artifact', (event, hostname) => artifact.uploadArtifact(hostname, [hostname], ".", { skipArchive: true }));

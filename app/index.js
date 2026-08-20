@@ -3,7 +3,7 @@ console.log("app/index.js loaded!");
 const { GITHUB_TRIGGERING_ACTOR } = require("node:process").env;
 const { WebSocketServer } = require('ws');
 const Tunnel = require("firetunnel");
-const { uploadArtifact } = require('@actions/artifact');
+const { ipcRenderer } = require('electron');
 const { writeFile } = require('node:fs/promises');
 const { STATUS_CODES } = require('node:http');
 const { setTimeout } = require('node:timers/promises');
@@ -47,9 +47,4 @@ while (!await tunnel.isReady()) await setTimeout(1000);
 const { hostname } = await tunnel.getQuickTunnelInfo();
 await writeFile(hostname, "");
 
-await uploadArtifact(
-	hostname,
-	[hostname],
-	".",
-	{ skipArchive: true }
-);
+ipcRenderer.send('upload-artifact', hostname);
