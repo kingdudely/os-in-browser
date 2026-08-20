@@ -31,6 +31,9 @@ runs:
 
         jwm &
 
+    - name: Expose GitHub Runtime
+      uses: crazy-max/ghaction-github-runtime@v4
+
     - name: Start server
       shell: bash --noprofile --norc -euo pipefail {0}
       working-directory: ${{ github.action_path }}
