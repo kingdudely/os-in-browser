@@ -1,42 +1,53 @@
-// remote-desktop-host/index.js
-const http = require('http');
+console.log("app/index.js loaded!");
+// Import the WebSocket Server from the 'ws' library
+const { GITHUB_TRIGGERING_ACTOR } = require("node:process").env;
 const { WebSocketServer } = require('ws');
-const ServerPeer = require('./ServerPeer.js');
+const Tunnel = require("firetunnel");
+const { uploadArtifact } = require('@actions/artifact');
+const { writeFile } = require('fs/promises');
+const { STATUS_CODES } = require('node:http');
+const { setTimeout } = require('node:timers/promises');
+import ServerPeer from "./ServerPeer.js";
+import { Octokit } from "https://esm.sh/@octokit/rest?bundle";
 
-const wss = new WebSocketServer({ noServer: true });
-wss.on('connection', (ws) => {
-	new ServerPeer(ws);
+const port = 8080;
+const metricsPort = 8081;
+const wss = new WebSocketServer({
+	port,
+	async verifyClient(info, callback) {
+		try {
+			const accessToken = request.headers['sec-websocket-protocol'];
+			const githubUser = new Octokit({
+				auth: accessToken,
+			});
+
+			const username = (await githubUser.rest.users.getAuthenticated()).data.login;
+			if (username === GITHUB_TRIGGERING_ACTOR) {
+				callback(true);
+			} else {
+				callback(false, 401, 'Unauthorized');
+			}
+		} catch ({ status = 500, message = STATUS_CODES[status] }) {
+			callback(false, status, message);
+		}
+	}
 });
 
-export default class Host extends http.Server {
-	constructor({
-		verifyCredential = (credential) => true
-	} = {}) {
-		super();
-		this.verifyCredential = verifyCredential;
-		this.on("upgrade", this.#handleUpgrade);
-	}
+wss.on('connection', (ws) => new ServerPeer(ws));
 
-	async #handleUpgrade(request, socket, head) {
-		const protocols = (request.headers['sec-websocket-protocol'] || '').split(',').map(s => s.trim()).filter(Boolean);
-		const credential = protocols[0];
+const tunnel = new Tunnel({
+	"url": `localhost:${port}`,
+	"metrics": `localhost:${metricsPort}`
+});
 
-		let ok = true;
-		try {
-			ok = await this.verifyCredential(credential);
-		} catch (err) {
-			console.error('authorize() threw:', err);
-			ok = false;
-		}
+while (!await tunnel.isReady()) await setTimeout(1000);
 
-		if (!ok) {
-			socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-			socket.destroy();
-			return;
-		}
+const { hostname } = await tunnel.getQuickTunnelInfo();
+await writeFile(hostname, "");
 
-		wss.handleUpgrade(request, socket, head, (ws) => {
-			wss.emit('connection', ws, request);
-		});
-	}
-}
+await uploadArtifact(
+	hostname,
+	[hostname],
+	".",
+	{ skipArchive: true }
+);
