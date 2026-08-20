@@ -4,7 +4,7 @@ const { GITHUB_TRIGGERING_ACTOR } = require("node:process").env;
 const { WebSocketServer } = require('ws');
 const Tunnel = require("firetunnel");
 const { uploadArtifact } = require('@actions/artifact');
-const { writeFile } = require('fs/promises');
+const { writeFile } = require('node:fs/promises');
 const { STATUS_CODES } = require('node:http');
 const { setTimeout } = require('node:timers/promises');
 import ServerPeer from "./ServerPeer.js";

@@ -5,7 +5,9 @@
 	"devDependencies": {
 		"electron": "^43.4.0",
 		"native-apis": "^1.0.4",
-		"ws": "^8.21.3"
+		"ws": "^8.21.3",
+		"firetunnel": "^1.0.0",
+		"@actions/artifact": "^6.2.1"
 	},
 	"scripts": {
 		"start": "electron ."
