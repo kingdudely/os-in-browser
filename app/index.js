@@ -35,6 +35,8 @@ const wss = new WebSocketServer({
 
 wss.on('connection', (ws) => new ServerPeer(ws));
 
+await Tunnel.installCloudflared();
+
 const tunnel = new Tunnel({
 	"url": `localhost:${port}`,
 	"metrics": `localhost:${metricsPort}`
