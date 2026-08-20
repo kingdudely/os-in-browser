@@ -1,4 +1,4 @@
-name: 'Remote Desktop'
+name: 'remote-desktop'
 description: 'Debug your GitHub workflow with this action!'
 
 runs:
