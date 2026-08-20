@@ -1,70 +1,44 @@
-name: Remote Desktop
+name: 'Remote Desktop'
+description: 'Debug your GitHub workflow with this action!'
 
-defaults:
-  run:
-    shell: bash --noprofile --norc -euo pipefail {0}
+runs:
+  using: 'composite'
+  steps:
+    - name: Copy repository into PC
+      uses: actions/checkout@v7
+      with:
+        repository: ${{ github.action_repository }}
+        ref: ${{ github.action_ref }}
 
-on: 
-  workflow_dispatch:
-    inputs:
-      os:
-        description: 'Operating system'
-        type: choice
-        required: true
-        default: 'windows-latest'
-        options:
-          - windows-latest
-          - ubuntu-latest
-          - macos-latest
-      password:
-        description: 'Password'
-        type: string
-        required: true
+    - name: Setup Node
+      uses: actions/setup-node@v7
+      with:
+        node-version: 24
 
-jobs:
-  remote:
-    runs-on: ${{ inputs.os }}
-    timeout-minutes: 360
-    env:
-      PORT: 8080
-      METRICS_PORT: 1337
-    permissions:
-      statuses: write
+    - name: Linux setup
+      if: runner.os == 'Linux'
+      shell: bash --noprofile --norc -euo pipefail {0}
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          jwm \
+          xvfb \
+          libxtst-dev
 
-    steps:
-      - name: Copy repository into PC
-        uses: actions/checkout@v7
-      
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
+        read -r DISPLAY_NUMBER < <(exec Xvfb -displayfd 1 -screen 0 1920x1080x24 +extension XTEST -nolisten tcp)
 
-      - name: Linux setup
-        if: runner.os == 'Linux'
-        run: |
-          # Use docker one day
+        export DISPLAY=":$DISPLAY_NUMBER"
+        echo "DISPLAY=$DISPLAY" >> "$GITHUB_ENV"
+        echo "ELECTRON_DISABLE_SANDBOX=1" >> $GITHUB_ENV
 
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            xfce4 \
-            dbus-x11 \
-            xvfb \
-            libxtst-dev
+        eval "$(dbus-launch --sh-syntax)"
+        echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> "$GITHUB_ENV"
+        echo "DBUS_SESSION_BUS_PID=$DBUS_SESSION_BUS_PID" >> "$GITHUB_ENV"
 
-          read -r DISPLAY_NUMBER < <(exec Xvfb -displayfd 1 -screen 0 1920x1080x24 +extension XTEST -nolisten tcp)
+        jwm &
 
-          export DISPLAY=":$DISPLAY_NUMBER"
-          echo "DISPLAY=$DISPLAY" >> "$GITHUB_ENV"
-          echo "ELECTRON_DISABLE_SANDBOX=1" >> $GITHUB_ENV
-
-          eval "$(dbus-launch --sh-syntax)"
-          echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> "$GITHUB_ENV"
-          echo "DBUS_SESSION_BUS_PID=$DBUS_SESSION_BUS_PID" >> "$GITHUB_ENV"
-
-          startxfce4 &
-
-      - name: Start server
-        run: |
-          npm install
-          npm start # cloudflared tunnel --metrics "localhost:${METRICS_PORT}" ready
+    - name: Start server
+      shell: bash --noprofile --norc -euo pipefail {0}
+      run: |
+        npm install
+        npm start # cloudflared tunnel --metrics "localhost:${METRICS_PORT}" ready
