@@ -16,7 +16,7 @@ const wss = new WebSocketServer({
 	port,
 	async verifyClient(info, callback) {
 		try {
-			const accessToken = request.headers['sec-websocket-protocol'];
+			const accessToken = info.req.headers['sec-websocket-protocol'];
 			const githubUser = new Octokit({
 				auth: accessToken,
 			});
