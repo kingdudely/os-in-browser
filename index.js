@@ -5,37 +5,38 @@ console.log("Node.js loaded!")
 import { app, BrowserWindow, desktopCapturer, session } from 'electron';
 import { fileURLToPath } from 'node:url';
 
-await app.whenReady();
-console.log("App loaded!")
-session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
-	const sources = await desktopCapturer.getSources({
-		types: ['screen']
+app.whenReady().then(() => {
+	console.log("App loaded!")
+	session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
+		const sources = await desktopCapturer.getSources({
+			types: ['screen']
+		});
+
+		callback({
+			video: sources[0],
+			audio: 'loopback'
+		});
+	}, { useSystemPicker: false });
+
+	const win = new BrowserWindow({
+		show: true,
+		webPreferences: {
+			nodeIntegration: true,
+			contextIsolation: false,
+			sandbox: false
+		}
 	});
 
-	callback({
-		video: sources[0],
-		audio: 'loopback'
+	win.webContents.on('console-message', ({ level, message, lineNumber, sourceId }) => {
+		console.log(`[renderer:${level}] ${message} (${sourceId}:${lineNumber})`);
 	});
-}, { useSystemPicker: false });
 
-const win = new BrowserWindow({
-	show: true,
-	webPreferences: {
-		nodeIntegration: true,
-		contextIsolation: false,
-		sandbox: false
-	}
+	win.webContents.on('render-process-gone', (e, details) => {
+		console.log('Renderer gone:', details);
+	});
+	win.webContents.on('unresponsive', () => console.log('Renderer unresponsive'));
+	// win.webContents.openDevTools({ mode: 'detach' });
+	win.loadFile(fileURLToPath(import.meta.resolve("./app/index.html")));
 });
-
-win.webContents.on('console-message', ({ level, message, lineNumber, sourceId }) => {
-	console.log(`[renderer:${level}] ${message} (${sourceId}:${lineNumber})`);
-});
-
-win.webContents.on('render-process-gone', (e, details) => {
-	console.log('Renderer gone:', details);
-});
-win.webContents.on('unresponsive', () => console.log('Renderer unresponsive'));
-// win.webContents.openDevTools({ mode: 'detach' });
-win.loadFile(fileURLToPath(import.meta.resolve("./app/index.html")));
 
 app.on('window-all-closed', () => app.quit());
