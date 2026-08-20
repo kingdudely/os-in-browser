@@ -2,7 +2,7 @@
 // update g_screenWidth and g_screenHeight when screen changes, maybe support screen mirroring so the virtual screen looks like the real one.
 
 console.log("Node.js loaded!")
-import { app, BrowserWindow, desktopCapturer, session } from 'electron';
+import { app, BrowserWindow, desktopCapturer, session, ipcMain } from 'electron';
 import { fileURLToPath } from 'node:url';
 import artifact from '@actions/artifact';
 
