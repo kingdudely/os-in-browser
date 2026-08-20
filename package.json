@@ -2,7 +2,7 @@
 	"name": "os-in-browser.pages.dev-host",
 	"main": "index.js",
 	"type": "module",
-	"devDependencies": {
+	"dependencies": {
 		"electron": "^43.4.0",
 		"native-apis": "^1.0.4",
 		"ws": "^8.21.3",

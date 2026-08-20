@@ -4,12 +4,6 @@ description: 'Debug your GitHub workflow with this action!'
 runs:
   using: 'composite'
   steps:
-    - name: Copy repository into PC
-      uses: actions/checkout@v7
-      with:
-        repository: ${{ github.action_repository }}
-        ref: ${{ github.action_ref }}
-
     - name: Setup Node
       uses: actions/setup-node@v7
       with:
@@ -39,6 +33,7 @@ runs:
 
     - name: Start server
       shell: bash --noprofile --norc -euo pipefail {0}
+      working-directory: ${{ github.action_path }}
       run: |
         npm install
         npm start # cloudflared tunnel --metrics "localhost:${METRICS_PORT}" ready
