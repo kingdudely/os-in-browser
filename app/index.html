@@ -6,7 +6,38 @@
         <script type="module" src="index.js" defer></script>
     </head>
     <body>
-        <marquee>No settings here yet...</marquee>
-        <h1>Close this window to make the remote desktop session end.</h1>
+        <main>
+            <h1>Welcome to your Remote Desktop</h1>
+
+            <!--
+            <details>
+                <summary>Settings</summary>
+                <label>
+                    Screenshare codec
+                    <select id="codec-selection">
+                        <option value="video/H264" selected>H.264</option>
+                        <option value="video/VP8">VP8</option>
+                        <option value="video/VP9">VP9</option>
+                    </select>
+                </label>
+            </details>
+            -->
+            
+            <section>
+                <h2>If you encounter an authentication prompt, try the following credentials:</h2>
+                <p><strong>Username:</strong> <code>admin</code></p>
+                <p><strong>Password:</strong> <code>admin</code></p>
+                <h3>Example image:</h3>
+                <img src="authentication.png" alt="An image of a MacOS authentication prompt"/>
+            </section>
+            
+            <section>
+                <h2>If you encounter any issues, please visit <a href="https://github.com/kingdudely/os-in-browser.pages.dev-host/issues/new" target="_blank" rel="noopener">GitHub Issues</a> to submit a new issue.</h2>
+            </section>
+            
+            <section>
+                <h2>Close this window to end the session.</h2>
+            </section>
+        </main>
     </body>
 </html>

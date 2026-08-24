@@ -1,4 +1,5 @@
 const nativeApis = require("native-apis");
+const { clipboard } = require("electron");
 
 const stream = await navigator.mediaDevices.getDisplayMedia();
 const tracks = stream.getTracks();
@@ -30,42 +31,53 @@ export default class ServerPeer extends RTCPeerConnection {
     }
 
     #initializeDataChannels() {
-        const pointerMovementChannel = this.createDataChannel("pointer-movement", {
+        this.#newDataChannel("pointer-movement", {
             ordered: false,
             maxRetransmits: 0,
             negotiated: true,
             id: 0
-        });
+        }, ServerPeer.#onPointerMove.bind(ServerPeer));
 
-        const pointerClickChannel = this.createDataChannel("pointer-click", {
+        this.#newDataChannel("pointer-click", {
             ordered: true,
             negotiated: true,
             id: 1
-        });
+        }, ServerPeer.#onPointerClick.bind(ServerPeer));
 
-        const pointerScrollChannel = this.createDataChannel("pointer-scroll", {
+        this.#newDataChannel("pointer-scroll", {
             ordered: false,
             maxRetransmits: 0,
             negotiated: true,
             id: 2
-        });
+        }, ServerPeer.#onPointerScroll.bind(ServerPeer));
 
-        const keyboardTypeChannel = this.createDataChannel("keyboard-type", {
+        this.#newDataChannel("keyboard-type", {
             ordered: true,
             negotiated: true,
             id: 3
-        });
+        }, ServerPeer.#onKeyboardType.bind(ServerPeer));
 
-        pointerMovementChannel.addEventListener("message", ServerPeer.#onPointerMove);
-        pointerClickChannel.addEventListener("message", ServerPeer.#onPointerClick);
-        pointerScrollChannel.addEventListener("message", ServerPeer.#onPointerScroll);
-        keyboardTypeChannel.addEventListener("message", ServerPeer.#onKeyboardType);
+        const clipboardSyncChannel = this.#newDataChannel("clipboard-sync", {
+            ordered: true,
+            negotiated: true,
+            id: 4
+        }, ({ data }) => clipboard.writeText(data));
+
+        nativeApis.startClipboardWatch(() => clipboardSyncChannel.send(clipboard.readText()));
+    }
+
+    #newDataChannel(name, options, onMessage) {
+        const channel = this.createDataChannel(name, options);
+        channel.binaryType = "arraybuffer";
+        channel.addEventListener("message", onMessage);
+        return channel;
     }
 
     #onConnectionStateChange() {
         switch (this.connectionState) {
             case "closed": {
                 this.signalingWs.close();
+                nativeApis.stopClipboardWatch();
                 break;
             }
 

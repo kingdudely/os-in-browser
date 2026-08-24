@@ -2,13 +2,26 @@
 // update g_screenWidth and g_screenHeight when screen changes, maybe support screen mirroring so the virtual screen looks like the real one.
 
 console.log("Node.js loaded!")
-import { app, BrowserWindow, desktopCapturer, session, ipcMain } from 'electron';
+import { app, BrowserWindow, desktopCapturer, ipcMain } from 'electron';
 import { fileURLToPath } from 'node:url';
 import artifact from '@actions/artifact';
 
 app.whenReady().then(() => {
 	console.log("App loaded!")
-	session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
+
+	const window = new BrowserWindow({
+		show: true,
+		webPreferences: {
+			nodeIntegration: true,
+			contextIsolation: false,
+			sandbox: false
+		}
+	});
+
+	const { webContents } = window;
+	const { session } = webContents;
+
+	session.setDisplayMediaRequestHandler(async (request, callback) => {
 		const sources = await desktopCapturer.getSources({
 			types: ['screen']
 		});
@@ -19,25 +32,16 @@ app.whenReady().then(() => {
 		});
 	}, { useSystemPicker: false });
 
-	const win = new BrowserWindow({
-		show: true,
-		webPreferences: {
-			nodeIntegration: true,
-			contextIsolation: false,
-			sandbox: false
-		}
-	});
-
-	win.webContents.on('console-message', ({ level, message, lineNumber, sourceId }) => {
+	webContents.on('console-message', ({ level, message, lineNumber, sourceId }) => {
 		console.log(`[renderer:${level}] ${message} (${sourceId}:${lineNumber})`);
 	});
 
-	win.webContents.on('render-process-gone', (e, details) => {
+	webContents.on('render-process-gone', (e, details) => {
 		console.log('Renderer gone:', details);
 	});
-	win.webContents.on('unresponsive', () => console.log('Renderer unresponsive'));
+	webContents.on('unresponsive', () => console.log('Renderer unresponsive'));
 	// win.webContents.openDevTools({ mode: 'detach' });
-	win.loadFile(fileURLToPath(import.meta.resolve("./app/index.html")));
+	window.loadFile(fileURLToPath(import.meta.resolve("./app/index.html")));
 });
 
 app.on('window-all-closed', () => app.quit());
