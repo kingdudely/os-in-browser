@@ -1,5 +1,9 @@
 // Use IPC instead, make whep endpoint with cloudflared, getMouseBitmap for quicker mouse movement, clipboardapi, webhid, onpointerrawupdate, getCoascledEvents, cam, mic
 // update g_screenWidth and g_screenHeight when screen changes, maybe support screen mirroring so the virtual screen looks like the real one.
+// Make a Fit to screen button that, well, fits to screen when clicked
+// Add a video/audio codec changer
+// Add audio support
+// Enforce only one connection per session
 
 console.log("Node.js loaded!")
 import { app, BrowserWindow, desktopCapturer, ipcMain } from 'electron';
