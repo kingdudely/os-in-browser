@@ -27,7 +27,6 @@ export default class ServerPeer extends RTCPeerConnection {
 		this.signalingWs.on("message", this.#onTrickleICEMessage.bind(this));
 
 		this.addEventListener("icecandidate", this.#onIceCandidate.bind(this));
-		this.addEventListener("negotiationneeded", this.#onNegotiationNeeded.bind(this));
 		this.addEventListener("connectionstatechange", this.#onConnectionStateChange.bind(this));
 		this.#initializeDataChannels();
 
@@ -128,17 +127,21 @@ export default class ServerPeer extends RTCPeerConnection {
 		}
 
 		switch (data.type) {
-			case "answer": {
+			case "offer": {
 				try {
 					await this.setRemoteDescription(data.message);
 					this.#remoteDescriptionReady.resolve();
+
+					await this.setLocalDescription();
+					this.#sendWSMessage("answer", this.localDescription);
 				} catch (error) {
 					this.#remoteDescriptionReady.reject(error);
-					console.error("Failed to set remote description:", error);
-				};
+					console.error("Failed to process offer:", error);
+				}
 
 				break;
 			}
+
 
 			case "ice-candidate": {
 				try {
@@ -157,23 +160,6 @@ export default class ServerPeer extends RTCPeerConnection {
 				console.warn(`Unknown packet type: ${data.type}`);
 				break;
 			}
-		}
-	}
-
-	async #onNegotiationNeeded() {
-		if (this.signalingState !== "stable") {
-			return;
-		}
-
-		const remoteDescriptionReady = Promise.withResolvers();
-		this.#remoteDescriptionReady = remoteDescriptionReady;
-
-		try {
-			await this.setLocalDescription();
-			this.#sendWSMessage("offer", this.localDescription);
-		} catch (error) {
-			remoteDescriptionReady.reject(error);
-			console.error("Failed to create/send offer:", error);
 		}
 	}
 
