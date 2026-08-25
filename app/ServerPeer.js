@@ -169,8 +169,7 @@ export default class ServerPeer extends RTCPeerConnection {
 		this.#remoteDescriptionReady = remoteDescriptionReady;
 
 		try {
-			const offer = await this.createOffer();
-			await this.setLocalDescription(offer);
+			await this.setLocalDescription();
 			this.#sendWSMessage("offer", this.localDescription);
 		} catch (error) {
 			remoteDescriptionReady.reject(error);
