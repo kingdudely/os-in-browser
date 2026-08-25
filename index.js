@@ -5,6 +5,7 @@
 // Add audio support
 // Enforce only one connection per session
 // Fix MacOS keyboard not repeating when held down, fix Command key not working in MacOS
+// Fix MacOS client erroring in setInterval clipboard sync in client
 
 console.log("Node.js loaded!")
 import { app, BrowserWindow, desktopCapturer, ipcMain } from 'electron';
