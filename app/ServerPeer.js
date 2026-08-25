@@ -5,199 +5,230 @@ const stream = await navigator.mediaDevices.getDisplayMedia();
 const tracks = stream.getTracks();
 
 export default class ServerPeer extends RTCPeerConnection {
-    static Init = {
-        iceServers: [
-            { urls: "stun:stun.l.google.com:19302" }
-        ]
-    }
-    
-    signalingWs;
+	static #Init = {
+		iceServers: [
+			{ urls: "stun:stun.l.google.com:19302" }
+		]
+	}
 
-    constructor (signalingWs) {
-        super(ServerPeer.Init);
-        this.signalingWs = signalingWs;
+	static #CurrentConnection = null;
+	signalingWs = null;
+	#remoteDescriptionReady = Promise.withResolvers();
 
-        this.#initializeDataChannels();
+	constructor (signalingWs) {
+		super(ServerPeer.#Init);
+		ServerPeer.#CurrentConnection?.close();
+		ServerPeer.#CurrentConnection = this;
 
-        this.addEventListener("icecandidate", this.#onIceCandidate.bind(this));
-        this.addEventListener("negotiationneeded", this.#onNegotiationNeeded.bind(this));
-        this.addEventListener("connectionstatechange", this.#onConnectionStateChange.bind(this));
-        this.signalingWs.on("message", this.#onTrickleICEMessage.bind(this));
+		this.signalingWs = signalingWs;
 
-        const pingInterval = setInterval(() => this.#sendWSMessage("ping"), 1337);
-        this.signalingWs.once("close", () => clearInterval(pingInterval));
+		const pingInterval = setInterval(() => this.#sendWSMessage("ping"), 1337);
+		this.signalingWs.once("close", () => clearInterval(pingInterval));
+		this.signalingWs.on("message", this.#onTrickleICEMessage.bind(this));
 
-        tracks.forEach((track) => this.addTrack(track, stream));
-    }
+		this.addEventListener("icecandidate", this.#onIceCandidate.bind(this));
+		this.addEventListener("negotiationneeded", this.#onNegotiationNeeded.bind(this));
+		this.addEventListener("connectionstatechange", this.#onConnectionStateChange.bind(this));
+		this.#initializeDataChannels();
 
-    #initializeDataChannels() {
-        this.#newDataChannel("pointer-movement", {
-            ordered: false,
-            maxRetransmits: 0,
-            negotiated: true,
-            id: 0
-        }, ServerPeer.#onPointerMove.bind(ServerPeer));
+		tracks.forEach((track) => this.addTrack(track, stream));
+	}
 
-        this.#newDataChannel("pointer-click", {
-            ordered: true,
-            negotiated: true,
-            id: 1
-        }, ServerPeer.#onPointerClick.bind(ServerPeer));
+	#initializeDataChannels() {
+		this.#newDataChannel("pointer-movement", {
+			ordered: false,
+			maxRetransmits: 0,
+			negotiated: true,
+			id: 0
+		}, ServerPeer.#OnPointerMove.bind(ServerPeer));
 
-        this.#newDataChannel("pointer-scroll", {
-            ordered: false,
-            maxRetransmits: 0,
-            negotiated: true,
-            id: 2
-        }, ServerPeer.#onPointerScroll.bind(ServerPeer));
+		this.#newDataChannel("pointer-click", {
+			ordered: true,
+			negotiated: true,
+			id: 1
+		}, ServerPeer.#OnPointerClick.bind(ServerPeer));
 
-        this.#newDataChannel("keyboard-type", {
-            ordered: true,
-            negotiated: true,
-            id: 3
-        }, ServerPeer.#onKeyboardType.bind(ServerPeer));
+		this.#newDataChannel("pointer-scroll", {
+			ordered: false,
+			maxRetransmits: 0,
+			negotiated: true,
+			id: 2
+		}, ServerPeer.#OnPointerScroll.bind(ServerPeer));
 
-        const clipboardSyncChannel = this.#newDataChannel("clipboard-sync", {
-            ordered: true,
-            negotiated: true,
-            id: 4
-        }, ({ data }) => clipboard.writeText(data));
+		this.#newDataChannel("keyboard-type", {
+			ordered: true,
+			negotiated: true,
+			id: 3
+		}, ServerPeer.#OnKeyboardType.bind(ServerPeer));
 
-        nativeApis.startClipboardWatch(() => clipboardSyncChannel.send(clipboard.readText()));
-    }
+		const clipboardSyncChannel = this.#newDataChannel("clipboard-sync", {
+			ordered: true,
+			negotiated: true,
+			id: 4
+		}, ({ data }) => clipboard.writeText(data));
 
-    #newDataChannel(name, options, onMessage) {
-        const channel = this.createDataChannel(name, options);
-        channel.binaryType = "arraybuffer";
-        channel.addEventListener("message", onMessage);
-        return channel;
-    }
+		nativeApis.startClipboardWatch(() => {
+			if (clipboardSyncChannel.readyState === "open") {
+				clipboardSyncChannel.send(clipboard.readText());
+			}
+		});
+	}
 
-    #onConnectionStateChange() {
-        switch (this.connectionState) {
-            case "closed": {
-                this.signalingWs.close();
-                nativeApis.stopClipboardWatch();
-                break;
-            }
+	#newDataChannel(name, options, onMessage) {
+		const channel = this.createDataChannel(name, options);
+		channel.binaryType = "arraybuffer";
+		channel.addEventListener("message", onMessage);
+		return channel;
+	}
 
-            case "failed": {
-                this.restartIce();
-                break;
-            }
+	#onConnectionStateChange() {
+		const { connectionState, signalingWs } = this;
 
-            case "disconnected":
-            case "connecting":
-            case "new":
-            case "connected": break;
+		switch (connectionState) {
+			case "closed": {
+				// this.close();
+				signalingWs.close();
 
-            default: {
-                console.warn(`Unknown connection state: ${this.connectionState}`);
-                break;
-            }
-        }
-    }
+				if (ServerPeer.#CurrentConnection === this) {
+					nativeApis.stopClipboardWatch();
+					ServerPeer.#CurrentConnection = null;
+				}
 
-    async #onTrickleICEMessage(rawData) {
-        let data;
-        try {
-            data = JSON.parse(rawData.toString());
-        } catch {
-            return;
-        }
+				break;
+			}
 
-        switch (data.type) {
-            case "answer": {
-                try {
-                    await this.setRemoteDescription(data.message);
-                } catch (err) {
-                    console.error("Failed to set remote description:", err);
-                };
+			case "failed": {
+				if (signalingWs.readyState === signalingWs.OPEN) {
+					this.restartIce();
+				} else {
+					this.close();
+				}
 
-                break;
-            }
+				break;
+			}
 
-            case "ice-candidate": {
-                try {
-                    await this.addIceCandidate(data.message);
-                } catch (err) {
-                    console.error("Failed to add ICE candidate:", err);
-                };
+			case "connected": // ServerPeer.#CurrentConnection = this;
+			case "disconnected":
+			case "connecting":
+			case "new": break;
 
-                break;
-            }
+			default: {
+				console.warn(`Unknown connection state: ${connectionState}`);
+				break;
+			}
+		}
+	}
 
-            case "ping": break;
+	async #onTrickleICEMessage(rawData) {
+		let data;
+		try {
+			data = JSON.parse(rawData.toString());
+		} catch {
+			return;
+		}
 
-            default: {
-                console.warn(`Unknown packet type: ${data.type}`);
-                break;
-            }
-        }
-    }
+		switch (data.type) {
+			case "answer": {
+				try {
+					await this.setRemoteDescription(data.message);
+					this.#remoteDescriptionReady.resolve();
+				} catch (error) {
+					this.#remoteDescriptionReady.reject(error);
+					console.error("Failed to set remote description:", error);
+				};
 
-    async #onNegotiationNeeded() {
-        try {
-            const offer = await this.createOffer();
-            await this.setLocalDescription(offer);
-            this.#sendWSMessage("offer", this.localDescription);
-        } catch (error) {
-            console.error("Failed to create/send offer:", error);
-        }
-    }
+				break;
+			}
 
-    async #onIceCandidate(event) {
-        if (event.candidate) {
-            this.#sendWSMessage("ice-candidate", event.candidate);
-        }
-    }
+			case "ice-candidate": {
+				try {
+					await this.#remoteDescriptionReady.promise;
+					await this.addIceCandidate(data.message);
+				} catch (error) {
+					console.error("Failed to add ICE candidate:", error);
+				};
 
-    #sendWSMessage(type, message) {
-        if (this.signalingWs.readyState === WebSocket.OPEN) {
-            this.signalingWs.send(JSON.stringify({ type, message }));
-        }
-    }
+				break;
+			}
 
-    static async #onPointerMove(event) {
-        const view = new DataView(event.data);
-        const isRelative = view.getUint8(0) === 1;
+			case "ping": break;
 
-        if (isRelative) {
-            const movementX = view.getInt32(1, true);
-            const movementY = view.getInt32(5, true);
-            nativeApis.moveMousePosition(movementX, movementY);
-        } else {
-            const absoluteX = view.getUint32(1, true);
-            const absoluteY = view.getUint32(5, true);
-            nativeApis.setMousePosition(absoluteX, absoluteY);
-        }
-    }
+			default: {
+				console.warn(`Unknown packet type: ${data.type}`);
+				break;
+			}
+		}
+	}
 
-    static async #onPointerClick(event) {
-        const view = new DataView(event.data);
-        const isDown = view.getUint8(0) === 1;
-        const button = view.getUint8(1);
+	async #onNegotiationNeeded() {
+		if (this.signalingState !== "stable") {
+			return;
+		}
 
-        nativeApis.setMouseButton(button, isDown);
-    }
+		const remoteDescriptionReady = Promise.withResolvers();
+		this.#remoteDescriptionReady = remoteDescriptionReady;
 
-    static async #onKeyboardType(event) {
-        const view = new DataView(event.data);
-        const isDown = view.getUint8(0) === 1;
-        const key = view.getUint8(1);
+		try {
+			const offer = await this.createOffer();
+			await this.setLocalDescription(offer);
+			this.#sendWSMessage("offer", this.localDescription);
+		} catch (error) {
+			remoteDescriptionReady.reject(error);
+			console.error("Failed to create/send offer:", error);
+		}
+	}
 
-        nativeApis.setKeyboardKey(key, isDown);
-    }
+	async #onIceCandidate({ candidate }) {
+		if (candidate) this.#sendWSMessage("ice-candidate", candidate);
+	}
 
-    static async #onPointerScroll(event) {
-        const view = new DataView(event.data);
-        const deltaMode = view.getUint8(0);
-        const deltaX = view.getFloat32(1, true);
-        const deltaY = view.getFloat32(5, true);
-        const deltaZ = view.getFloat32(9, true);
+	#sendWSMessage(type, message) {
+		const { signalingWs } = this;
+		if (signalingWs.readyState === signalingWs.OPEN) {
+			signalingWs.send(JSON.stringify({ type, message }));
+		}
+	}
 
-        nativeApis.scrollMouse(deltaMode, deltaX, deltaY, deltaZ);
-    }
+	static #OnPointerMove({ data }) {
+		const view = new DataView(data);
+		const isRelative = view.getUint8(0) === 1;
+
+		if (isRelative) {
+			const movementX = view.getInt32(1, true);
+			const movementY = view.getInt32(5, true);
+			nativeApis.moveMousePosition(movementX, movementY);
+		} else {
+			const absoluteX = view.getUint32(1, true);
+			const absoluteY = view.getUint32(5, true);
+			nativeApis.setMousePosition(absoluteX, absoluteY);
+		}
+	}
+
+	static #OnPointerClick({ data }) {
+		const view = new DataView(data);
+		const isDown = view.getUint8(0) === 1;
+		const button = view.getUint8(1);
+
+		nativeApis.setMouseButton(button, isDown);
+	}
+
+	static #OnKeyboardType({ data }) {
+		const view = new DataView(data);
+		const isDown = view.getUint8(0) === 1;
+		const key = view.getUint8(1);
+
+		nativeApis.setKeyboardKey(key, isDown);
+	}
+
+	static #OnPointerScroll({ data }) {
+		const view = new DataView(data);
+		const deltaMode = view.getUint8(0);
+		const deltaX = view.getFloat32(1, true);
+		const deltaY = view.getFloat32(5, true);
+		const deltaZ = view.getFloat32(9, true);
+
+		nativeApis.scrollMouse(deltaMode, deltaX, deltaY, deltaZ);
+	}
 }
 
 /*
