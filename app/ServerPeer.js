@@ -98,7 +98,7 @@ export default class ServerPeer extends RTCPeerConnection {
 
 			case "failed": {
 				if (signalingWs.readyState === signalingWs.OPEN) {
-					this.restartIce();
+					// Client does this: this.restartIce();
 				} else {
 					this.close();
 				}
