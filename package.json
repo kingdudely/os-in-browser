@@ -2,7 +2,6 @@
 	"name": "os-in-browser.pages.dev-host",
 	"main": "app/index.html",
 	"type": "module",
-	"chromium-args": "--enable-logging=stderr",
 	"dependencies": {
 		"express": "^5.1.0",
 		"express-basic-auth": "^1.2.1",
