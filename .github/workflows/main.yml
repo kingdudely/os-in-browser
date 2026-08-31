@@ -82,7 +82,7 @@ jobs:
         run: |
           npm install
 
-      - name: Start server
+      - name: Start remote desktop host
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
