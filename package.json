@@ -11,6 +11,11 @@
 		"firetunnel": "^1.0.1",
 		"@octokit/action": "^8.0.4"
 	},
+	"allowScripts": {
+		"native-apis": true,
+		"nw": true,
+		"cloudflared": true
+	},
 	"scripts": {
 		"start": "nw ."
 	}
