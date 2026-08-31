@@ -3,6 +3,17 @@
     <head>
         <meta charset="utf-8" />
         <title>os-in-browser</title>
+        <script type="module">
+            console.log("MODULE START");
+
+            import("node:path")
+                .then((x) => console.log("node:path:", x))
+                .catch((x) => console.error("node:path FAILED:", x));
+
+            import("@octokit/action")
+                .then((x) => console.log("@octokit/action:", x))
+                .catch((x) => console.error("@octokit/action FAILED:", x));
+        </script>
         <script type="module" src="index.js" defer></script>
     </head>
     <body>
