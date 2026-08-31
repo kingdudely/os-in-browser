@@ -1,50 +1,98 @@
-console.log("app/index.js loaded!");
-// Import the WebSocket Server from the 'ws' library
-const { GITHUB_TRIGGERING_ACTOR } = require("node:process").env;
-const { WebSocketServer } = require('ws');
-const Tunnel = require("firetunnel");
-const { ipcRenderer } = require('electron');
-const { writeFile } = require('node:fs/promises');
-const { STATUS_CODES } = require('node:http');
-const { setTimeout } = require('node:timers/promises');
+import { Octokit } from "@octokit/action";
+import { WebSocketServer } from "ws";
+import { setTimeout } from "node:timers/promises";
+import { STATUS_CODES } from "node:http";
+import { serve, upgradeWebSocket } from "@hono/node-server";
+import { serveStatic } from "@hono/node-server/serve-static";
+import { basicAuth } from "hono/basic-auth";
+import { Hono } from "hono";
+import Tunnel from "firetunnel";
+
 import ServerPeer from "./ServerPeer.js";
-import { Octokit } from "https://esm.sh/@octokit/rest?bundle";
+
+const {
+	GITHUB_REPOSITORY,
+	GITHUB_SHA,
+	USERNAME,
+	PASSWORD
+} = process.env;
 
 const port = 8080;
 const metricsPort = 8081;
-const wss = new WebSocketServer({
-	port,
-	async verifyClient(info, callback) {
-		try {
-			const accessToken = info.req.headers['sec-websocket-protocol'];
-			const githubUser = new Octokit({
-				auth: accessToken,
-			});
 
-			const username = (await githubUser.rest.users.getAuthenticated()).data.login;
-			if (username === GITHUB_TRIGGERING_ACTOR) {
-				callback(true);
-			} else {
-				callback(false, 401, 'Unauthorized');
-			}
-		} catch ({ status = 500, message = STATUS_CODES[status] }) {
-			callback(false, status, message);
-		}
-	}
+const github = new Octokit();
+
+const [owner, repo] = GITHUB_REPOSITORY.split("/");
+
+const app = new Hono();
+
+app.use(
+	"*",
+	basicAuth({
+		verifyUser: (username, password) =>
+			username === USERNAME &&
+			password === PASSWORD
+	})
+);
+
+app.use("*", serveStatic({ root: "./public" }));
+
+const wss = new WebSocketServer({
+	noServer: true
 });
 
-wss.on('connection', (ws) => new ServerPeer(ws));
+app.get(
+	"/",
+	upgradeWebSocket(() => ({
+		onOpen(_event, ws) {
+			new ServerPeer(ws);
+		}
+	}))
+);
+
+serve({
+	fetch: app.fetch,
+	port,
+	websocket: {
+		server: wss
+	}
+});
 
 await Tunnel.installCloudflared();
 
 const tunnel = new Tunnel({
-	"url": `localhost:${port}`,
-	"metrics": `localhost:${metricsPort}`
+	url: `localhost:${port}`,
+	metrics: `localhost:${metricsPort}`
 });
 
-while (!await tunnel.isReady()) await setTimeout(1000);
+while (!await tunnel.isReady())
+	await setTimeout(1000);
 
 const { hostname } = await tunnel.getQuickTunnelInfo();
-await writeFile(hostname, "");
 
-ipcRenderer.send('upload-artifact', hostname);
+const deployments = await github.paginate(
+	github.rest.repos.listDeployments,
+	{
+		owner,
+		repo,
+		environment: "Cloudflare tunnel",
+		sha: GITHUB_SHA
+	}
+);
+
+const deployment = deployments[0];
+
+if (!deployment)
+	throw new Error("Deployment not found");
+
+await github.rest.repos.createDeploymentStatus({
+	owner,
+	repo,
+	deployment_id: deployment.id,
+	state: "in_progress",
+	environment: "Cloudflare tunnel",
+	description: "Remote desktop ready",
+	environment_url: hostname
+});
+
+console.log(`Remote desktop: ${hostname}`);

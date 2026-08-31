@@ -1,15 +1,15 @@
 {
 	"name": "os-in-browser.pages.dev-host",
-	"main": "index.js",
+	"main": "app/index.html",
 	"type": "module",
+	"chromium-args": "--enable-features=NWESM,NWChainImportNode,NWChainImportDom",
 	"dependencies": {
-		"electron": "^43.4.0",
+		"nw": "^0.115.0",
 		"native-apis": "^1.0.6",
 		"ws": "^8.21.3",
-		"firetunnel": "^1.0.1",
-		"@actions/artifact": "^6.2.1"
+		"firetunnel": "^1.0.1"
 	},
 	"scripts": {
-		"start": "electron ."
+		"start": "nw ."
 	}
 }

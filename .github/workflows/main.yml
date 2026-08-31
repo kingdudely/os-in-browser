@@ -1,0 +1,85 @@
+name: Remote Desktop
+run-name: ${{ inputs.os }}
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        description: 'Operating system'
+        type: choice
+        required: true
+        default: 'windows-latest'
+        options:
+          - windows-latest
+          - ubuntu-latest
+          - macos-latest
+      username:
+        description: "Username"
+        type: string
+        required: true
+      password:
+        description: "Password"
+        type: string
+        required: true
+jobs:
+  URL:
+    name: 'URL'
+    runs-on: ${{ inputs.os }}
+
+    environment:
+      name: Cloudflare tunnel
+
+    permissions:
+      deployments: write
+
+    steps:
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: MacOS setup
+        if: runner.os == 'macOS'
+        run: |
+          sudo sysadminctl -addUser admin -password admin -fullName Administrator -admin
+
+      - name: Linux setup
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            icewm \
+            xvfb \
+            libx11-6 \
+            libxtst6 \
+            libxfixes3
+
+          read -r DISPLAY_NUMBER < <(
+            exec Xvfb \
+              -displayfd 1 \
+              -screen 0 1920x1080x24 \
+              +extension XTEST \
+              +extension XFIXES \
+              -nolisten tcp
+          )
+          export DISPLAY=":$DISPLAY_NUMBER"
+          echo "DISPLAY=$DISPLAY" >> "$GITHUB_ENV"
+          echo "ELECTRON_DISABLE_SANDBOX=1" >> $GITHUB_ENV
+
+          icewm-session &
+
+      - name: Start server
+        run: |
+          export USERNAME=$(jq -r '.inputs.username // ""' "$GITHUB_EVENT_PATH")
+          echo "::add-mask::${USERNAME}"
+
+          export PASSWORD=$(jq -r '.inputs.password // ""' "$GITHUB_EVENT_PATH")
+          echo "::add-mask::${PASSWORD}"
+
+          npm install
+          npm start # cloudflared tunnel --metrics "localhost:${METRICS_PORT}" ready
+        

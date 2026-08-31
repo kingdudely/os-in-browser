@@ -1,7 +1,8 @@
-const nativeApis = require("native-apis");
-const { clipboard } = require("electron");
+import nativeApis from "native-apis";
 
-const stream = await navigator.mediaDevices.getDisplayMedia();
+const clipboard = nw.Clipboard.get();
+
+const stream = await getPrimaryDisplayMedia();
 const tracks = stream.getTracks();
 
 export default class ServerPeer extends RTCPeerConnection {
@@ -23,8 +24,8 @@ export default class ServerPeer extends RTCPeerConnection {
 		this.signalingWs = signalingWs;
 
 		const pingInterval = setInterval(() => this.#sendWSMessage("ping"), 1337);
-		this.signalingWs.once("close", () => clearInterval(pingInterval));
-		this.signalingWs.on("message", this.#onTrickleICEMessage.bind(this));
+		this.signalingWs.addEventListener("close", () => clearInterval(pingInterval));
+		this.signalingWs.addEventListener("message", this.#onTrickleICEMessage.bind(this));
 
 		this.addEventListener("icecandidate", this.#onIceCandidate.bind(this));
 		this.addEventListener("connectionstatechange", this.#onConnectionStateChange.bind(this));
@@ -64,11 +65,11 @@ export default class ServerPeer extends RTCPeerConnection {
 			ordered: true,
 			negotiated: true,
 			id: 4
-		}, ({ data }) => clipboard.writeText(data));
+		}, ({ data }) => clipboard.set(data, "text"));
 
 		nativeApis.startClipboardWatch(() => {
 			if (clipboardSyncChannel.readyState === "open") {
-				clipboardSyncChannel.send(clipboard.readText());
+				clipboardSyncChannel.send(clipboard.get("text"));
 			}
 		});
 	}
@@ -118,18 +119,18 @@ export default class ServerPeer extends RTCPeerConnection {
 		}
 	}
 
-	async #onTrickleICEMessage(rawData) {
-		let data;
+	async #onTrickleICEMessage({ data }) {
+		let message, type;
 		try {
-			data = JSON.parse(rawData.toString());
+			({ message, type } = JSON.parse(data.toString()));
 		} catch {
 			return;
 		}
 
-		switch (data.type) {
+		switch (type) {
 			case "offer": {
 				try {
-					await this.setRemoteDescription(data.message);
+					await this.setRemoteDescription(message);
 					this.#remoteDescriptionReady.resolve();
 
 					await this.setLocalDescription();
@@ -146,7 +147,7 @@ export default class ServerPeer extends RTCPeerConnection {
 			case "ice-candidate": {
 				try {
 					await this.#remoteDescriptionReady.promise;
-					await this.addIceCandidate(data.message);
+					await this.addIceCandidate(message);
 				} catch (error) {
 					console.error("Failed to add ICE candidate:", error);
 				};
@@ -157,7 +158,7 @@ export default class ServerPeer extends RTCPeerConnection {
 			case "ping": break;
 
 			default: {
-				console.warn(`Unknown packet type: ${data.type}`);
+				console.warn(`Unknown packet type: ${type}`);
 				break;
 			}
 		}
@@ -214,6 +215,35 @@ export default class ServerPeer extends RTCPeerConnection {
 
 		nativeApis.scrollMouse(deltaMode, deltaX, deltaY, deltaZ);
 	}
+}
+
+async function getPrimaryDisplayMedia() {
+	nw.Screen.Init();
+
+	const monitor = nw.Screen.DesktopCaptureMonitor;
+
+	return new Promise((resolve, reject) => {
+		monitor.on("added", function onAdded(id, name, order, type, primary) {
+			if (type !== "screen" || !primary) return;
+
+			monitor.removeListener("added", onAdded);
+
+			const streamId = monitor.registerStream(id);
+			monitor.stop();
+
+			navigator.mediaDevices.getUserMedia({
+				audio: false,
+				video: {
+					mandatory: {
+						chromeMediaSource: "desktop",
+						chromeMediaSourceId: streamId
+					}
+				}
+			}).then(resolve, reject);
+		});
+
+		monitor.start(true, false);
+	});
 }
 
 /*
