@@ -4,7 +4,7 @@
 	"type": "module",
 	"chromium-args": "--enable-features=NWESM,NWChainImportNode,NWChainImportDom",
 	"dependencies": {
-		"nw": "0.144.0",
+		"nw": "0.114.0",
 		"native-apis": "^1.0.6",
 		"ws": "^8.21.3",
 		"firetunnel": "^1.0.1"
