@@ -30,6 +30,13 @@ jobs:
     name: 'URL'
     runs-on: ${{ inputs.os }}
 
+    env:
+      METRICS_HOSTNAME: "localhost:8081"
+
+    environment:
+      name: Cloudflare tunnel
+      url: ${{ steps.tunnel.outputs.url }}
+
     permissions:
       deployments: write
 
@@ -80,6 +87,8 @@ jobs:
           npm install
 
       - name: Start remote desktop host
+        id: host
+        background: true
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -90,4 +99,17 @@ jobs:
           echo "::add-mask::${PASSWORD}"
 
           npm start # cloudflared tunnel --metrics "localhost:${METRICS_PORT}" ready
-        
+      
+      - name: Wait for tunnel hostname # what if steps.host fails?
+        id: tunnel
+        run: |
+          until response=$(curl -fsS "http://${METRICS_HOSTNAME}/quicktunnel"); do
+            sleep 1
+          done
+
+          hostname=$(jq -r '.hostname' <<< "${response}")
+
+          echo "url=https://${hostname}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for host
+        wait: host

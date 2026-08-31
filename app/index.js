@@ -13,11 +13,11 @@ const {
 	GITHUB_REPOSITORY,
 	GITHUB_SHA,
 	USERNAME,
-	PASSWORD
+	PASSWORD,
+	METRICS_HOSTNAME
 } = process.env;
 
 const port = 8080;
-const metricsPort = 8081;
 
 const github = new Octokit();
 
@@ -48,30 +48,34 @@ await Tunnel.installCloudflared();
 
 const tunnel = new Tunnel({
 	url: `localhost:${port}`,
-	metrics: `localhost:${metricsPort}`
+	metrics: METRICS_HOSTNAME
 });
-
-const deployment = await github.rest.repos.createDeployment({
-	owner,
-	repo,
-	ref: process.env.GITHUB_SHA,
-	environment: "Cloudflare tunnel",
-	auto_merge: false,
-	required_contexts: []
-});
-
-const deploymentId = deployment.data.id;
 
 while (!await tunnel.isReady())
 	await setTimeout(1000);
 
 const { hostname } = await tunnel.getQuickTunnelInfo();
 
+const deployments = await github.paginate(
+	github.rest.repos.listDeployments,
+	{
+		owner,
+		repo,
+		environment,
+		sha: GITHUB_SHA
+	}
+);
+
+const deployment = deployments[0];
+
+if (!deployment)
+	throw new Error("Deployment not found");
+
 await github.rest.repos.createDeploymentStatus({
 	owner,
 	repo,
 	environment,
-	deployment_id: deploymentId,
+	deployment_id: deployment.id,
 	state: "in_progress",
 	description: "Remote desktop ready",
 	environment_url: `https://${hostname}`
