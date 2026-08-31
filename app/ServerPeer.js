@@ -224,7 +224,7 @@ async function getPrimaryDisplayMedia() {
 
 	return new Promise((resolve, reject) => {
 		monitor.on("added", function onAdded(id, name, order, type, primary) {
-			if (type !== "screen" || !primary) return;
+			if (type !== "screen"/* || !primary*/) return;
 
 			monitor.removeListener("added", onAdded);
 
