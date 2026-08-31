@@ -4,31 +4,20 @@
         <meta charset="utf-8" />
         <title>os-in-browser</title>
         <script type="module">
-            console.log("MODULE START");
+    console.log("MODULE START");
 
-            import("node:path")
-                .then((x) => console.log("node:path:", x))
-                .catch((x) => console.error("node:path FAILED:", x));
+    console.log("require:", typeof require);
+    console.log("process:", typeof process);
+    console.log("module:", typeof module);
 
-            import("@octokit/action")
-                .then((x) => console.log("@octokit/action:", x))
-                .catch((x) => console.error("@octokit/action FAILED:", x));
+    import("node:path")
+        .then(x => console.log("node:path OK", x))
+        .catch(x => console.error("node:path FAILED", x));
 
-            import("hono")
-    .then(() => console.log("HONO WORKS"))
-    .catch(error => console.error("HONO FAILED", error));
-
-    import("ws")
-    .then(() => console.log("WS WORKS"))
-    .catch(error => console.error("WS FAILED", error));
-
-    import("firetunnel")
-    .then(() => console.log("FIRETUNNEL WORKS"))
-    .catch(error => console.error("FIRETUNNEL FAILED", error));
-    import("test-package")
-    .then(() => console.log("TEST PACKAGE WORKS"))
-    .catch(error => console.error("TEST PACKAGE FAILED", error));
-        </script>
+    import("./node_modules/test-package/index.js")
+        .then(x => console.log("DIRECT TEST PACKAGE OK", x))
+        .catch(x => console.error("DIRECT TEST PACKAGE FAILED", x));
+</script>
         <script type="module" src="index.js" defer></script>
     </head>
     <body>
