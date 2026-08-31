@@ -3,7 +3,6 @@ import codeMap from "./code-map.json" with { type: "json" };
 const sharedBytes = new Uint8Array(13);
 const sharedView = new DataView(sharedBytes.buffer);
 const screenshare = document.getElementById("screenshare");
-const mainContainer = document.getElementById("main-container");
 let pointerMovementChannel, pointerClickChannel, keyboardTypeChannel, pointerScrollChannel, clipboardSyncChannel;
 let lastClipboardValue;
 
@@ -20,7 +19,7 @@ export default class ClientPeer extends RTCPeerConnection {
 	constructor (signalingUrl) {
 		// Pointer lock makes events added to "screenshare" element not work since document.documentElement is the one requesting for pointer lock - a child of "window".
 		super(ClientPeer.#Init);
-		this.signalingWs = new WebSocket(signalingUrl, [localStorage.getItem("access_token")]);
+		this.signalingWs = new WebSocket(signalingUrl);
 		const pingInterval = setInterval(() => this.#sendWSMessage("ping"), 1337);
 		this.signalingWs.addEventListener("close", () => clearInterval(pingInterval));
 		this.signalingWs.addEventListener("message", this.#onTrickleICEMessage.bind(this));
@@ -163,7 +162,6 @@ export default class ClientPeer extends RTCPeerConnection {
 	}
 
 	static #SetRemoteControlMode(isInRemoteControlMode) {
-		mainContainer.hidden = isInRemoteControlMode;
 		screenshare.hidden = !isInRemoteControlMode;
 	}
 }
