@@ -24,6 +24,7 @@ const metricsPort = 8081;
 const github = new Octokit();
 
 const [owner, repo] = GITHUB_REPOSITORY.split("/");
+const environment = "Cloudflare tunnel";
 
 const app = new Hono();
 
@@ -76,7 +77,7 @@ const deployments = await github.paginate(
 	{
 		owner,
 		repo,
-		environment: "Cloudflare tunnel",
+		environment,
 		sha: GITHUB_SHA
 	}
 );
@@ -89,9 +90,11 @@ if (!deployment)
 await github.rest.repos.createDeploymentStatus({
 	owner,
 	repo,
+	environment,
 	deployment_id: deployment.id,
 	state: "in_progress",
-	environment: "Cloudflare tunnel",
 	description: "Remote desktop ready",
 	environment_url: `https://${hostname}`
 });
+
+console.log(`https://${hostname}`)
