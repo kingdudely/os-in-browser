@@ -72,7 +72,7 @@ await github.rest.repos.createDeploymentStatus({
 	repo,
 	environment,
 	deployment_id: deploymentId,
-	state: "success", // in_progress
+	state: "in_progress",
 	description: "Remote desktop ready",
 	environment_url: `https://${hostname}`
 });
