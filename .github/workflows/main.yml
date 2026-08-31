@@ -30,9 +30,6 @@ jobs:
     name: 'URL'
     runs-on: ${{ inputs.os }}
 
-    environment:
-      name: Cloudflare tunnel
-
     permissions:
       deployments: write
 
