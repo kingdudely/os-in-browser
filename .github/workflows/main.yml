@@ -45,12 +45,12 @@ jobs:
         with:
           node-version: 24
 
-      - name: MacOS setup
+      - name: Create admin account for MacOS
         if: runner.os == 'macOS'
         run: |
           sudo sysadminctl -addUser admin -password admin -fullName Administrator -admin
 
-      - name: Linux setup
+      - name: Install Linux packages
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
@@ -61,6 +61,9 @@ jobs:
             libxtst6 \
             libxfixes3
 
+      - name: Setup Linux Desktop
+        if: runner.os == 'Linux'
+        run: |
           read -r DISPLAY_NUMBER < <(
             exec Xvfb \
               -displayfd 1 \
@@ -75,6 +78,10 @@ jobs:
 
           icewm-session &
 
+      - name: Install NPM packages
+        run: |
+          npm install
+
       - name: Start server
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -85,6 +92,5 @@ jobs:
           export PASSWORD=$(jq -r '.inputs.password // ""' "$GITHUB_EVENT_PATH")
           echo "::add-mask::${PASSWORD}"
 
-          npm install
           npm start # cloudflared tunnel --metrics "localhost:${METRICS_PORT}" ready
         
