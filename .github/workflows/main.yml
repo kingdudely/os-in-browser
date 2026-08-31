@@ -30,12 +30,9 @@ jobs:
     name: 'URL'
     runs-on: ${{ inputs.os }}
 
-    env:
-      METRICS_HOSTNAME: "localhost:8081"
-
     environment:
       name: Cloudflare tunnel
-      url: ${{ steps.tunnel.outputs.url }}
+      url: ${{ steps.host.outputs.url }}
 
     permissions:
       deployments: write
@@ -49,16 +46,34 @@ jobs:
         with:
           node-version: 24
 
+      - name: Install Windows packages
+        if: runner.os == 'Windows'
+        run: |
+          choco install -y cloudflared
+
       - name: Create admin account for MacOS
         if: runner.os == 'macOS'
         run: |
           sudo sysadminctl -addUser admin -password admin -fullName Administrator -admin
+
+      - name: Install MacOS packages
+        if: runner.os == 'macOS'
+        run: |
+          brew install cloudflared
+
+      - name: Add Cloudflare APT repo
+        if: runner.os == 'Linux'
+        run: |
+          sudo mkdir -p --mode=0755 /usr/share/keyrings
+          curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
+          echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
 
       - name: Install Linux packages
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
+            cloudflared \
             icewm \
             xvfb \
             libx11-6 \
@@ -83,14 +98,14 @@ jobs:
           icewm-session &
 
       - name: Install NPM packages
-        run: |
-          npm install
+        run: npm install
 
       - name: Start remote desktop host
         id: host
-        background: true
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PORT: 8080
+          METRICS_HOSTNAME: "localhost:8081"
         run: |
           export USERNAME=$(jq -r '.inputs.username // ""' "$GITHUB_EVENT_PATH")
           echo "::add-mask::${USERNAME}"
@@ -98,18 +113,24 @@ jobs:
           export PASSWORD=$(jq -r '.inputs.password // ""' "$GITHUB_EVENT_PATH")
           echo "::add-mask::${PASSWORD}"
 
-          npm start # cloudflared tunnel --metrics "localhost:${METRICS_PORT}" ready
-      
-      - name: Wait for tunnel hostname # what if steps.host fails?
-        id: tunnel
-        run: |
-          until response=$(curl -fsS "http://${METRICS_HOSTNAME}/quicktunnel"); do
+          npm start & # cloudflared tunnel --metrics "localhost:${METRICS_PORT}" ready
+          PID=$!
+
+          cloudflared tunnel --metrics="${METRICS_HOSTNAME}" --url="http://localhost:${PORT}"
+
+          until cloudflared tunnel ready --metrics="${METRICS_HOSTNAME}"; do
+            if ! kill -0 "$pid" 2>/dev/null; then
+              wait "$pid" # exit with same code
+            fi
             sleep 1
           done
 
-          hostname=$(jq -r '.hostname' <<< "${response}")
+          TUNNEL_HOSTNAME=$(
+            curl -fsS "http://${METRICS_HOSTNAME}/quicktunnel" |
+            jq -r '.hostname'
+          )
 
-          echo "url=https://${hostname}" >> "$GITHUB_OUTPUT"
-
-      - name: Wait for host
-        wait: host
+          echo "url=https://${TUNNEL_HOSTNAME}" >> "$GITHUB_OUTPUT"
+      
+      - name: Sleep
+        run: sleep 21600
