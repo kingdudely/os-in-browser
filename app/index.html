@@ -13,6 +13,18 @@
             import("@octokit/action")
                 .then((x) => console.log("@octokit/action:", x))
                 .catch((x) => console.error("@octokit/action FAILED:", x));
+
+            import("hono")
+    .then(() => console.log("HONO WORKS"))
+    .catch(error => console.error("HONO FAILED", error));
+
+    import("ws")
+    .then(() => console.log("WS WORKS"))
+    .catch(error => console.error("WS FAILED", error));
+
+    import("firetunnel")
+    .then(() => console.log("FIRETUNNEL WORKS"))
+    .catch(error => console.error("FIRETUNNEL FAILED", error));
         </script>
         <script type="module" src="index.js" defer></script>
     </head>
