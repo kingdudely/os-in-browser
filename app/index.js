@@ -93,5 +93,5 @@ await github.rest.repos.createDeploymentStatus({
 	state: "in_progress",
 	environment: "Cloudflare tunnel",
 	description: "Remote desktop ready",
-	environment_url: hostname
+	environment_url: `https://${hostname}`
 });
