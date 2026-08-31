@@ -113,15 +113,26 @@ jobs:
           export PASSWORD=$(jq -r '.inputs.password // ""' "$GITHUB_EVENT_PATH")
           echo "::add-mask::${PASSWORD}"
 
-          npm start & # cloudflared tunnel --metrics "localhost:${METRICS_PORT}" ready
-          PID=$!
+          npm start &
+          HOST_PID=$!
 
-          cloudflared tunnel --metrics="${METRICS_HOSTNAME}" --url="http://localhost:${PORT}"
+          cloudflared tunnel \
+            --metrics="${METRICS_HOSTNAME}" \
+            --url="http://localhost:${PORT}" &
+          TUNNEL_PID=$!
 
-          until cloudflared tunnel ready --metrics="${METRICS_HOSTNAME}"; do
-            if ! kill -0 "$pid" 2>/dev/null; then
-              wait "$pid" # exit with same code
+          until \
+            cloudflared tunnel ready --metrics="${METRICS_HOSTNAME}" &&
+            curl -fsS "http://localhost:${PORT}" >/dev/null
+          do
+            if ! kill -0 "$HOST_PID" 2>/dev/null; then
+              wait "$HOST_PID"
             fi
+
+            if ! kill -0 "$TUNNEL_PID" 2>/dev/null; then
+              wait "$TUNNEL_PID"
+            fi
+
             sleep 1
           done
 
@@ -131,6 +142,6 @@ jobs:
           )
 
           echo "url=https://${TUNNEL_HOSTNAME}" >> "$GITHUB_OUTPUT"
-      
+
       - name: Sleep
         run: sleep 21600
