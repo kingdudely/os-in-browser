@@ -1,4 +1,4 @@
-import nativeApis from "native-apis";
+const nativeApis = require("native-apis");
 
 const clipboard = nw.Clipboard.get();
 
