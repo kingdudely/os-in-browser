@@ -72,9 +72,9 @@ jobs:
               +extension XFIXES \
               -nolisten tcp
           )
+
           export DISPLAY=":$DISPLAY_NUMBER"
           echo "DISPLAY=$DISPLAY" >> "$GITHUB_ENV"
-          echo "ELECTRON_DISABLE_SANDBOX=1" >> $GITHUB_ENV
 
           icewm-session &
 
