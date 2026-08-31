@@ -25,6 +25,9 @@
     import("firetunnel")
     .then(() => console.log("FIRETUNNEL WORKS"))
     .catch(error => console.error("FIRETUNNEL FAILED", error));
+    import("test-package")
+    .then(() => console.log("TEST PACKAGE WORKS"))
+    .catch(error => console.error("TEST PACKAGE FAILED", error));
         </script>
         <script type="module" src="index.js" defer></script>
     </head>
