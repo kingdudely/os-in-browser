@@ -1,14 +1,15 @@
 console.log("B")
 
-import { Octokit } from "@octokit/action";
-import { WebSocketServer } from "ws";
-import { setTimeout } from "node:timers/promises";
-import { STATUS_CODES } from "node:http";
-import { serve, upgradeWebSocket } from "@hono/node-server";
-import { serveStatic } from "@hono/node-server/serve-static";
-import { basicAuth } from "hono/basic-auth";
-import { Hono } from "hono";
-import Tunnel from "firetunnel";
+// NWESM doesn't work .. :(, Do I use Electron?
+const { Octokit } = require("@octokit/action");
+const { WebSocketServer } = require("ws");
+const { setTimeout } = require("node:timers/promises");
+const { STATUS_CODES } = require("node:http");
+const { serve, upgradeWebSocket } = require("@hono/node-server");
+const { serveStatic } = require("@hono/node-server/serve-static");
+const { basicAuth } = require("hono/basic-auth");
+const { Hono } = require("hono");
+const Tunnel = require("firetunnel");
 
 import ServerPeer from "./ServerPeer.js";
 
