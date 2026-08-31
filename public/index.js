@@ -32,6 +32,6 @@ if (typeof(navigator.keyboard?.lock) === "function") {
 	});
 }
 
-function sleep(milliseconds) {
-	return new Promise((resolve) => setTimeout(resolve, 1000));
-}
+const websocketUrl = new URL(location);
+websocketUrl.protocol = "wss:";
+new ClientPeer(websocketUrl);
