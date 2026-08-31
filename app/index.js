@@ -47,6 +47,7 @@ app.get(
 	"/",
 	upgradeWebSocket(() => ({
 		onOpen(_event, ws) {
+			console.log("WEBSOCKET OPEN")
 			new ServerPeer(ws);
 		}
 	}))
