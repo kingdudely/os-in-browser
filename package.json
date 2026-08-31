@@ -6,7 +6,7 @@
 	"dependencies": {
 		"@hono/node-server": "^2.1.1",
 		"hono": "^4.13.5",
-		"nw": "^0.114.0",
+		"nw": "0.114.0",
 		"native-apis": "^1.0.6",
 		"ws": "^8.21.3",
 		"firetunnel": "^1.0.1",
