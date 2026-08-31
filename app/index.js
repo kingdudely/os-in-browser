@@ -10,6 +10,8 @@ import Tunnel from "firetunnel";
 
 import ServerPeer from "./ServerPeer.js";
 
+console.log("A")
+
 const {
 	GITHUB_REPOSITORY,
 	GITHUB_SHA,
