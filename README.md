@@ -1,7 +1,7 @@
 # How to use this repository:
 1. Fork this repository.
 2. [Click on this.](/../../actions/workflows/main.yml)
-3. Click on the `Run workflow` butto, fill in the required inputs, and click on the green `Run workflow` button.
+3. Click on the `Run workflow` button, fill in the required inputs, and click on the green `Run workflow` button.
 4. Wait for the URL to popup, and then click it.
 5. You're in!
 
