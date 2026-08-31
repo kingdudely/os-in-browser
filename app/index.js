@@ -1,12 +1,9 @@
 // NWESM doesn't work .. :(, Do I use Electron?
 const { Octokit } = require("@octokit/action");
-const { WebSocketServer } = require("ws");
+const express = require("express");
+const expressWs = require("express-ws");
+const basicAuth = require("express-basic-auth");
 const { setTimeout } = require("node:timers/promises");
-const { STATUS_CODES } = require("node:http");
-const { serve, upgradeWebSocket } = require("@hono/node-server");
-const { serveStatic } = require("@hono/node-server/serve-static");
-const { basicAuth } = require("hono/basic-auth");
-const { Hono } = require("hono");
 const Tunnel = require("firetunnel");
 
 import ServerPeer from "./ServerPeer.js";
@@ -26,39 +23,24 @@ const github = new Octokit();
 const [owner, repo] = GITHUB_REPOSITORY.split("/");
 const environment = "Cloudflare tunnel";
 
-const app = new Hono();
+const app = express();
+expressWs(app);
 
 app.use(
-	"*",
 	basicAuth({
-		verifyUser: (username, password) =>
-			username === USERNAME &&
-			password === PASSWORD
+		users: {
+			[USERNAME]: PASSWORD
+		},
+		challenge: true
 	})
 );
 
-app.use("*", serveStatic({ root: "./public" }));
+app.use(express.static("./public"));
 
-const wss = new WebSocketServer({
-	noServer: true
-});
+app.ws("/", (ws, req) => new ServerPeer(ws));
 
-app.get(
-	"/",
-	upgradeWebSocket(() => ({
-		onOpen(_event, ws) {
-			console.log("WEBSOCKET OPEN")
-			new ServerPeer(ws);
-		}
-	}))
-);
-
-serve({
-	fetch: app.fetch,
-	port,
-	websocket: {
-		server: wss
-	}
+app.listen(port, () => {
+	console.log(`Server listening on port ${port}`);
 });
 
 await Tunnel.installCloudflared();
