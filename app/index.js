@@ -1,5 +1,3 @@
-console.log("B")
-
 // NWESM doesn't work .. :(, Do I use Electron?
 const { Octokit } = require("@octokit/action");
 const { WebSocketServer } = require("ws");
@@ -12,8 +10,6 @@ const { Hono } = require("hono");
 const Tunnel = require("firetunnel");
 
 import ServerPeer from "./ServerPeer.js";
-
-console.log("A")
 
 const {
 	GITHUB_REPOSITORY,
@@ -99,5 +95,3 @@ await github.rest.repos.createDeploymentStatus({
 	description: "Remote desktop ready",
 	environment_url: hostname
 });
-
-console.log(`Remote desktop: ${hostname}`);

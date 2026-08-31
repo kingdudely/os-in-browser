@@ -76,6 +76,8 @@ jobs:
           icewm-session &
 
       - name: Start server
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           export USERNAME=$(jq -r '.inputs.username // ""' "$GITHUB_EVENT_PATH")
           echo "::add-mask::${USERNAME}"

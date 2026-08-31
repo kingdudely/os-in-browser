@@ -3,21 +3,6 @@
     <head>
         <meta charset="utf-8" />
         <title>os-in-browser</title>
-        <script type="module">
-    console.log("MODULE START");
-
-    console.log("require:", typeof require);
-    console.log("process:", typeof process);
-    console.log("module:", typeof module);
-
-    import("node:path")
-        .then(x => console.log("node:path OK", x))
-        .catch(x => console.error("node:path FAILED", x));
-
-    import("./node_modules/test-package/index.js")
-        .then(x => console.log("DIRECT TEST PACKAGE OK", x))
-        .catch(x => console.error("DIRECT TEST PACKAGE FAILED", x));
-</script>
         <script type="module" src="index.js" defer></script>
     </head>
     <body>
