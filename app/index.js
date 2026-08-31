@@ -1,3 +1,5 @@
+console.log("B")
+
 import { Octokit } from "@octokit/action";
 import { WebSocketServer } from "ws";
 import { setTimeout } from "node:timers/promises";
