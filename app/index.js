@@ -88,16 +88,6 @@ const deployment = deployments[0];
 if (!deployment)
 	throw new Error("Deployment not found");
 
-console.log(JSON.stringify({
-	owner,
-	repo,
-	environment,
-	deployment_id: deployment.id,
-	state: "in_progress",
-	description: "Remote desktop ready",
-	environment_url: `https://${hostname}`
-}, null, 2))
-
 await github.rest.repos.createDeploymentStatus({
 	owner,
 	repo,
@@ -107,5 +97,3 @@ await github.rest.repos.createDeploymentStatus({
 	description: "Remote desktop ready",
 	environment_url: `https://${hostname}`
 });
-
-console.log(`https://${hostname}`)
