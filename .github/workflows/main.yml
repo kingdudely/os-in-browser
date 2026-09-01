@@ -116,21 +116,22 @@ jobs:
           npm start &
           HOST_PID=$!
 
+          HOSTNAME="http://localhost:${PORT}"
           cloudflared tunnel \
             --metrics="${METRICS_HOSTNAME}" \
-            --url="http://localhost:${PORT}" &
+            --url="${HOSTNAME}" &
           TUNNEL_PID=$!
 
           until \
             cloudflared tunnel ready --metrics="${METRICS_HOSTNAME}" &&
-            curl -fsS "http://localhost:${PORT}" >/dev/null
+            curl -fsS "${HOSTNAME}" >/dev/null
           do
-            if ! kill -0 "$HOST_PID" 2>/dev/null; then
-              wait "$HOST_PID"
+            if ! kill -0 "${HOST_PID}" 2>/dev/null; then
+              wait "${HOST_PID}"
             fi
 
-            if ! kill -0 "$TUNNEL_PID" 2>/dev/null; then
-              wait "$TUNNEL_PID"
+            if ! kill -0 "${TUNNEL_PID}" 2>/dev/null; then
+              wait "${TUNNEL_PID}"
             fi
 
             sleep 1
