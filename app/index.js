@@ -57,15 +57,6 @@ while (!await tunnel.isReady())
 
 const { hostname } = await tunnel.getQuickTunnelInfo();
 
-const { data: pending } =
-	await github.rest.actions.getPendingDeploymentsForRun({
-		owner,
-		repo,
-		run_id: Number(GITHUB_RUN_ID)
-	});
-
-console.log(JSON.stringify(pending, null, 2));
-
 const deployments = await github.paginate(
 	github.rest.repos.listDeployments,
 	{
@@ -76,7 +67,9 @@ const deployments = await github.paginate(
 	}
 );
 
-const deployment = deployments[0];
+const deployment = deployments.find(
+	({ payload }) => Number(payload?.run_id) === Number(GITHUB_RUN_ID)
+);
 
 if (!deployment)
 	throw new Error("Deployment not found");
