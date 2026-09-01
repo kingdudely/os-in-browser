@@ -13,7 +13,8 @@ const {
 	GITHUB_REPOSITORY,
 	GITHUB_SHA,
 	USERNAME,
-	PASSWORD
+	PASSWORD,
+	GITHUB_RUN_ID
 } = process.env;
 
 const port = 8080;
