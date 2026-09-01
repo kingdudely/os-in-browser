@@ -107,6 +107,7 @@ jobs:
           PORT: 8080
           METRICS_HOSTNAME: "localhost:8081"
         run: |
+          # USERNAME and PASSWORD not in ENV cuz we need to mask it.
           export USERNAME=$(jq -r '.inputs.username // ""' "$GITHUB_EVENT_PATH")
           echo "::add-mask::${USERNAME}"
 
