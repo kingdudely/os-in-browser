@@ -23,7 +23,6 @@ const metricsPort = 8081;
 const github = new Octokit();
 
 const [owner, repo] = GITHUB_REPOSITORY.split("/");
-const environment = "Cloudflare tunnel";
 
 const app = express();
 expressWs(app);
@@ -57,20 +56,14 @@ while (!await tunnel.isReady())
 
 const { hostname } = await tunnel.getQuickTunnelInfo();
 
-const deployments = await github.paginate(
+const [deployment] = await github.paginate(
 	github.rest.repos.listDeployments,
 	{
 		owner,
 		repo,
-		environment,
+		environment: GITHUB_RUN_ID,
 		sha: GITHUB_SHA
 	}
-);
-
-console.log(JSON.stringify(deployments, null, 2))
-
-const deployment = deployments.find(
-	({ payload }) => Number(payload?.run_id) === Number(GITHUB_RUN_ID)
 );
 
 if (!deployment)
@@ -79,7 +72,7 @@ if (!deployment)
 await github.rest.repos.createDeploymentStatus({
 	owner,
 	repo,
-	environment,
+	environment: GITHUB_RUN_ID,
 	deployment_id: deployment.id,
 	state: "in_progress",
 	description: "Remote desktop ready",

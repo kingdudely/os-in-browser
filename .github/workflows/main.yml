@@ -31,7 +31,7 @@ jobs:
     runs-on: ${{ inputs.os }}
 
     environment:
-      name: Cloudflare tunnel
+      name: ${{ github.run_id }}
 
     permissions:
       deployments: write
