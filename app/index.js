@@ -28,7 +28,7 @@ const { data: pending } =
 		run_id: Number(GITHUB_RUN_ID)
 	});
 
-console.log(pending);
+console.log(JSON.stringify(pending, null, 2));
 
 const [owner, repo] = GITHUB_REPOSITORY.split("/");
 const environment = "Cloudflare tunnel";
