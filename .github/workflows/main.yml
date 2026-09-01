@@ -82,7 +82,6 @@ jobs:
         run: npm install
 
       - name: Start remote desktop host
-        id: host
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
