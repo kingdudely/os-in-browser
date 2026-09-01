@@ -67,6 +67,8 @@ const deployments = await github.paginate(
 	}
 );
 
+console.log(JSON.stringify(deployments, null, 2))
+
 const deployment = deployments.find(
 	({ payload }) => Number(payload?.run_id) === Number(GITHUB_RUN_ID)
 );
