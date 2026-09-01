@@ -21,6 +21,15 @@ const metricsPort = 8081;
 
 const github = new Octokit();
 
+const { data: pending } =
+	await github.rest.actions.getPendingDeploymentsForRun({
+		owner,
+		repo,
+		run_id: Number(GITHUB_RUN_ID)
+	});
+
+console.log(pending);
+
 const [owner, repo] = GITHUB_REPOSITORY.split("/");
 const environment = "Cloudflare tunnel";
 
