@@ -32,7 +32,6 @@ jobs:
 
     environment:
       name: Cloudflare tunnel
-      url: ${{ steps.host.outputs.url }}
 
     permissions:
       deployments: write
@@ -46,34 +45,16 @@ jobs:
         with:
           node-version: 24
 
-      - name: Install Windows packages
-        if: runner.os == 'Windows'
-        run: |
-          choco install -y cloudflared
-
       - name: Create admin account for MacOS
         if: runner.os == 'macOS'
         run: |
           sudo sysadminctl -addUser admin -password admin -fullName Administrator -admin
-
-      - name: Install MacOS packages
-        if: runner.os == 'macOS'
-        run: |
-          brew install cloudflared
-
-      - name: Add Cloudflare APT repo
-        if: runner.os == 'Linux'
-        run: |
-          sudo mkdir -p --mode=0755 /usr/share/keyrings
-          curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
-          echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
 
       - name: Install Linux packages
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            cloudflared \
             icewm \
             xvfb \
             libx11-6 \
@@ -104,8 +85,6 @@ jobs:
         id: host
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          PORT: 8080
-          METRICS_HOSTNAME: "localhost:8081"
         run: |
           # USERNAME and PASSWORD not in ENV cuz we need to mask it.
           export USERNAME=$(jq -r '.inputs.username // ""' "$GITHUB_EVENT_PATH")
@@ -114,36 +93,4 @@ jobs:
           export PASSWORD=$(jq -r '.inputs.password // ""' "$GITHUB_EVENT_PATH")
           echo "::add-mask::${PASSWORD}"
 
-          npm start &
-          HOST_PID=$!
-
-          HOST_URL="http://localhost:${PORT}"
-          cloudflared tunnel \
-            --metrics="${METRICS_HOSTNAME}" \
-            --url="${HOST_URL}" &
-          TUNNEL_PID=$!
-
-          until \
-            cloudflared tunnel --metrics="${METRICS_HOSTNAME}" ready &&
-            curl -sS "${HOST_URL}" >/dev/null
-          do
-            if ! kill -0 "${HOST_PID}" 2>/dev/null; then
-              wait "${HOST_PID}"
-            fi
-
-            if ! kill -0 "${TUNNEL_PID}" 2>/dev/null; then
-              wait "${TUNNEL_PID}"
-            fi
-
-            sleep 1
-          done
-
-          TUNNEL_HOSTNAME=$(
-            curl -fsS "http://${METRICS_HOSTNAME}/quicktunnel" |
-            jq -r '.hostname'
-          )
-
-          echo "url=https://${TUNNEL_HOSTNAME}" >> "$GITHUB_OUTPUT"
-
-      - name: Sleep
-        run: sleep 21600
+          npm start
