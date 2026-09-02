@@ -27,7 +27,7 @@ on:
         required: true
 jobs:
   job:
-    name: 'Your URL is: (make sure to refresh)'
+    name: 'URL: (refresh every so often)'
     runs-on: ${{ inputs.os }}
 
     environment:
