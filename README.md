@@ -1,11 +1,12 @@
 # MAKE SURE TO READ EVERYTHING
 
 # How to use
-1. [Click on this](https://www.github.com/kingdudely/os-in-browser/fork) to fork the main repository (it is recommended to make it public for unlimited usage).
-2. [Click on this](/../../actions/workflows/main.yml) when you are in your new repository.
-3. Click on the `Run workflow` button, fill in the required inputs, and click on the green `Run workflow` button.
-4. Wait for the URL to popup (**make sure to refresh every <!-- ever --> so often**), and then click it.
-5. You're in!
+1. [Fork](https://www.github.com/kingdudely/os-in-browser/fork) the main repository. (it is recommended to make it public for unlimited usage)
+3. ONLY when you are in your new repository, [click on this](/../../actions/workflows/main.yml).
+4. Click on <img width="117" height="28" alt="a white button that says 'Run workflow'" src="https://github.com/user-attachments/assets/77d4ff12-b5be-4e1f-9b39-008975e20898" />
+, fill in the required inputs, and click on <img width="93" height="28" alt="a green button that says 'Run workflow'" src="https://github.com/user-attachments/assets/dc9da50f-db46-4a2c-8035-1d0c4b8399d9" />.
+5. Wait for the URL to popup (**make sure to refresh every <!-- ever --> so often**), and then click it.
+6. You're in!
 
 # Note
 1. Make sure to update this fork to get the latest updates!
