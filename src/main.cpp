@@ -69,14 +69,6 @@ int main() {
             param.b_repeat_headers = 1;
             param.b_annexb = 1;
 
-            if (x264_param_apply_profile(
-                    &param,
-                    "baseline"
-                ) < 0) {
-                std::cerr << "x264_param_apply_profile failed\n";
-                return;
-            }
-
             encoder = x264_encoder_open(&param);
 
             if (!encoder) {
