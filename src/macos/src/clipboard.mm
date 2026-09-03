@@ -1,4 +1,5 @@
-#include "shared/include/clipboard.hpp"
+#include "clipboard.hpp"
+
 #import <Cocoa/Cocoa.h>
 #include <thread>
 #include <atomic>

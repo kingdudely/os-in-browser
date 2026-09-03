@@ -1,5 +1,5 @@
-#include "shared/include/clipboard.hpp"
-#include "linux/include/GetX11Display.hpp"
+#include "clipboard.hpp"
+#include "GetX11Display.hpp"
 #include <X11/Xatom.h>
 #include <X11/extensions/Xfixes.h>
 #include <thread>

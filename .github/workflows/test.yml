@@ -1,22 +1,51 @@
-name: Test Desktop Capture
+name: Remote Desktop Test
 
 on:
+  push:
+  pull_request:
   workflow_dispatch:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+
+    runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
 
-      - name: Install dependencies
+      # ======================================================
+      # Checkout
+      # ======================================================
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ======================================================
+      # Linux
+      # ======================================================
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        shell: bash
         run: |
           sudo apt-get update
+
           sudo apt-get install -y \
-            cmake \
-            ninja-build \
             build-essential \
+            cmake \
+            pkg-config \
+            autoconf \
+            automake \
+            libtool \
             libx11-dev \
             libxext-dev \
             libxfixes-dev \
@@ -24,20 +53,188 @@ jobs:
             libxtst-dev \
             xvfb
 
-      - name: Start X11
+      - name: Build x264 - Linux
+        if: runner.os == 'Linux'
+        shell: bash
         run: |
-          Xvfb :99 -screen 0 1920x1080x24 &
-          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+          git clone --depth 1 \
+            https://github.com/mirror/x264.git \
+            x264
+
+          cd x264
+
+          ./configure \
+            --prefix="$GITHUB_WORKSPACE/x264-install" \
+            --enable-static \
+            --disable-cli \
+            --disable-opencl \
+            --enable-pic
+
+          make -j"$(nproc)"
+
+          make install
+
+      # ======================================================
+      # macOS
+      # ======================================================
+
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          brew install \
+            cmake \
+            pkg-config \
+            autoconf \
+            automake \
+            libtool
+
+      - name: Build x264 - macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          git clone --depth 1 \
+            https://github.com/mirror/x264.git \
+            x264
+
+          cd x264
+
+          ./configure \
+            --prefix="$GITHUB_WORKSPACE/x264-install" \
+            --enable-static \
+            --disable-cli \
+            --disable-opencl \
+            --enable-pic
+
+          make -j"$(sysctl -n hw.ncpu)"
+
+          make install
+
+      # ======================================================
+      # Windows
+      # ======================================================
+
+      - name: Setup MSYS2
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            make
+            pkgconf
+            autoconf
+            automake
+            libtool
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+
+      - name: Build x264 - Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          git clone --depth 1 \
+            https://github.com/mirror/x264.git \
+            x264
+
+          cd x264
+
+          ./configure \
+            --prefix="$GITHUB_WORKSPACE/x264-install" \
+            --enable-static \
+            --disable-cli \
+            --disable-opencl \
+            --enable-pic
+
+          make -j"$(nproc)"
+
+          make install
+
+      # ======================================================
+      # Configure - Linux/macOS
+      # ======================================================
 
       - name: Configure
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          PKG_CONFIG_PATH: ${{ github.workspace }}/x264-install/lib/pkgconfig
         run: |
-          cmake -S . -B build -G Ninja \
+          cmake \
+            -S . \
+            -B build \
             -DCMAKE_BUILD_TYPE=Release
 
-      - name: Build
-        run: |
-          cmake --build build --parallel
+      # ======================================================
+      # Configure - Windows
+      # ======================================================
 
-      - name: Run
+      - name: Configure - Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          PKG_CONFIG_PATH: ${{ github.workspace }}/x264-install/lib/pkgconfig
+        run: |
+          cmake \
+            -S . \
+            -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release
+
+      # ======================================================
+      # Build - Linux/macOS
+      # ======================================================
+
+      - name: Build
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cmake \
+            --build build \
+            --parallel
+
+      # ======================================================
+      # Build - Windows
+      # ======================================================
+
+      - name: Build - Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          cmake \
+            --build build \
+            --parallel
+
+      # ======================================================
+      # Test - Linux
+      # ======================================================
+
+      - name: Test - Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          xvfb-run -a \
+            ./build/remote-desktop
+
+      # ======================================================
+      # Test - macOS
+      # ======================================================
+
+      - name: Test - macOS
+        if: runner.os == 'macOS'
+        shell: bash
         run: |
           ./build/remote-desktop
+
+      # ======================================================
+      # Test - Windows
+      # ======================================================
+
+      - name: Test - Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          ./build/remote-desktop.exe

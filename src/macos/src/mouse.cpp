@@ -1,4 +1,5 @@
-#include "shared/include/mouse.hpp"
+#include "mouse.hpp"
+#include "IOHIDPostEvent.hpp"
 
 #include <Carbon/Carbon.h>
 #include <CoreGraphics/CoreGraphics.h>
@@ -7,7 +8,6 @@
 #include <IOKit/hidsystem/IOLLEvent.h>
 #include <IOKit/hidsystem/IOHIDLib.h>
 #include <IOKit/hidsystem/IOHIDParameter.h>
-#include "macos/include/IOHIDPostEvent.hpp"
 
 namespace {
 

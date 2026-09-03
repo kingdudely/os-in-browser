@@ -1,4 +1,4 @@
-#include "shared/include/clipboard.hpp"
+#include "clipboard.hpp"
 #include <windows.h>
 #include <thread>
 #include <atomic>

@@ -12,5 +12,4 @@ struct Frame {
 
 using FrameCallback = std::function<void(const Frame&)>;
 
-bool start_capture(FrameCallback callback);
-void stop_capture();
+void StartCapture(FrameCallback callback);

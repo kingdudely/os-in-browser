@@ -1,4 +1,4 @@
-#include "shared/include/keyboard.hpp"
+#include "keyboard.hpp"
 
 #include <Carbon/Carbon.h>
 #include <array>

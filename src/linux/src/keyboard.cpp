@@ -1,5 +1,5 @@
-#include "shared/include/keyboard.hpp"
-#include "linux/include/GetX11Display.hpp"
+#include "keyboard.hpp"
+#include "GetX11Display.hpp"
 
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
