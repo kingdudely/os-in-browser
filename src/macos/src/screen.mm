@@ -63,7 +63,9 @@ void StartCapture(FrameCallback callback)
         config.width = display.width;
         config.height = display.height;
 
-        config.pixelFormat = kCVPixelFormatType_32BGRA;
+        // Native NV12
+        config.pixelFormat =
+            kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
 
         config.minimumFrameInterval =
             CMTimeMake(1, 60);
@@ -85,27 +87,57 @@ void StartCapture(FrameCallback callback)
             if (!buffer)
                 return;
 
+            if (CVPixelBufferGetPlaneCount(buffer) != 2)
+                return;
+
             CVPixelBufferLockBaseAddress(
                 buffer,
                 kCVPixelBufferLock_ReadOnly
             );
 
-            const uint8_t* data =
-                static_cast<const uint8_t*>(
-                    CVPixelBufferGetBaseAddress(buffer)
+            const int width =
+                static_cast<int>(
+                    CVPixelBufferGetWidth(buffer)
                 );
 
-            if (data) {
+            const int height =
+                static_cast<int>(
+                    CVPixelBufferGetHeight(buffer)
+                );
+
+            const uint8_t* y =
+                static_cast<const uint8_t*>(
+                    CVPixelBufferGetBaseAddressOfPlane(
+                        buffer,
+                        0
+                    )
+                );
+
+            const uint8_t* uv =
+                static_cast<const uint8_t*>(
+                    CVPixelBufferGetBaseAddressOfPlane(
+                        buffer,
+                        1
+                    )
+                );
+
+            if (y && uv) {
                 Frame frame{
-                    data,
+                    y,
+                    uv,
+                    width,
+                    height,
                     static_cast<int>(
-                        CVPixelBufferGetWidth(buffer)
+                        CVPixelBufferGetBytesPerRowOfPlane(
+                            buffer,
+                            0
+                        )
                     ),
                     static_cast<int>(
-                        CVPixelBufferGetHeight(buffer)
-                    ),
-                    static_cast<int>(
-                        CVPixelBufferGetBytesPerRow(buffer)
+                        CVPixelBufferGetBytesPerRowOfPlane(
+                            buffer,
+                            1
+                        )
                     )
                 };
 
@@ -162,7 +194,7 @@ void StartCapture(FrameCallback callback)
             }
 
             NSLog(
-                @"Screen capture started: %lux%lu",
+                @"Screen capture started: %lux%lu NV12",
                 (unsigned long)display.width,
                 (unsigned long)display.height
             );

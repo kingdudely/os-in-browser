@@ -1,11 +1,13 @@
 #include "screen.hpp"
+#include "BGRAToNV12.hpp"
 
 #include <windows.h>
 
 #include <thread>
 #include <utility>
 
-void StartCapture(FrameCallback callback) {
+void StartCapture(FrameCallback callback)
+{
     std::thread([callback = std::move(callback)] {
         HDC screen = GetDC(nullptr);
 
@@ -16,9 +18,15 @@ void StartCapture(FrameCallback callback) {
         const int height = GetSystemMetrics(SM_CYSCREEN);
 
         BITMAPINFO bmi{};
-        bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+
+        bmi.bmiHeader.biSize =
+            sizeof(BITMAPINFOHEADER);
+
         bmi.bmiHeader.biWidth = width;
-        bmi.bmiHeader.biHeight = -height; // top-down
+
+        // Top-down bitmap.
+        bmi.bmiHeader.biHeight = -height;
+
         bmi.bmiHeader.biPlanes = 1;
         bmi.bmiHeader.biBitCount = 32;
         bmi.bmiHeader.biCompression = BI_RGB;
@@ -47,7 +55,11 @@ void StartCapture(FrameCallback callback) {
             return;
         }
 
-        HGDIOBJ old = SelectObject(memory, bitmap);
+        HGDIOBJ old =
+            SelectObject(memory, bitmap);
+
+        // One Frame reused for the entire capture loop.
+        Frame frame{};
 
         while (true) {
             if (!BitBlt(
@@ -63,15 +75,26 @@ void StartCapture(FrameCallback callback) {
                 break;
             }
 
-            callback({
-                static_cast<const uint8_t*>(pixels),
-                width,
-                height,
-                width * 4
-            });
+            // BGRA input.
+            frame.data =
+                static_cast<const uint8_t*>(pixels);
+
+            frame.chroma = nullptr;
+
+            frame.width = width;
+            frame.height = height;
+
+            frame.stride = width * 4;
+            frame.chromaStride = 0;
+
+            // Convert the same Frame to NV12.
+            BGRAToNV12(frame);
+
+            callback(frame);
         }
 
         SelectObject(memory, old);
+
         DeleteDC(memory);
         DeleteObject(bitmap);
         ReleaseDC(nullptr, screen);

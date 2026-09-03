@@ -4,8 +4,6 @@
 #include <x264.h>
 
 #include <atomic>
-#include <chrono>
-#include <cstring>
 #include <iostream>
 #include <memory>
 #include <thread>
@@ -33,8 +31,6 @@ int main() {
     std::atomic<int> framesCaptured{0};
     std::atomic<int> framesEncoded{0};
 
-    auto start = std::chrono::steady_clock::now();
-
     // --------------------------------------------------------
     // Screen capture
     // --------------------------------------------------------
@@ -48,7 +44,8 @@ int main() {
                     "ultrafast",
                     "zerolatency"
                 ) < 0) {
-                std::cerr << "x264_param_default_preset failed\n";
+                std::cerr
+                    << "x264_param_default_preset failed\n";
                 return;
             }
 
@@ -58,7 +55,7 @@ int main() {
             param.i_fps_num = 60;
             param.i_fps_den = 1;
 
-            param.i_csp = X264_CSP_BGRA;
+            param.i_csp = X264_CSP_NV12;
 
             param.i_keyint_max = 60;
             param.i_bframe = 0;
@@ -72,7 +69,8 @@ int main() {
             encoder = x264_encoder_open(&param);
 
             if (!encoder) {
-                std::cerr << "x264_encoder_open failed\n";
+                std::cerr
+                    << "x264_encoder_open failed\n";
                 return;
             }
 
@@ -81,34 +79,26 @@ int main() {
                 << frame.width
                 << "x"
                 << frame.height
-                << "\n";
+                << " NV12\n";
         }
 
         x264_picture_t input{};
         x264_picture_t output{};
 
-        if (x264_picture_alloc(
-                &input,
-                X264_CSP_BGRA,
-                frame.width,
-                frame.height
-            ) < 0) {
-            std::cerr << "x264_picture_alloc failed\n";
-            return;
-        }
+        input.img.i_csp = X264_CSP_NV12;
+        input.img.i_plane = 2;
 
-        // Copy BGRA frame into x264.
-        for (int y = 0; y < frame.height; ++y) {
-            std::memcpy(
-                input.img.plane[0] +
-                    y * input.img.i_stride[0],
+        input.img.plane[0] =
+            const_cast<uint8_t*>(frame.data);
 
-                frame.data +
-                    y * frame.stride,
+        input.img.plane[1] =
+            const_cast<uint8_t*>(frame.chroma);
 
-                frame.width * 4
-            );
-        }
+        input.img.i_stride[0] =
+            frame.stride;
+
+        input.img.i_stride[1] =
+            frame.chromaStride;
 
         input.i_pts = framesCaptured.load();
 
@@ -143,40 +133,13 @@ int main() {
             }
         }
 
-        x264_picture_clean(&input);
-
         ++framesCaptured;
     });
 
-    // --------------------------------------------------------
-    // Run for 5 seconds
-    // --------------------------------------------------------
-
-    while (
-        std::chrono::steady_clock::now() - start <
-        std::chrono::seconds(5)
-    ) {
+    // Keep the process alive forever.
+    for (;;) {
         std::this_thread::sleep_for(
-            std::chrono::milliseconds(100)
+            std::chrono::hours(24)
         );
     }
-
-    std::cout
-        << "captured="
-        << framesCaptured.load()
-        << "\n";
-
-    std::cout
-        << "encoded="
-        << framesEncoded.load()
-        << "\n";
-
-    // --------------------------------------------------------
-    // Cleanup
-    // --------------------------------------------------------
-
-    if (encoder)
-        x264_encoder_close(encoder);
-
-    return 0;
 }

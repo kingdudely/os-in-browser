@@ -1,5 +1,6 @@
 #include "screen.hpp"
 #include "GetX11Display.hpp"
+#include "BGRAToNV12.hpp"
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -11,7 +12,8 @@
 #include <thread>
 #include <utility>
 
-void StartCapture(FrameCallback callback) {
+void StartCapture(FrameCallback callback)
+{
     std::thread([callback = std::move(callback)] {
         Display* display = GetX11Display();
 
@@ -22,7 +24,12 @@ void StartCapture(FrameCallback callback) {
         const Window root = RootWindow(display, screen);
 
         XWindowAttributes attributes{};
-        XGetWindowAttributes(display, root, &attributes);
+
+        XGetWindowAttributes(
+            display,
+            root,
+            &attributes
+        );
 
         const int width = attributes.width;
         const int height = attributes.height;
@@ -76,6 +83,9 @@ void StartCapture(FrameCallback callback) {
 
         XSync(display, False);
 
+        // One Frame reused for the entire capture loop.
+        Frame frame{};
+
         while (true) {
             if (!XShmGetImage(
                     display,
@@ -87,12 +97,22 @@ void StartCapture(FrameCallback callback) {
                 break;
             }
 
-            callback({
-                reinterpret_cast<const uint8_t*>(image->data),
-                width,
-                height,
-                image->bytes_per_line
-            });
+            // BGRA input.
+            frame.data =
+                reinterpret_cast<const uint8_t*>(image->data);
+
+            frame.chroma = nullptr;
+
+            frame.width = width;
+            frame.height = height;
+
+            frame.stride = image->bytes_per_line;
+            frame.chromaStride = 0;
+
+            // Convert the same Frame to NV12.
+            BGRAToNV12(frame);
+
+            callback(frame);
         }
 
         XShmDetach(display, &shm);
