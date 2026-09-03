@@ -45,6 +45,11 @@ jobs:
         with:
           node-version: 24
 
+      - name: Install Windows packages
+        if: runner.os == 'Windows'
+        run: |
+          choco install -y vcredist140
+
       - name: Create admin account for MacOS
         if: runner.os == 'macOS'
         run: |
