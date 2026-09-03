@@ -159,7 +159,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
-          cmake --build build --parallel
+          cmake --build build --parallel -DCMAKE_C_FLAGS=-D__USE_MINGW_ANSI_STDIO=1
 
       # ============================================================
       # Test - Ubuntu
