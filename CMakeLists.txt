@@ -12,6 +12,7 @@ include(FetchContent)
 # ============================================================
 
 if(NOT APPLE)
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
     FetchContent_Declare(
         libyuv
         GIT_REPOSITORY https://chromium.googlesource.com/libyuv/libyuv
