@@ -12,3 +12,6 @@
 1. Make sure to update your fork to get the latest updates!
 2. In case anything goes wrong, use ChatGPT or Google. If that doesn't work, screenshot the logs and [make an issue](https://www.github.com/kingdudely/os-in-browser/issues/new)!
 <!-- add a GIF tutorial -->
+
+# Video tutorial
+<video src="https://github.com/user-attachments/assets/44a89ccc-52b7-4bd4-a48d-9debb9a2918d"></video>
