@@ -1,3 +1,5 @@
+console.log("INDEX START");
+
 const nativeApis = require("native-apis");
 
 const clipboard = nw.Clipboard.get();
