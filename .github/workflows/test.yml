@@ -22,10 +22,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ─────────────────────────────────────────────
       # Ubuntu
-      # ─────────────────────────────────────────────
-
       - name: Install Ubuntu dependencies
         if: runner.os == 'Linux'
         run: |
@@ -42,19 +39,37 @@ jobs:
             libxtst-dev \
             xvfb
 
-      # ─────────────────────────────────────────────
-      # macOS
-      # ─────────────────────────────────────────────
+      - name: Configure Ubuntu
+        if: runner.os == 'Linux'
+        run: cmake -S . -B build
 
+      - name: Build Ubuntu
+        if: runner.os == 'Linux'
+        run: cmake --build build --parallel
+
+      - name: Test Ubuntu
+        if: runner.os == 'Linux'
+        run: xvfb-run -a ./build/remote-desktop
+
+      # macOS
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         run: |
           brew install cmake pkg-config x264
 
-      # ─────────────────────────────────────────────
-      # Windows / MSYS2 UCRT64
-      # ─────────────────────────────────────────────
+      - name: Configure macOS
+        if: runner.os == 'macOS'
+        run: cmake -S . -B build
 
+      - name: Build macOS
+        if: runner.os == 'macOS'
+        run: cmake --build build --parallel
+
+      - name: Test macOS
+        if: runner.os == 'macOS'
+        run: ./build/remote-desktop
+
+      # Windows
       - name: Setup MSYS2
         if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
@@ -69,39 +84,17 @@ jobs:
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-x264
 
-      # ─────────────────────────────────────────────
-      # Configure
-      # ─────────────────────────────────────────────
+      - name: Configure Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: cmake -S . -B build -G Ninja
 
-      - name: Configure
-        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
-        env:
-          PKG_CONFIG_PATH: ${{ runner.os == 'macOS' && '/opt/homebrew/lib/pkgconfig:/usr/local/lib/pkgconfig' || '' }}
-        run: |
-          cmake -S . -B build -G Ninja
+      - name: Build Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: cmake --build build --parallel
 
-      # ─────────────────────────────────────────────
-      # Build
-      # ─────────────────────────────────────────────
-
-      - name: Build
-        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
-        env:
-          PKG_CONFIG_PATH: ${{ runner.os == 'macOS' && '/opt/homebrew/lib/pkgconfig:/usr/local/lib/pkgconfig' || '' }}
-        run: |
-          cmake --build build --parallel
-
-      # ─────────────────────────────────────────────
-      # Test
-      # ─────────────────────────────────────────────
-
-      - name: Test
-        if: runner.os != 'Linux'
-        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
-        run: |
-          ./build/remote-desktop
-
-      - name: Test with Xvfb
-        if: runner.os == 'Linux'
-        run: |
-          xvfb-run -a ./build/remote-desktop
+      - name: Test Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: ./build/remote-desktop.exe
