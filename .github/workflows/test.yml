@@ -14,24 +14,31 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            xmake \
             git \
             build-essential \
+            nasm \
             libx11-dev \
             libxext-dev \
-            libxfixes-dev
+            libxfixes-dev \
+            libxinerama-dev \
+            libxtst-dev \
+            xvfb
+
+      - name: Setup Xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
 
       - name: Start X11
         run: |
-          sudo apt-get install -y xvfb
           Xvfb :99 -screen 0 1920x1080x24 &
           echo "DISPLAY=:99" >> "$GITHUB_ENV"
 
       - name: Build
         run: |
           xmake f -m release
-          xmake
+          xmake -y
 
       - name: Run
         run: |
-          timeout 10s xmake run desktop-encoder || test $? -eq 124
+          timeout 10s xmake run remote-desktop || test $? -eq 124
