@@ -112,6 +112,8 @@ endif()
 
 if(WIN32)
 
+    add_compile_definitions(__USE_MINGW_ANSI_STDIO=1)
+
     target_sources(remote-desktop PRIVATE
         src/windows/src/clipboard.cpp
         src/windows/src/keyboard.cpp
