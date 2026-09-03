@@ -1,5 +1,6 @@
 // NWESM doesn't work .. :(, Do I use Electron?
 console.log("A")
+const { require } = nw;
 const { Octokit } = require("@octokit/action");
 const express = require("express");
 const expressWs = require("express-ws");
