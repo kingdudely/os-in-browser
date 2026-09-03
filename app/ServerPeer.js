@@ -1,4 +1,4 @@
-const nativeApis = require("native-apis");
+const nativeApis = nw.require("native-apis");
 
 const clipboard = nw.Clipboard.get();
 
