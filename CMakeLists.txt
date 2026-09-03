@@ -11,14 +11,16 @@ include(FetchContent)
 # libyuv
 # ============================================================
 
-FetchContent_Declare(
-    libyuv
-    GIT_REPOSITORY https://chromium.googlesource.com/libyuv/libyuv
-    GIT_TAG stable
-    GIT_SHALLOW TRUE
-)
+if(NOT APPLE)
+    FetchContent_Declare(
+        libyuv
+        GIT_REPOSITORY https://chromium.googlesource.com/libyuv/libyuv
+        GIT_TAG stable
+        GIT_SHALLOW TRUE
+    )
 
-FetchContent_MakeAvailable(libyuv)
+    FetchContent_MakeAvailable(libyuv)
+endif()
 
 # ============================================================
 # libdatachannel
