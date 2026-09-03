@@ -19,19 +19,38 @@ jobs:
           - windows-latest
 
     steps:
+      # ============================================================
+      # Checkout
+      # ============================================================
+
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Ubuntu
+      # ============================================================
+      # Windows
+      #
+      # MSYS2 is already installed on the GitHub runner.
+      # ============================================================
+
+      - name: Setup MSYS2
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+
+      # ============================================================
+      # Ubuntu dependencies
+      #
+      # Build tools are already installed on ubuntu-latest.
+      # ============================================================
+
       - name: Install Ubuntu dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential \
-            cmake \
             pkg-config \
-            libx264-dev \
             libx11-dev \
             libxext-dev \
             libxfixes-dev \
@@ -39,62 +58,105 @@ jobs:
             libxtst-dev \
             xvfb
 
-      - name: Configure Ubuntu
-        if: runner.os == 'Linux'
-        run: cmake -S . -B build
+      # ============================================================
+      # x264 - Linux / macOS
+      # ============================================================
 
-      - name: Build Ubuntu
-        if: runner.os == 'Linux'
+      - name: Build x264
+        if: runner.os != 'Windows'
+        run: |
+          git clone --depth 1 https://code.videolan.org/videolan/x264.git
+          cd x264
+
+          ./configure \
+            --prefix="$HOME/x264" \
+            --enable-static \
+            --disable-cli
+
+          make
+          make install
+
+      # ============================================================
+      # x264 - Windows
+      # ============================================================
+
+      - name: Build x264 - Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          git clone --depth 1 https://code.videolan.org/videolan/x264.git
+          cd x264
+
+          ./configure \
+            --prefix="$HOME/x264" \
+            --enable-static \
+            --disable-cli
+
+          make
+          make install
+
+      # ============================================================
+      # Configure - Linux / macOS
+      # ============================================================
+
+      - name: Configure
+        if: runner.os != 'Windows'
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_PREFIX_PATH="$HOME/x264"
+
+      # ============================================================
+      # Configure - Windows
+      # ============================================================
+
+      - name: Configure - Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_PREFIX_PATH="$HOME/x264"
+
+      # ============================================================
+      # Build - Linux / macOS
+      # ============================================================
+
+      - name: Build
+        if: runner.os != 'Windows'
         run: cmake --build build --parallel
 
-      - name: Test Ubuntu
-        if: runner.os == 'Linux'
-        run: xvfb-run -a ./build/remote-desktop
+      # ============================================================
+      # Build - Windows
+      # ============================================================
 
-      # macOS
-      - name: Install macOS dependencies
+      - name: Build - Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: cmake --build build --parallel
+
+      # ============================================================
+      # Test - Ubuntu
+      # ============================================================
+
+      - name: Test - Ubuntu
+        if: runner.os == 'Linux'
+        run: |
+          xvfb-run -a ./build/remote-desktop
+
+      # ============================================================
+      # Test - macOS
+      # ============================================================
+
+      - name: Test - macOS
         if: runner.os == 'macOS'
         run: |
-          brew install cmake pkg-config x264
+          ./build/remote-desktop
 
-      - name: Configure macOS
-        if: runner.os == 'macOS'
-        run: cmake -S . -B build
+      # ============================================================
+      # Test - Windows
+      # ============================================================
 
-      - name: Build macOS
-        if: runner.os == 'macOS'
-        run: cmake --build build --parallel
-
-      - name: Test macOS
-        if: runner.os == 'macOS'
-        run: ./build/remote-desktop
-
-      # Windows
-      - name: Setup MSYS2
-        if: runner.os == 'Windows'
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          update: true
-          install: >-
-            git
-            mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-cmake
-            mingw-w64-ucrt-x86_64-ninja
-            mingw-w64-ucrt-x86_64-pkgconf
-            mingw-w64-ucrt-x86_64-x264
-
-      - name: Configure Windows
+      - name: Test - Windows
         if: runner.os == 'Windows'
         shell: msys2 {0}
-        run: cmake -S . -B build -G Ninja
-
-      - name: Build Windows
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: cmake --build build --parallel
-
-      - name: Test Windows
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: ./build/remote-desktop.exe
+        run: |
+          ./build/remote-desktop.exe

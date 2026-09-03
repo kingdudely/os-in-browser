@@ -10,10 +10,6 @@ include(FetchContent)
 set(NO_TESTS ON CACHE BOOL "" FORCE)
 set(NO_EXAMPLES ON CACHE BOOL "" FORCE)
 
-if(WIN32 AND MINGW)
-    add_compile_definitions(__USE_MINGW_ANSI_STDIO=1)
-endif()
-
 FetchContent_Declare(
     libdatachannel
     GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git
