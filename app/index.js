@@ -68,5 +68,5 @@ await github.rest.repos.createDeploymentStatus({
 
 console.log(`=====================
 YOUR URL IS:
-${TUNNEL_URL}
+https://${TUNNEL_URL}
 =====================`)
