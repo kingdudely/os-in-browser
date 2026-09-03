@@ -6,16 +6,18 @@
 #include <thread>
 #include <utility>
 
-void StartCapture(FrameCallback callback)
-{
+void StartCapture(FrameCallback callback) {
     std::thread([callback = std::move(callback)] {
         HDC screen = GetDC(nullptr);
 
         if (!screen)
             return;
 
-        const int width = GetSystemMetrics(SM_CXSCREEN);
-        const int height = GetSystemMetrics(SM_CYSCREEN);
+        const int width =
+            GetSystemMetrics(SM_CXSCREEN);
+
+        const int height =
+            GetSystemMetrics(SM_CYSCREEN);
 
         BITMAPINFO bmi{};
 
@@ -24,7 +26,7 @@ void StartCapture(FrameCallback callback)
 
         bmi.bmiHeader.biWidth = width;
 
-        // Top-down bitmap.
+        // Negative = top-down bitmap.
         bmi.bmiHeader.biHeight = -height;
 
         bmi.bmiHeader.biPlanes = 1;
@@ -58,7 +60,8 @@ void StartCapture(FrameCallback callback)
         HGDIOBJ old =
             SelectObject(memory, bitmap);
 
-        // One Frame reused for the entire capture loop.
+        BGRAToNV12Converter converter;
+
         Frame frame{};
 
         while (true) {
@@ -75,7 +78,6 @@ void StartCapture(FrameCallback callback)
                 break;
             }
 
-            // BGRA input.
             frame.data =
                 static_cast<const uint8_t*>(pixels);
 
@@ -87,8 +89,7 @@ void StartCapture(FrameCallback callback)
             frame.stride = width * 4;
             frame.chromaStride = 0;
 
-            // Convert the same Frame to NV12.
-            BGRAToNV12(frame);
+            converter.convert(frame);
 
             callback(frame);
         }

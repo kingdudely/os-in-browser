@@ -12,8 +12,7 @@
 #include <thread>
 #include <utility>
 
-void StartCapture(FrameCallback callback)
-{
+void StartCapture(FrameCallback callback) {
     std::thread([callback = std::move(callback)] {
         Display* display = GetX11Display();
 
@@ -83,7 +82,8 @@ void StartCapture(FrameCallback callback)
 
         XSync(display, False);
 
-        // One Frame reused for the entire capture loop.
+        BGRAToNV12Converter converter;
+
         Frame frame{};
 
         while (true) {
@@ -97,20 +97,22 @@ void StartCapture(FrameCallback callback)
                 break;
             }
 
-            // BGRA input.
             frame.data =
-                reinterpret_cast<const uint8_t*>(image->data);
+                reinterpret_cast<const uint8_t*>(
+                    image->data
+                );
 
             frame.chroma = nullptr;
 
             frame.width = width;
             frame.height = height;
 
-            frame.stride = image->bytes_per_line;
+            frame.stride =
+                image->bytes_per_line;
+
             frame.chromaStride = 0;
 
-            // Convert the same Frame to NV12.
-            BGRAToNV12(frame);
+            converter.convert(frame);
 
             callback(frame);
         }

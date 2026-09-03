@@ -7,6 +7,23 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
 
+# ============================================================
+# libyuv
+# ============================================================
+
+FetchContent_Declare(
+    libyuv
+    GIT_REPOSITORY https://chromium.googlesource.com/libyuv/libyuv
+    GIT_TAG stable
+    GIT_SHALLOW TRUE
+)
+
+FetchContent_MakeAvailable(libyuv)
+
+# ============================================================
+# libdatachannel
+# ============================================================
+
 set(NO_TESTS ON CACHE BOOL "" FORCE)
 set(NO_EXAMPLES ON CACHE BOOL "" FORCE)
 
@@ -43,8 +60,6 @@ add_executable(remote-desktop
 
 # ============================================================
 # Shared headers
-#
-# Available to EVERY source file.
 # ============================================================
 
 target_include_directories(remote-desktop PRIVATE
@@ -56,6 +71,7 @@ target_include_directories(remote-desktop PRIVATE
 # ============================================================
 
 if(LINUX)
+
     target_sources(remote-desktop PRIVATE
         src/linux/src/clipboard.cpp
         src/linux/src/keyboard.cpp
@@ -68,6 +84,7 @@ if(LINUX)
         src/linux/src/keyboard.cpp
         src/linux/src/mouse.cpp
         src/linux/src/screen.cpp
+
         PROPERTIES
         INCLUDE_DIRECTORIES
         "${CMAKE_CURRENT_SOURCE_DIR}/src/linux/include"
@@ -76,13 +93,19 @@ if(LINUX)
     find_package(X11 REQUIRED)
 
     target_link_libraries(remote-desktop PRIVATE
+
         X11::X11
         X11::Xext
         X11::Xfixes
         X11::Xtst
+
         PkgConfig::X264
+
+        yuv
+
         LibDataChannel::LibDataChannel
     )
+
 endif()
 
 # ============================================================
@@ -106,6 +129,8 @@ if(WIN32)
         gdi32
 
         PkgConfig::X264
+
+        yuv
 
         LibDataChannel::LibDataChannel
 
@@ -158,6 +183,8 @@ if(APPLE)
     target_link_libraries(remote-desktop PRIVATE
 
         PkgConfig::X264
+
+        yuv
 
         LibDataChannel::LibDataChannel
 
