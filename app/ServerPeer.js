@@ -1,5 +1,3 @@
-const nativeApis = nw.require("native-apis");
-
 const clipboard = nw.Clipboard.get();
 
 const stream = await getPrimaryDisplayMedia();

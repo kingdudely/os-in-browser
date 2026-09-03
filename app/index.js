@@ -6,6 +6,7 @@ const expressWs = require("express-ws");
 const basicAuth = require("express-basic-auth");
 const { setTimeout } = require("node:timers/promises");
 const Tunnel = require("firetunnel");
+window.nativeApis = require("native-apis");
 
 import ServerPeer from "./ServerPeer.js";
 
