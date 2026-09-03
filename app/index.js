@@ -1,4 +1,6 @@
 // NWESM doesn't work .. :(, Do I use Electron?
+import ServerPeer from "./ServerPeer.js"; // doesn't matter where you put it, this always runs first, so might as well put it at the top
+
 const { Octokit } = require("@octokit/action");
 const express = require("express");
 const expressWs = require("express-ws");
@@ -6,7 +8,6 @@ const basicAuth = require("express-basic-auth");
 const { setTimeout } = require("node:timers/promises");
 const Tunnel = require("firetunnel");
 
-import ServerPeer from "./ServerPeer.js";
 
 const {
 	GITHUB_REPOSITORY,
