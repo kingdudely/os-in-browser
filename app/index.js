@@ -6,15 +6,14 @@ const express = require("express");
 const expressWs = require("express-ws");
 const basicAuth = require("express-basic-auth");
 const { setTimeout } = require("node:timers/promises");
-const Tunnel = require("firetunnel");
-
 
 const {
 	GITHUB_REPOSITORY,
 	GITHUB_SHA,
 	USERNAME,
 	PASSWORD,
-	GITHUB_RUN_ID
+	GITHUB_RUN_ID,
+	TUNNEL_URL
 } = process.env;
 
 const port = 8080;
@@ -44,18 +43,6 @@ app.listen(port, () => {
 	console.log(`Server listening on port ${port}`);
 });
 
-await Tunnel.installCloudflared();
-
-const tunnel = new Tunnel({
-	url: `localhost:${port}`,
-	metrics: `localhost:${metricsPort}`
-});
-
-while (!await tunnel.isReady())
-	await setTimeout(1000);
-
-const { hostname } = await tunnel.getQuickTunnelInfo();
-
 const [deployment] = await github.paginate(
 	github.rest.repos.listDeployments,
 	{
@@ -76,5 +63,10 @@ await github.rest.repos.createDeploymentStatus({
 	deployment_id: deployment.id,
 	state: "in_progress",
 	description: "Remote desktop ready",
-	environment_url: `https://${hostname}`
+	environment_url: `https://${TUNNEL_URL}`
 });
+
+console.log(`=====================
+YOUR URL IS:
+${TUNNEL_URL}
+=====================`)

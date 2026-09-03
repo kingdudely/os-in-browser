@@ -37,6 +37,13 @@ jobs:
       deployments: write
 
     steps:
+      - name: Establish tunnel
+        id: tunnel
+        uses: anyvm-org/cf-tunnel@v0
+        with:
+          protocol: http
+          port: 8080
+
       - name: Checkout
         uses: actions/checkout@v7
 
@@ -79,13 +86,11 @@ jobs:
           icewm-session &
 
       - name: Install NPM packages
-        env:
-          npm_config_target: 0.115.0
-          npm_config_disturl: https://dl.nwjs.io/
         run: npm install
 
       - name: Start remote desktop host
         env:
+          TUNNEL_URL: ${{ steps.tunnel.outputs.server }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           # USERNAME and PASSWORD not in ENV cuz we need to mask it.
