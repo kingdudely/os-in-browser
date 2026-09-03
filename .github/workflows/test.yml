@@ -21,12 +21,6 @@ jobs:
             libxext-dev \
             libxfixes-dev
 
-      - name: Get screen_capture_lite
-        run: |
-          git clone --depth 1 \
-            https://github.com/smasherprog/screen_capture_lite.git \
-            screen_capture_lite
-
       - name: Start X11
         run: |
           sudo apt-get install -y xvfb
