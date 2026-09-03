@@ -1,5 +1,5 @@
 {
-	"name": "os-in-browser.pages.dev-host",
+	"name": "os-in-browser",
 	"main": "app/index.html",
 	"type": "module",
 	"chromium-args": "--enable-logging=stderr --disable-gpu --no-sandbox",

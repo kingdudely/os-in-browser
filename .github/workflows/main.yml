@@ -92,4 +92,7 @@ jobs:
           export PASSWORD=$(jq -r '.inputs.password // ""' "$GITHUB_EVENT_PATH")
           echo "::add-mask::${PASSWORD}"
 
-          npm start
+          npm exec nw -- . \
+            --user-data-dir="$RUNNER_TEMP/nw-data-$GITHUB_RUN_ID" \
+            --enable-logging=stderr \
+            --v=1
