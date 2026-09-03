@@ -27,9 +27,7 @@ jobs:
         uses: actions/checkout@v4
 
       # ============================================================
-      # Windows
-      #
-      # MSYS2 is already installed on the GitHub runner.
+      # Windows / MSYS2
       # ============================================================
 
       - name: Setup MSYS2
@@ -38,18 +36,26 @@ jobs:
         with:
           msystem: UCRT64
           update: true
+          install: >-
+            git
+            make
+            nasm
+            pkgconf
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
 
       # ============================================================
       # Ubuntu dependencies
-      #
-      # Build tools are already installed on ubuntu-latest.
       # ============================================================
 
       - name: Install Ubuntu dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
+
           sudo apt-get install -y \
+            nasm \
             pkg-config \
             libx11-dev \
             libxext-dev \
@@ -59,13 +65,23 @@ jobs:
             xvfb
 
       # ============================================================
-      # x264 - Linux / macOS
+      # macOS dependencies
+      # ============================================================
+
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew install nasm
+
+      # ============================================================
+      # Build x264 - Linux/macOS
       # ============================================================
 
       - name: Build x264
         if: runner.os != 'Windows'
         run: |
           git clone --depth 1 https://code.videolan.org/videolan/x264.git
+
           cd x264
 
           ./configure \
@@ -73,11 +89,12 @@ jobs:
             --enable-static \
             --disable-cli
 
-          make
+          make -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
+
           make install
 
       # ============================================================
-      # x264 - Windows
+      # Build x264 - Windows
       # ============================================================
 
       - name: Build x264 - Windows
@@ -85,6 +102,7 @@ jobs:
         shell: msys2 {0}
         run: |
           git clone --depth 1 https://code.videolan.org/videolan/x264.git
+
           cd x264
 
           ./configure \
@@ -92,18 +110,22 @@ jobs:
             --enable-static \
             --disable-cli
 
-          make
+          make -j"$(nproc)"
+
           make install
 
       # ============================================================
-      # Configure - Linux / macOS
+      # Configure - Linux/macOS
       # ============================================================
 
       - name: Configure
         if: runner.os != 'Windows'
         run: |
-          cmake -S . -B build \
-            -DCMAKE_PREFIX_PATH="$HOME/x264"
+          export PKG_CONFIG_PATH="$HOME/x264/lib/pkgconfig:$PKG_CONFIG_PATH"
+
+          cmake \
+            -S . \
+            -B build
 
       # ============================================================
       # Configure - Windows
@@ -113,16 +135,21 @@ jobs:
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
-          cmake -S . -B build -G Ninja \
-            -DCMAKE_PREFIX_PATH="$HOME/x264"
+          export PKG_CONFIG_PATH="$HOME/x264/lib/pkgconfig:$PKG_CONFIG_PATH"
+
+          cmake \
+            -S . \
+            -B build \
+            -G Ninja
 
       # ============================================================
-      # Build - Linux / macOS
+      # Build - Linux/macOS
       # ============================================================
 
       - name: Build
         if: runner.os != 'Windows'
-        run: cmake --build build --parallel
+        run: |
+          cmake --build build --parallel
 
       # ============================================================
       # Build - Windows
@@ -131,7 +158,8 @@ jobs:
       - name: Build - Windows
         if: runner.os == 'Windows'
         shell: msys2 {0}
-        run: cmake --build build --parallel
+        run: |
+          cmake --build build --parallel
 
       # ============================================================
       # Test - Ubuntu
