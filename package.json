@@ -2,7 +2,7 @@
 	"name": "os-in-browser.pages.dev-host",
 	"main": "app/index.html",
 	"type": "module",
-	"chromium-args": "--enable-logging=stderr --disable-gpu --no-sandbox --enable-features=NWESM,NWChainImportNode,NWChainImportDom",
+	"chromium-args": "--enable-logging=stderr --disable-gpu --no-sandbox --enable-features=NWESM,NWChainImportNode",
 	"dependencies": {
 		"express": "^5.1.0",
 		"express-basic-auth": "^1.2.1",
