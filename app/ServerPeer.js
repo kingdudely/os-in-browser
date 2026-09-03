@@ -1,11 +1,13 @@
-console.log("INDEX START");
+console.log("1");
 
 const nativeApis = require("native-apis");
+console.log("2");
 
 const clipboard = nw.Clipboard.get();
+console.log("3");
 
 const stream = await getPrimaryDisplayMedia();
-const tracks = stream.getTracks();
+console.log("4");
 
 export default class ServerPeer extends RTCPeerConnection {
 	static #Init = {
