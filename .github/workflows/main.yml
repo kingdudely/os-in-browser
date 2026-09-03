@@ -85,14 +85,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          # USERNAME and PASSWORD not in ENV cuz we need to mask it.
           export USERNAME=$(jq -r '.inputs.username // ""' "$GITHUB_EVENT_PATH")
           echo "::add-mask::${USERNAME}"
 
           export PASSWORD=$(jq -r '.inputs.password // ""' "$GITHUB_EVENT_PATH")
           echo "::add-mask::${PASSWORD}"
 
-          npm exec nw -- . \
-            --user-data-dir="$RUNNER_TEMP/nw-data-$GITHUB_RUN_ID" \
-            --enable-logging=stderr \
-            --v=1
+          npm exec nw -- . --user-data-dir="$RUNNER_TEMP/nw-$GITHUB_RUN_ID" --enable-logging=stderr --v=1 \
+            > "$RUNNER_TEMP/nw.log" 2>&1 || true
+
+          echo "===== LAST 300 LINES ====="
+          tail -n 300 "$RUNNER_TEMP/nw.log"
+
+          echo "===== ERRORS ====="
+          grep -iE 'error|fatal|exception|crash|failed|assert|stack|module' "$RUNNER_TEMP/nw.log" | tail -n 100 || true
