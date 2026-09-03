@@ -14,9 +14,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            git \
+            cmake \
+            ninja-build \
             build-essential \
-            nasm \
+            pkg-config \
+            libx264-dev \
             libx11-dev \
             libxext-dev \
             libxfixes-dev \
@@ -24,21 +26,20 @@ jobs:
             libxtst-dev \
             xvfb
 
-      - name: Setup Xmake
-        uses: xmake-io/github-action-setup-xmake@v1
-        with:
-          xmake-version: latest
-
       - name: Start X11
         run: |
           Xvfb :99 -screen 0 1920x1080x24 &
           echo "DISPLAY=:99" >> "$GITHUB_ENV"
 
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release
+
       - name: Build
         run: |
-          xmake f -m release
-          xmake -y
+          cmake --build build --parallel
 
       - name: Run
         run: |
-          timeout 10s xmake run remote-desktop || test $? -eq 124
+          timeout 10s ./build/remote-desktop || test $? -eq 124
