@@ -37,13 +37,6 @@ jobs:
       deployments: write
 
     steps:
-      - name: Establish tunnel
-        id: tunnel
-        uses: anyvm-org/cf-tunnel@v0
-        with:
-          protocol: http
-          port: 8080
-
       - name: Checkout
         uses: actions/checkout@v7
 
@@ -52,12 +45,14 @@ jobs:
         with:
           node-version: 24
 
-      - name: Create admin account for MacOS
+      - name: Setup Windows
+
+      - name: Setup MacOS
         if: runner.os == 'macOS'
         run: |
           sudo sysadminctl -addUser admin -password admin -fullName Administrator -admin
 
-      - name: Install Linux packages
+      - name: Setup Linux
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
@@ -68,9 +63,6 @@ jobs:
             libxtst6 \
             libxfixes3
 
-      - name: Setup Linux Desktop
-        if: runner.os == 'Linux'
-        run: |
           read -r DISPLAY_NUMBER < <(
             exec Xvfb \
               -displayfd 1 \

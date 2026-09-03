@@ -1,0 +1,43 @@
+name: Test Desktop Capture
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            xmake \
+            git \
+            build-essential \
+            libx11-dev \
+            libxext-dev \
+            libxfixes-dev
+
+      - name: Get screen_capture_lite
+        run: |
+          git clone --depth 1 \
+            https://github.com/smasherprog/screen_capture_lite.git \
+            screen_capture_lite
+
+      - name: Start X11
+        run: |
+          sudo apt-get install -y xvfb
+          Xvfb :99 -screen 0 1920x1080x24 &
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: |
+          xmake f -m release
+          xmake
+
+      - name: Run
+        run: |
+          timeout 10s xmake run desktop-encoder || test $? -eq 124
