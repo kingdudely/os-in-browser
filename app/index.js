@@ -1,11 +1,11 @@
 // NWESM doesn't work .. :(, Do I use Electron?
 console.log("A")
-const { Octokit } = require("@octokit/action");
-const express = require("express");
-const expressWs = require("express-ws");
-const basicAuth = require("express-basic-auth");
-const { setTimeout } = require("node:timers/promises");
-const Tunnel = require("firetunnel");
+import { Octokit } from "@octokit/action";
+import express from "express";
+import expressWs from "express-ws";
+import basicAuth from "express-basic-auth";
+import { setTimeout } from "node:timers/promises";
+import Tunnel from "firetunnel";
 
 import ServerPeer from "./ServerPeer.js";
 
