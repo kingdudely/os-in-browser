@@ -17,8 +17,6 @@ jobs:
             cmake \
             ninja-build \
             build-essential \
-            pkg-config \
-            libx264-dev \
             libx11-dev \
             libxext-dev \
             libxfixes-dev \
@@ -42,4 +40,4 @@ jobs:
 
       - name: Run
         run: |
-          timeout 10s ./build/remote-desktop || test $? -eq 124
+          ./build/remote-desktop
