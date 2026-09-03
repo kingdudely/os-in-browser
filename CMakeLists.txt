@@ -187,8 +187,6 @@ if(APPLE)
 
         PkgConfig::X264
 
-        yuv
-
         LibDataChannel::LibDataChannel
 
         "-framework Foundation"
