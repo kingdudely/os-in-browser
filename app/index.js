@@ -7,8 +7,7 @@ const basicAuth = require("express-basic-auth");
 const { setTimeout } = require("node:timers/promises");
 const Tunnel = require("firetunnel");
 
-const ServerPeer = require("./ServerPeer.js");
-// import ServerPeer from "./ServerPeer.js";
+import ServerPeer from "./ServerPeer.js";
 
 const {
 	GITHUB_REPOSITORY,
@@ -45,39 +44,37 @@ app.listen(port, () => {
 	console.log(`Server listening on port ${port}`);
 });
 
-(async function() {
-	await Tunnel.installCloudflared();
+await Tunnel.installCloudflared();
 
-	const tunnel = new Tunnel({
-		url: `localhost:${port}`,
-		metrics: `localhost:${metricsPort}`
-	});
+const tunnel = new Tunnel({
+	url: `localhost:${port}`,
+	metrics: `localhost:${metricsPort}`
+});
 
-	while (!await tunnel.isReady())
-		await setTimeout(1000);
+while (!await tunnel.isReady())
+	await setTimeout(1000);
 
-	const { hostname } = await tunnel.getQuickTunnelInfo();
+const { hostname } = await tunnel.getQuickTunnelInfo();
 
-	const [deployment] = await github.paginate(
-		github.rest.repos.listDeployments,
-		{
-			owner,
-			repo,
-			environment: GITHUB_RUN_ID,
-			sha: GITHUB_SHA
-		}
-	);
-
-	if (!deployment)
-		throw new Error("Deployment not found");
-
-	await github.rest.repos.createDeploymentStatus({
+const [deployment] = await github.paginate(
+	github.rest.repos.listDeployments,
+	{
 		owner,
 		repo,
 		environment: GITHUB_RUN_ID,
-		deployment_id: deployment.id,
-		state: "in_progress",
-		description: "Remote desktop ready",
-		environment_url: `https://${hostname}`
-	});
-})();
+		sha: GITHUB_SHA
+	}
+);
+
+if (!deployment)
+	throw new Error("Deployment not found");
+
+await github.rest.repos.createDeploymentStatus({
+	owner,
+	repo,
+	environment: GITHUB_RUN_ID,
+	deployment_id: deployment.id,
+	state: "in_progress",
+	description: "Remote desktop ready",
+	environment_url: `https://${hostname}`
+});
