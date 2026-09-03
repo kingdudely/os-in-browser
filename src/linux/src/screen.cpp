@@ -1,6 +1,6 @@
 #include "screen.hpp"
 #include "GetX11Display.hpp"
-#include "BGRAToNV12.hpp"
+#include "BGRAToNV12Converter.hpp"
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>

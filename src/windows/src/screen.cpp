@@ -1,5 +1,5 @@
 #include "screen.hpp"
-#include "BGRAToNV12.hpp"
+#include "BGRAToNV12Converter.hpp"
 
 #include <windows.h>
 
