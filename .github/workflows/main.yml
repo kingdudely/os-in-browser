@@ -79,7 +79,7 @@ jobs:
           icewm-session &
 
       - name: Install NPM packages
-        run: npm install --target=0.115.0 --disturl=https://dl.nwjs.io/
+        run: npm install -- --target=0.115.0 --disturl=https://dl.nwjs.io/
 
       - name: Start remote desktop host
         env:
