@@ -7,18 +7,18 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
 
-# ============================================================
-# libdatachannel
-# ============================================================
-
 set(NO_TESTS ON CACHE BOOL "" FORCE)
 set(NO_EXAMPLES ON CACHE BOOL "" FORCE)
+
+set(WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
+set(BUILD_WITH_WARNINGS OFF CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
     libdatachannel
     GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git
     GIT_TAG master
     GIT_SHALLOW TRUE
+    GIT_SUBMODULES_RECURSE TRUE
 )
 
 FetchContent_MakeAvailable(libdatachannel)
@@ -59,43 +59,33 @@ target_include_directories(remote-desktop PRIVATE
 # ============================================================
 
 if(LINUX)
-
     target_sources(remote-desktop PRIVATE
-
         src/linux/src/clipboard.cpp
         src/linux/src/keyboard.cpp
         src/linux/src/mouse.cpp
         src/linux/src/screen.cpp
-
     )
 
     set_source_files_properties(
-
         src/linux/src/clipboard.cpp
         src/linux/src/keyboard.cpp
         src/linux/src/mouse.cpp
         src/linux/src/screen.cpp
-
         PROPERTIES
-
         INCLUDE_DIRECTORIES
         "${CMAKE_CURRENT_SOURCE_DIR}/src/linux/include"
-
     )
 
     find_package(X11 REQUIRED)
 
     target_link_libraries(remote-desktop PRIVATE
-
         X11::X11
         X11::Xext
-
+        X11::Xfixes
+        X11::Xtst
         PkgConfig::X264
-
         LibDataChannel::LibDataChannel
-
     )
-
 endif()
 
 # ============================================================
