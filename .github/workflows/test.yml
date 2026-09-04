@@ -1,46 +1,83 @@
 name: Test CMake Build
 
-run-name: CMake Test - ${{ inputs.os }}
-
 on:
+  push:
+    paths:
+      - "CMakeLists.txt"
+      - "vcpkg.json"
+      - "src/**"
+      - ".github/workflows/test.yml"
+
+  pull_request:
+    paths:
+      - "CMakeLists.txt"
+      - "vcpkg.json"
+      - "src/**"
+      - ".github/workflows/test.yml"
+
   workflow_dispatch:
-    inputs:
-      os:
-        description: Operating system
-        required: true
-        type: choice
-        default: ubuntu-latest
-        options:
-          - ubuntu-latest
-          - windows-latest
-          - macos-latest
 
 defaults:
   run:
     shell: bash --noprofile --norc -euo pipefail
 
 jobs:
-  build-and-run:
-    runs-on: ${{ inputs.os }}
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
 
     steps:
+      # ======================================================
+      # Checkout
+      # ======================================================
+
       - name: Checkout
         uses: actions/checkout@v4
+
+      # ======================================================
+      # Environment
+      # ======================================================
 
       - name: Show environment
         run: |
           echo "OS: $RUNNER_OS"
           echo "Architecture: $RUNNER_ARCH"
+
+          echo
+          echo "CMake:"
           cmake --version
+
+          echo
+          echo "vcpkg:"
           vcpkg version
 
-      - name: Configure
+          echo
+          echo "VCPKG_INSTALLATION_ROOT:"
+          echo "${VCPKG_INSTALLATION_ROOT:-not set}"
+
+      # ======================================================
+      # Configure
+      # ======================================================
+
+      - name: Configure CMake
         run: |
           cmake \
             -S . \
             -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+
+      # ======================================================
+      # Build
+      # ======================================================
 
       - name: Build
         run: |
@@ -49,7 +86,11 @@ jobs:
             --config Release \
             --parallel
 
-      - name: Find executable
+      # ======================================================
+      # Locate executable
+      # ======================================================
+
+      - name: Locate executable
         id: binary
         run: |
           if [[ "$RUNNER_OS" == "Windows" ]]; then
@@ -59,16 +100,44 @@ jobs:
           fi
 
           if [[ -z "$BINARY" ]]; then
-            echo "::error::remote-desktop executable not found"
+            echo "::error::remote-desktop executable was not found"
             exit 1
           fi
 
-          echo "Found: $BINARY"
+          echo "Binary: $BINARY"
           echo "path=$BINARY" >> "$GITHUB_OUTPUT"
+
+      # ======================================================
+      # Run
+      # ======================================================
 
       - name: Run remote-desktop
         run: |
           echo "Starting remote-desktop..."
-          echo "========================================"
+          echo
 
-          "${{ steps.binary.outputs.path }}"
+          "${{ steps.binary.outputs.path }}" &
+          PID=$!
+
+          echo "PID: $PID"
+          echo
+
+          # Give the application time to initialize.
+          sleep 10
+
+          if kill -0 "$PID" 2>/dev/null; then
+            echo
+            echo "========================================"
+            echo "✓ remote-desktop is running"
+            echo "========================================"
+
+            kill "$PID" 2>/dev/null || true
+            wait "$PID" 2>/dev/null || true
+          else
+            echo
+            echo "========================================"
+            echo "✗ remote-desktop exited during startup"
+            echo "========================================"
+
+            wait "$PID"
+          fi
