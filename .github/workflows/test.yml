@@ -1,4 +1,4 @@
-name: Remote Desktop
+name: ef
 
 on:
   push:

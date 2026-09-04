@@ -5,7 +5,9 @@ set_languages("c++17")
 
 add_rules("mode.debug", "mode.release")
 
-add_repositories("local-repo packages")
+add_repositories("local-repo packages", {
+    rootdir = os.scriptdir()
+})
 
 add_requires(
     "srtc 0.5.2",
