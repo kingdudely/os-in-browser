@@ -1,4 +1,3 @@
-```yaml
 name: Compare WebRTC Libraries
 
 on:
@@ -237,4 +236,3 @@ jobs:
               \( -name '*.a' -o -name '*.so' \) \
               -print | sort
           fi
-```
