@@ -71,20 +71,12 @@ jobs:
       - name: Configure - Windows
         if: runner.os == 'Windows'
         run: |
-          xmake f \
-            -p windows \
-            -a x64 \
-            -m release \
-            --toolchain=msvc
+          xmake f -p windows -a x64 -m release --toolchain=msvc -y
 
       - name: Configure - Linux/macOS
         if: runner.os != 'Windows'
         run: |
-          xmake f -m release
-
-      # ============================================================
-      # Build
-      # ============================================================
+          xmake f -m release -y
 
       - name: Build
         run: |
