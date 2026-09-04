@@ -8,7 +8,6 @@ on:
 jobs:
   test:
     name: ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
@@ -18,32 +17,20 @@ jobs:
           - macos-latest
           - windows-latest
 
+    runs-on: ${{ matrix.os }}
+
     steps:
-      # ============================================================
-      # Checkout
-      # ============================================================
 
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # ============================================================
-      # Xmake
-      # ============================================================
-
-      - name: Setup Xmake
-        uses: xmake-io/github-action-setup-xmake@v1
+      - uses: xmake-io/github-action-setup-xmake@v1
         with:
           xmake-version: latest
 
-      # ============================================================
-      # Linux
-      # ============================================================
-
-      - name: Install dependencies - Linux
+      - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-
           sudo apt-get install -y \
             pkg-config \
             libx11-dev \
@@ -53,58 +40,14 @@ jobs:
             libxtst-dev \
             xvfb
 
-      # ============================================================
-      # Configure
-      # ============================================================
-
-      - name: Configure - Windows
-        if: runner.os == 'Windows'
-        run: |
-          xmake f \
-            -p windows \
-            -a x64 \
-            -m release \
-            --toolchain=msvc \
-            -y
-
-      - name: Configure - Linux/macOS
-        if: runner.os != 'Windows'
-        run: |
-          xmake f \
-            -m release \
-            -y
-
-      # ============================================================
-      # Build
-      # ============================================================
-
       - name: Build
+        run: xmake -y
+
+      - name: Test
+        shell: bash
         run: |
-          xmake -y
-
-      # ============================================================
-      # Test - Linux
-      # ============================================================
-
-      - name: Test - Linux
-        if: runner.os == 'Linux'
-        run: |
-          xvfb-run -a xmake run remote-desktop
-
-      # ============================================================
-      # Test - macOS
-      # ============================================================
-
-      - name: Test - macOS
-        if: runner.os == 'macOS'
-        run: |
-          xmake run remote-desktop
-
-      # ============================================================
-      # Test - Windows
-      # ============================================================
-
-      - name: Test - Windows
-        if: runner.os == 'Windows'
-        run: |
-          xmake run remote-desktop
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            xvfb-run -a xmake run remote-desktop
+          else
+            xmake run remote-desktop
+          fi

@@ -5,17 +5,15 @@ set_languages("c++17")
 
 add_rules("mode.debug", "mode.release")
 
--- Local package repository
-add_repositories("local-repo packages")
+add_repositories("local-repo packages", {
+    rootdir = os.scriptdir()
+})
 
--- Common dependencies
 add_requires(
     "srtc 0.5.2",
     "x264"
 )
 
--- BGRA -> NV12 is only needed on Linux/Windows.
--- macOS gets NV12 directly from ScreenCaptureKit.
 if is_plat("linux", "windows") then
     add_requires("libyuv")
 end
@@ -36,23 +34,15 @@ target("remote-desktop")
     )
 
 
-    -- ============================================================
-    -- Linux
-    -- ============================================================
-
     if is_plat("linux") then
 
-        add_files(
-            "src/linux/src/*.cpp"
-        )
+        add_files("src/linux/src/*.cpp")
 
         add_includedirs(
             "src/linux/include"
         )
 
-        add_packages(
-            "libyuv"
-        )
+        add_packages("libyuv")
 
         add_syslinks(
             "X11",
@@ -63,15 +53,9 @@ target("remote-desktop")
         )
 
 
-    -- ============================================================
-    -- macOS
-    -- ============================================================
-
     elseif is_plat("macosx") then
 
-        add_files(
-            "src/macos/src/*.cpp"
-        )
+        add_files("src/macos/src/*.cpp")
 
         add_includedirs(
             "src/macos/include"
@@ -87,19 +71,11 @@ target("remote-desktop")
         )
 
 
-    -- ============================================================
-    -- Windows
-    -- ============================================================
-
     elseif is_plat("windows") then
 
-        add_files(
-            "src/windows/src/*.cpp"
-        )
+        add_files("src/windows/src/*.cpp")
 
-        add_packages(
-            "libyuv"
-        )
+        add_packages("libyuv")
 
         add_syslinks(
             "user32",
