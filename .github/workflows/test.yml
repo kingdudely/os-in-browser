@@ -1,53 +1,74 @@
-name: ef
+name: Test CMake Build
+
+run-name: CMake Test - ${{ inputs.os }}
 
 on:
-  push:
-  pull_request:
   workflow_dispatch:
+    inputs:
+      os:
+        description: Operating system
+        required: true
+        type: choice
+        default: ubuntu-latest
+        options:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail
 
 jobs:
-  test:
-    name: ${{ matrix.os }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-          - windows-latest
-
-    runs-on: ${{ matrix.os }}
+  build-and-run:
+    runs-on: ${{ inputs.os }}
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/checkout@v4
-
-      - uses: xmake-io/github-action-setup-xmake@v1
-        with:
-          xmake-version: latest
-
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
+      - name: Show environment
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            pkg-config \
-            libx11-dev \
-            libxext-dev \
-            libxfixes-dev \
-            libxinerama-dev \
-            libxtst-dev \
-            xvfb
+          echo "OS: $RUNNER_OS"
+          echo "Architecture: $RUNNER_ARCH"
+          cmake --version
+          vcpkg version
+
+      - name: Configure
+        run: |
+          cmake \
+            -S . \
+            -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
 
       - name: Build
-        run: xmake -y
-
-      - name: Test
-        shell: bash
         run: |
-          if [[ "$RUNNER_OS" == "Linux" ]]; then
-            xvfb-run -a xmake run remote-desktop
+          cmake \
+            --build build \
+            --config Release \
+            --parallel
+
+      - name: Find executable
+        id: binary
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            BINARY="$(find build -type f -iname 'remote-desktop.exe' | head -n 1)"
           else
-            xmake run remote-desktop
+            BINARY="$(find build -type f -name 'remote-desktop' -perm -111 | head -n 1)"
           fi
+
+          if [[ -z "$BINARY" ]]; then
+            echo "::error::remote-desktop executable not found"
+            exit 1
+          fi
+
+          echo "Found: $BINARY"
+          echo "path=$BINARY" >> "$GITHUB_OUTPUT"
+
+      - name: Run remote-desktop
+        run: |
+          echo "Starting remote-desktop..."
+          echo "========================================"
+
+          "${{ steps.binary.outputs.path }}"
