@@ -20,10 +20,16 @@ end
 target("remote-desktop")
     set_kind("binary")
 
-    add_files("src/main.cpp")
+    local platform_src = "src/" .. get_config("plat")
+
+    add_files(
+        "src/main.cpp",
+        platform_src .. "/src/*.cpp"
+    )
 
     add_includedirs(
-        "src/shared/include"
+        "src/shared/include",
+        platform_src .. "/include"
     )
 
     add_packages(
@@ -31,16 +37,11 @@ target("remote-desktop")
         "x264"
     )
 
+    if is_plat("linux", "windows") then
+        add_packages("libyuv")
+    end
 
     if is_plat("linux") then
-
-        add_files("src/linux/src/*.cpp")
-
-        add_includedirs(
-            "src/linux/include"
-        )
-
-        add_packages("libyuv")
 
         add_syslinks(
             "X11",
@@ -50,14 +51,7 @@ target("remote-desktop")
             "Xtst"
         )
 
-
     elseif is_plat("macosx") then
-
-        add_files("src/macos/src/*.cpp")
-
-        add_includedirs(
-            "src/macos/include"
-        )
 
         add_frameworks(
             "ScreenCaptureKit",
@@ -68,12 +62,7 @@ target("remote-desktop")
             "IOKit"
         )
 
-
     elseif is_plat("windows") then
-
-        add_files("src/windows/src/*.cpp")
-
-        add_packages("libyuv")
 
         add_syslinks(
             "user32",
