@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v4
 
       # ============================================================
-      # Ubuntu dependencies
+      # Linux dependencies
       # ============================================================
 
       - name: Install Ubuntu dependencies
@@ -45,11 +45,11 @@ jobs:
             xvfb
 
       # ============================================================
-      # Install Xmake
+      # Xmake
       # ============================================================
 
-      - name: Install Xmake
-        uses: xmake-io/github-action@v1
+      - name: Setup Xmake
+        uses: xmake-io/github-action-setup-xmake@v1
         with:
           xmake-version: latest
 
@@ -67,7 +67,7 @@ jobs:
 
       - name: Build
         run: |
-          xmake -y -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+          xmake -y
 
       # ============================================================
       # Test - Ubuntu
