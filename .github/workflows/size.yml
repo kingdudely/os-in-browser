@@ -21,25 +21,20 @@ jobs:
           - macos-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            nasm \
-            libssl-dev
+          sudo apt-get install -y nasm libssl-dev
 
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         run: |
           brew install openssl
 
-      # ------------------------------------------------------------
-      # Clone both libraries
-      # ------------------------------------------------------------
+      # ----------------------------------------------------------
+      # Get sources
+      # ----------------------------------------------------------
 
       - name: Clone libdatachannel
         run: |
@@ -58,9 +53,9 @@ jobs:
             https://github.com/kmansoft/srtc.git \
             srtc
 
-      # ------------------------------------------------------------
-      # Build libdatachannel
-      # ------------------------------------------------------------
+      # ----------------------------------------------------------
+      # libdatachannel
+      # ----------------------------------------------------------
 
       - name: Configure libdatachannel
         run: |
@@ -80,11 +75,11 @@ jobs:
             --build build/libdatachannel \
             --config Release \
             --parallel \
-            --target libdatachannel-static
+            --target datachannel-static
 
-      # ------------------------------------------------------------
-      # Build srtc
-      # ------------------------------------------------------------
+      # ----------------------------------------------------------
+      # srtc
+      # ----------------------------------------------------------
 
       - name: Configure srtc
         run: |
@@ -103,38 +98,57 @@ jobs:
             --parallel \
             --target srtc
 
-      # ------------------------------------------------------------
-      # Locate libraries
-      # ------------------------------------------------------------
+      # ----------------------------------------------------------
+      # Locate outputs
+      # ----------------------------------------------------------
 
       - name: Locate libraries
         id: libraries
         run: |
-          echo "Searching for built libraries..."
+          echo "Searching for libraries..."
 
           if [[ "$RUNNER_OS" == "Windows" ]]; then
-            LIBDATACHANNEL="$(find build/libdatachannel -type f \( \
-              -iname 'libdatachannel-static.lib' \
-              -o -iname 'datachannel-static.lib' \
-            \) | head -n 1)"
+            LIBDATACHANNEL="$(
+              find build/libdatachannel \
+                -type f \
+                -iname 'datachannel-static.lib' \
+                | head -n 1
+            )"
 
-            SRTC="$(find build/srtc -type f -iname 'srtc.lib' | head -n 1)"
+            SRTC="$(
+              find build/srtc \
+                -type f \
+                -iname 'srtc.lib' \
+                | head -n 1
+            )"
           else
-            LIBDATACHANNEL="$(find build/libdatachannel -type f \
-              -name 'libdatachannel-static.a' | head -n 1)"
+            LIBDATACHANNEL="$(
+              find build/libdatachannel \
+                -type f \
+                \( -name 'libdatachannel-static.a' -o -name 'datachannel-static.a' \) \
+                | head -n 1
+            )"
 
-            SRTC="$(find build/srtc -type f \
-              -name 'libsrtc.a' | head -n 1)"
+            SRTC="$(
+              find build/srtc \
+                -type f \
+                -name 'libsrtc.a' \
+                | head -n 1
+            )"
           fi
 
           if [[ -z "$LIBDATACHANNEL" ]]; then
-            echo "::error::libdatachannel static library was not found"
+            echo "::error::Could not find libdatachannel static library"
+            echo
+            echo "Files:"
             find build/libdatachannel -type f | sort
             exit 1
           fi
 
           if [[ -z "$SRTC" ]]; then
-            echo "::error::srtc library was not found"
+            echo "::error::Could not find srtc static library"
+            echo
+            echo "Files:"
             find build/srtc -type f | sort
             exit 1
           fi
@@ -145,11 +159,11 @@ jobs:
           echo "libdatachannel=$LIBDATACHANNEL" >> "$GITHUB_OUTPUT"
           echo "srtc=$SRTC" >> "$GITHUB_OUTPUT"
 
-      # ------------------------------------------------------------
+      # ----------------------------------------------------------
       # Compare sizes
-      # ------------------------------------------------------------
+      # ----------------------------------------------------------
 
-      - name: Compare library sizes
+      - name: Compare sizes
         run: |
           LIBDATACHANNEL="${{ steps.libraries.outputs.libdatachannel }}"
           SRTC="${{ steps.libraries.outputs.srtc }}"
@@ -163,76 +177,52 @@ jobs:
           fi
 
           LIBDATACHANNEL_MB="$(
-            awk "BEGIN { printf \"%.2f\", $LIBDATACHANNEL_BYTES / 1024 / 1024 }"
+            awk "BEGIN {
+              printf \"%.2f\", $LIBDATACHANNEL_BYTES / 1024 / 1024
+            }"
           )"
 
           SRTC_MB="$(
-            awk "BEGIN { printf \"%.2f\", $SRTC_BYTES / 1024 / 1024 }"
+            awk "BEGIN {
+              printf \"%.2f\", $SRTC_BYTES / 1024 / 1024
+            }"
           )"
-
-          if (( SRTC_BYTES > 0 )); then
-            RATIO="$(
-              awk "BEGIN { printf \"%.2fx\", $LIBDATACHANNEL_BYTES / $SRTC_BYTES }"
-            )"
-          else
-            RATIO="N/A"
-          fi
 
           DIFFERENCE="$((LIBDATACHANNEL_BYTES - SRTC_BYTES))"
 
           DIFFERENCE_MB="$(
-            awk "BEGIN { printf \"%.2f\", $DIFFERENCE / 1024 / 1024 }"
+            awk "BEGIN {
+              printf \"%.2f\", $DIFFERENCE / 1024 / 1024
+            }"
+          )"
+
+          RATIO="$(
+            awk "BEGIN {
+              printf \"%.2fx\", $LIBDATACHANNEL_BYTES / $SRTC_BYTES
+            }"
           )"
 
           echo
-          echo "========================================"
-          echo "        WebRTC Library Comparison"
-          echo "========================================"
-          echo "OS: $RUNNER_OS"
+          echo "=========================================="
+          echo "        WebRTC Library Size Test"
+          echo "=========================================="
+          echo
+          echo "OS:           $RUNNER_OS"
           echo "Architecture: $RUNNER_ARCH"
           echo
           echo "libdatachannel"
-          echo "  Path:  $LIBDATACHANNEL"
-          echo "  Size:  $LIBDATACHANNEL_BYTES bytes"
-          echo "         $LIBDATACHANNEL_MB MB"
+          echo "  Size: $LIBDATACHANNEL_BYTES bytes"
+          echo "        $LIBDATACHANNEL_MB MB"
           echo
           echo "srtc"
-          echo "  Path:  $SRTC"
-          echo "  Size:  $SRTC_BYTES bytes"
-          echo "         $SRTC_MB MB"
+          echo "  Size: $SRTC_BYTES bytes"
+          echo "        $SRTC_MB MB"
           echo
           echo "Difference"
-          echo "  libdatachannel - srtc:"
-          echo "  $DIFFERENCE bytes ($DIFFERENCE_MB MB)"
+          echo "  $DIFFERENCE bytes"
+          echo "  $DIFFERENCE_MB MB"
           echo
-          echo "  libdatachannel / srtc:"
-          echo "  $RATIO"
-          echo "========================================"
-
-      # ------------------------------------------------------------
-      # Show dependency sizes too
-      # ------------------------------------------------------------
-
-      - name: Show all built libraries
-        run: |
+          echo "Ratio"
+          echo "  libdatachannel / srtc = $RATIO"
           echo
-          echo "========================================"
-          echo "       All major built libraries"
-          echo "========================================"
-
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            find build/libdatachannel build/srtc \
-              -type f \
-              \( -iname '*.lib' -o -iname '*.dll' \) \
-              -print | sort
-          elif [[ "$RUNNER_OS" == "macOS" ]]; then
-            find build/libdatachannel build/srtc \
-              -type f \
-              \( -name '*.a' -o -name '*.dylib' \) \
-              -print | sort
-          else
-            find build/libdatachannel build/srtc \
-              -type f \
-              \( -name '*.a' -o -name '*.so' \) \
-              -print | sort
-          fi
+          echo "=========================================="
