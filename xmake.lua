@@ -5,24 +5,29 @@ set_languages("cxx17")
 
 add_rules("mode.debug", "mode.release")
 
--- ============================================================
--- Dependencies
--- ============================================================
+package("srtc")
+    set_kind("library")
 
--- libyuv — Linux + Windows only
-if not is_plat("macosx") then
-    add_requires("libyuv")
-end
+    add_urls("https://github.com/kmansoft/srtc.git")
 
--- libdatachannel
-add_requires("libdatachannel")
+    add_deps("cmake")
+    add_deps("openssl")
+
+    on_install(function (package)
+        local configs = {
+            "-DCMAKE_BUILD_TYPE=" .. (package:debug() and "Debug" or "Release"),
+            "-DBUILD_TESTING=OFF"
+        }
+
+        import("package.tools.cmake").install(package, configs)
+    end)
+package_end()
+
+add_requires("srtc")
+add_requires("libyuv")
 
 -- x264
 add_requires("x264")
-
--- ============================================================
--- Executable
--- ============================================================
 
 target("remote-desktop")
     set_kind("binary")
@@ -31,63 +36,26 @@ target("remote-desktop")
 
     add_includedirs("src/shared/include")
 
-    -- Dependencies
-    add_packages("libdatachannel", "x264")
-
-    if not is_plat("macosx") then
-        add_packages("libyuv")
-    end
-
-    -- ========================================================
-    -- Linux
-    -- ========================================================
+    add_packages("srtc", "libyuv", "x264")
 
     if is_plat("linux") then
         add_files(
-            "src/linux/src/clipboard.cpp",
-            "src/linux/src/keyboard.cpp",
-            "src/linux/src/mouse.cpp",
-            "src/linux/src/screen.cpp"
+            "src/linux/src/*.cpp"
         )
 
         add_includedirs("src/linux/include")
 
-        add_links(
-            "X11",
-            "Xext",
-            "Xfixes",
-            "Xtst"
-        )
-    end
-
-    -- ========================================================
-    -- Windows
-    -- ========================================================
-
-    if is_plat("windows") then
+        add_links("X11", "Xext", "Xfixes", "Xtst")
+    elseif is_plat("windows") then
         add_files(
-            "src/windows/src/clipboard.cpp",
-            "src/windows/src/keyboard.cpp",
-            "src/windows/src/mouse.cpp",
-            "src/windows/src/screen.cpp"
+            "src/windows/src/*.cpp"
         )
 
-        add_links(
-            "user32",
-            "gdi32"
-        )
-    end
-
-    -- ========================================================
-    -- macOS
-    -- ========================================================
-
-    if is_plat("macosx") then
+        add_links("user32", "gdi32")
+    elseif is_plat("macosx") then
         add_files(
-            "src/macos/src/clipboard.mm",
-            "src/macos/src/keyboard.cpp",
-            "src/macos/src/mouse.cpp",
-            "src/macos/src/screen.mm"
+            "src/macos/src/*.cpp",
+            "src/macos/src/*.mm"
         )
 
         add_includedirs("src/macos/include")
