@@ -1,0 +1,240 @@
+```yaml
+name: Compare WebRTC Libraries
+
+on:
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
+jobs:
+  compare:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            nasm \
+            libssl-dev
+
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew install openssl
+
+      # ------------------------------------------------------------
+      # Clone both libraries
+      # ------------------------------------------------------------
+
+      - name: Clone libdatachannel
+        run: |
+          git clone \
+            --depth 1 \
+            --recurse-submodules \
+            --shallow-submodules \
+            https://github.com/paullouisageneau/libdatachannel.git \
+            libdatachannel
+
+      - name: Clone srtc
+        run: |
+          git clone \
+            --depth 1 \
+            --branch ver-0.5.2 \
+            https://github.com/kmansoft/srtc.git \
+            srtc
+
+      # ------------------------------------------------------------
+      # Build libdatachannel
+      # ------------------------------------------------------------
+
+      - name: Configure libdatachannel
+        run: |
+          cmake \
+            -S libdatachannel \
+            -B build/libdatachannel \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF \
+            -DNO_WEBSOCKET=ON \
+            -DUSE_GNUTLS=0 \
+            -DUSE_MBEDTLS=0 \
+            -DUSE_NICE=0
+
+      - name: Build libdatachannel
+        run: |
+          cmake \
+            --build build/libdatachannel \
+            --config Release \
+            --parallel \
+            --target libdatachannel-static
+
+      # ------------------------------------------------------------
+      # Build srtc
+      # ------------------------------------------------------------
+
+      - name: Configure srtc
+        run: |
+          cmake \
+            -S srtc \
+            -B build/srtc \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSRTC_BUILD_TESTS=OFF \
+            -DSRTC_BUILD_TOOLS=OFF
+
+      - name: Build srtc
+        run: |
+          cmake \
+            --build build/srtc \
+            --config Release \
+            --parallel \
+            --target srtc
+
+      # ------------------------------------------------------------
+      # Locate libraries
+      # ------------------------------------------------------------
+
+      - name: Locate libraries
+        id: libraries
+        run: |
+          echo "Searching for built libraries..."
+
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            LIBDATACHANNEL="$(find build/libdatachannel -type f \( \
+              -iname 'libdatachannel-static.lib' \
+              -o -iname 'datachannel-static.lib' \
+            \) | head -n 1)"
+
+            SRTC="$(find build/srtc -type f -iname 'srtc.lib' | head -n 1)"
+          else
+            LIBDATACHANNEL="$(find build/libdatachannel -type f \
+              -name 'libdatachannel-static.a' | head -n 1)"
+
+            SRTC="$(find build/srtc -type f \
+              -name 'libsrtc.a' | head -n 1)"
+          fi
+
+          if [[ -z "$LIBDATACHANNEL" ]]; then
+            echo "::error::libdatachannel static library was not found"
+            find build/libdatachannel -type f | sort
+            exit 1
+          fi
+
+          if [[ -z "$SRTC" ]]; then
+            echo "::error::srtc library was not found"
+            find build/srtc -type f | sort
+            exit 1
+          fi
+
+          echo "libdatachannel: $LIBDATACHANNEL"
+          echo "srtc:           $SRTC"
+
+          echo "libdatachannel=$LIBDATACHANNEL" >> "$GITHUB_OUTPUT"
+          echo "srtc=$SRTC" >> "$GITHUB_OUTPUT"
+
+      # ------------------------------------------------------------
+      # Compare sizes
+      # ------------------------------------------------------------
+
+      - name: Compare library sizes
+        run: |
+          LIBDATACHANNEL="${{ steps.libraries.outputs.libdatachannel }}"
+          SRTC="${{ steps.libraries.outputs.srtc }}"
+
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            LIBDATACHANNEL_BYTES="$(stat -f '%z' "$LIBDATACHANNEL")"
+            SRTC_BYTES="$(stat -f '%z' "$SRTC")"
+          else
+            LIBDATACHANNEL_BYTES="$(stat -c '%s' "$LIBDATACHANNEL")"
+            SRTC_BYTES="$(stat -c '%s' "$SRTC")"
+          fi
+
+          LIBDATACHANNEL_MB="$(
+            awk "BEGIN { printf \"%.2f\", $LIBDATACHANNEL_BYTES / 1024 / 1024 }"
+          )"
+
+          SRTC_MB="$(
+            awk "BEGIN { printf \"%.2f\", $SRTC_BYTES / 1024 / 1024 }"
+          )"
+
+          if (( SRTC_BYTES > 0 )); then
+            RATIO="$(
+              awk "BEGIN { printf \"%.2fx\", $LIBDATACHANNEL_BYTES / $SRTC_BYTES }"
+            )"
+          else
+            RATIO="N/A"
+          fi
+
+          DIFFERENCE="$((LIBDATACHANNEL_BYTES - SRTC_BYTES))"
+
+          DIFFERENCE_MB="$(
+            awk "BEGIN { printf \"%.2f\", $DIFFERENCE / 1024 / 1024 }"
+          )"
+
+          echo
+          echo "========================================"
+          echo "        WebRTC Library Comparison"
+          echo "========================================"
+          echo "OS: $RUNNER_OS"
+          echo "Architecture: $RUNNER_ARCH"
+          echo
+          echo "libdatachannel"
+          echo "  Path:  $LIBDATACHANNEL"
+          echo "  Size:  $LIBDATACHANNEL_BYTES bytes"
+          echo "         $LIBDATACHANNEL_MB MB"
+          echo
+          echo "srtc"
+          echo "  Path:  $SRTC"
+          echo "  Size:  $SRTC_BYTES bytes"
+          echo "         $SRTC_MB MB"
+          echo
+          echo "Difference"
+          echo "  libdatachannel - srtc:"
+          echo "  $DIFFERENCE bytes ($DIFFERENCE_MB MB)"
+          echo
+          echo "  libdatachannel / srtc:"
+          echo "  $RATIO"
+          echo "========================================"
+
+      # ------------------------------------------------------------
+      # Show dependency sizes too
+      # ------------------------------------------------------------
+
+      - name: Show all built libraries
+        run: |
+          echo
+          echo "========================================"
+          echo "       All major built libraries"
+          echo "========================================"
+
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            find build/libdatachannel build/srtc \
+              -type f \
+              \( -iname '*.lib' -o -iname '*.dll' \) \
+              -print | sort
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            find build/libdatachannel build/srtc \
+              -type f \
+              \( -name '*.a' -o -name '*.dylib' \) \
+              -print | sort
+          else
+            find build/libdatachannel build/srtc \
+              -type f \
+              \( -name '*.a' -o -name '*.so' \) \
+              -print | sort
+          fi
+```
