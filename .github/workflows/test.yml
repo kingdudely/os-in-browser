@@ -27,25 +27,6 @@ jobs:
         uses: actions/checkout@v4
 
       # ============================================================
-      # Windows / MSYS2
-      # ============================================================
-
-      - name: Setup MSYS2
-        if: runner.os == 'Windows'
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          update: true
-          install: >-
-            git
-            make
-            nasm
-            pkgconf
-            mingw-w64-ucrt-x86_64-toolchain
-            mingw-w64-ucrt-x86_64-cmake
-            mingw-w64-ucrt-x86_64-ninja
-
-      # ============================================================
       # Ubuntu dependencies
       # ============================================================
 
@@ -55,7 +36,6 @@ jobs:
           sudo apt-get update
 
           sudo apt-get install -y \
-            nasm \
             pkg-config \
             libx11-dev \
             libxext-dev \
@@ -65,101 +45,29 @@ jobs:
             xvfb
 
       # ============================================================
-      # macOS dependencies
+      # Install Xmake
       # ============================================================
 
-      - name: Install macOS dependencies
-        if: runner.os == 'macOS'
-        run: |
-          brew install nasm
+      - name: Install Xmake
+        uses: xmake-io/github-action@v1
+        with:
+          xmake-version: latest
 
       # ============================================================
-      # Build x264 - Linux/macOS
-      # ============================================================
-
-      - name: Build x264
-        if: runner.os != 'Windows'
-        run: |
-          git clone --depth 1 https://code.videolan.org/videolan/x264.git
-
-          cd x264
-
-          ./configure \
-            --prefix="$HOME/x264" \
-            --enable-static \
-            --disable-cli
-
-          make -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
-
-          make install
-
-      # ============================================================
-      # Build x264 - Windows
-      # ============================================================
-
-      - name: Build x264 - Windows
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: |
-          git clone --depth 1 https://code.videolan.org/videolan/x264.git
-
-          cd x264
-
-          ./configure \
-            --prefix="$HOME/x264" \
-            --enable-static \
-            --disable-cli
-
-          make -j"$(nproc)"
-
-          make install
-
-      # ============================================================
-      # Configure - Linux/macOS
+      # Configure
       # ============================================================
 
       - name: Configure
-        if: runner.os != 'Windows'
         run: |
-          export PKG_CONFIG_PATH="$HOME/x264/lib/pkgconfig:$PKG_CONFIG_PATH"
-
-          cmake \
-            -S . \
-            -B build
+          xmake f -m release
 
       # ============================================================
-      # Configure - Windows
-      # ============================================================
-
-      - name: Configure - Windows
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: |
-          export PKG_CONFIG_PATH="$HOME/x264/lib/pkgconfig:$PKG_CONFIG_PATH"
-
-          cmake \
-            -S . \
-            -B build \
-            -G Ninja
-
-      # ============================================================
-      # Build - Linux/macOS
+      # Build
       # ============================================================
 
       - name: Build
-        if: runner.os != 'Windows'
         run: |
-          cmake --build build --parallel
-
-      # ============================================================
-      # Build - Windows
-      # ============================================================
-
-      - name: Build - Windows
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: |
-          cmake --build build --parallel
+          xmake -y -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
 
       # ============================================================
       # Test - Ubuntu
@@ -168,7 +76,7 @@ jobs:
       - name: Test - Ubuntu
         if: runner.os == 'Linux'
         run: |
-          xvfb-run -a ./build/remote-desktop
+          xvfb-run -a xmake run remote-desktop
 
       # ============================================================
       # Test - macOS
@@ -177,7 +85,7 @@ jobs:
       - name: Test - macOS
         if: runner.os == 'macOS'
         run: |
-          ./build/remote-desktop
+          xmake run remote-desktop
 
       # ============================================================
       # Test - Windows
@@ -185,6 +93,5 @@ jobs:
 
       - name: Test - Windows
         if: runner.os == 'Windows'
-        shell: msys2 {0}
         run: |
-          ./build/remote-desktop.exe
+          xmake run remote-desktop
