@@ -107,6 +107,24 @@ jobs:
           echo "Binary: $BINARY"
           echo "path=$BINARY" >> "$GITHUB_OUTPUT"
 
+      - name: Executable size
+        run: |
+          BINARY="${{ steps.binary.outputs.path }}"
+
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            SIZE_BYTES="$(stat -c '%s' "$BINARY")"
+          else
+            SIZE_BYTES="$(stat -f '%z' "$BINARY")"
+          fi
+
+          SIZE_MB="$(awk "BEGIN { printf \"%.2f\", $SIZE_BYTES / 1024 / 1024 }")"
+
+          echo "========================================"
+          echo "Executable size"
+          echo "========================================"
+          echo "$SIZE_BYTES bytes"
+          echo "$SIZE_MB MB"
+
       # ======================================================
       # Run
       # ======================================================

@@ -1,41 +1,48 @@
 #include "screen.hpp"
 
-#include <rtc/rtc.hpp>
+#include <srtc/peer_connection.h>
 #include <x264.h>
 
 #include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <iostream>
-#include <memory>
 #include <thread>
 
 int main() {
     std::cout << "remote-desktop test\n";
 
-    // --------------------------------------------------------
-    // Test libdatachannel
-    // --------------------------------------------------------
+    // ========================================================
+    // Test srtc
+    // ========================================================
 
-    rtc::Configuration config;
+    srtc::PeerConnection peerConnection(
+        srtc::Direction::Publish
+    );
 
-    auto peerConnection =
-        std::make_shared<rtc::PeerConnection>(config);
+    std::cout << "srtc: PeerConnection OK\n";
 
-    std::cout << "libdatachannel: OK\n";
-
-    // --------------------------------------------------------
+    // ========================================================
     // x264
-    // --------------------------------------------------------
+    // ========================================================
 
     x264_t* encoder = nullptr;
 
     std::atomic<int> framesCaptured{0};
     std::atomic<int> framesEncoded{0};
 
-    // --------------------------------------------------------
+    // ========================================================
     // Screen capture
-    // --------------------------------------------------------
+    // ========================================================
 
     StartCapture([&](const Frame& frame) {
+
+        ++framesCaptured;
+
+        // ----------------------------------------------------
+        // Initialize x264 from the first frame
+        // ----------------------------------------------------
+
         if (!encoder) {
             x264_param_t param{};
 
@@ -44,8 +51,10 @@ int main() {
                     "ultrafast",
                     "zerolatency"
                 ) < 0) {
+
                 std::cerr
                     << "x264_param_default_preset failed\n";
+
                 return;
             }
 
@@ -71,6 +80,7 @@ int main() {
             if (!encoder) {
                 std::cerr
                     << "x264_encoder_open failed\n";
+
                 return;
             }
 
@@ -81,6 +91,10 @@ int main() {
                 << frame.height
                 << " NV12\n";
         }
+
+        // ----------------------------------------------------
+        // Encode frame
+        // ----------------------------------------------------
 
         x264_picture_t input{};
         x264_picture_t output{};
@@ -100,12 +114,13 @@ int main() {
         input.img.i_stride[1] =
             frame.chromaStride;
 
-        input.i_pts = framesCaptured.load();
+        input.i_pts =
+            static_cast<int64_t>(framesCaptured - 1);
 
         x264_nal_t* nals = nullptr;
         int nalCount = 0;
 
-        int encoded = x264_encoder_encode(
+        const int encoded = x264_encoder_encode(
             encoder,
             &nals,
             &nalCount,
@@ -113,33 +128,61 @@ int main() {
             &output
         );
 
-        if (encoded >= 0) {
-            ++framesEncoded;
+        if (encoded < 0) {
+            std::cerr
+                << "x264_encoder_encode failed\n";
 
-            if (framesEncoded % 60 == 0) {
-                int bytes = 0;
-
-                for (int i = 0; i < nalCount; ++i)
-                    bytes += nals[i].i_payload;
-
-                std::cout
-                    << "encoded="
-                    << framesEncoded.load()
-                    << " nals="
-                    << nalCount
-                    << " bytes="
-                    << bytes
-                    << "\n";
-            }
+            return;
         }
 
-        ++framesCaptured;
+        ++framesEncoded;
+
+        // ----------------------------------------------------
+        // Print every 60 frames
+        // ----------------------------------------------------
+
+        if (framesEncoded % 60 == 0) {
+            int bytes = 0;
+
+            for (int i = 0; i < nalCount; ++i)
+                bytes += nals[i].i_payload;
+
+            std::cout
+                << "captured="
+                << framesCaptured.load()
+                << " encoded="
+                << framesEncoded.load()
+                << " nals="
+                << nalCount
+                << " bytes="
+                << bytes
+                << "\n";
+        }
+
+        // ----------------------------------------------------
+        // Later:
+        //
+        // srtc::PeerConnection::publishVideoFrame(...)
+        //
+        // will receive the encoded H.264 here.
+        // ----------------------------------------------------
     });
 
-    // Keep the process alive forever.
+    std::cout << "screen capture: started\n";
+
+    // ========================================================
+    // Keep process alive
+    // ========================================================
+
     for (;;) {
         std::this_thread::sleep_for(
             std::chrono::hours(24)
         );
     }
+
+    // Never reached in this test.
+    if (encoder)
+        x264_encoder_close(encoder);
+
+    return 0;
 }
