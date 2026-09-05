@@ -17,11 +17,5 @@
 	"scripts": {
 		"start": "nwbuild --mode=run --glob=false .",
 		"build": "nwbuild --mode=build --glob=false ."
-	},
-	"nwbuild": {
-		"version": "0.115.0",
-		"outDir": "dist",
-		"glob": false,
-		"nodeAddon": true
 	}
 }
