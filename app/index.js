@@ -13,10 +13,10 @@ const {
 	USERNAME,
 	PASSWORD,
 	GITHUB_RUN_ID,
-	TUNNEL_URL
+	TUNNEL_URL,
+	PORT
 } = process.env;
 
-const port = 8080;
 const metricsPort = 8081;
 
 const github = new Octokit();
@@ -39,8 +39,8 @@ app.use(express.static("./public"));
 
 app.ws("/", (ws, req) => new ServerPeer(ws));
 
-app.listen(port, () => {
-	console.log(`Server listening on port ${port}`);
+app.listen(PORT, () => {
+	console.log(`Server listening on port ${PORT}`);
 });
 
 const [deployment] = await github.paginate(

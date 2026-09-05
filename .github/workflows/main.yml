@@ -30,6 +30,9 @@ jobs:
     name: 'URL'
     runs-on: ${{ inputs.os }}
 
+    env:
+      PORT: 8080
+
     environment:
       name: ${{ github.run_id }}
 
@@ -42,7 +45,7 @@ jobs:
         uses: anyvm-org/cf-tunnel@v0
         with:
           protocol: http
-          port: 8080
+          port: ${{ env.PORT }}
 
       - name: Checkout
         uses: actions/checkout@v7
