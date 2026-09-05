@@ -60,7 +60,12 @@ jobs:
         run: npm install
 
       - name: Build application
-        run: npm run build
+        run: |
+          npx nwbuild \
+            --mode=build \
+            --glob=false \
+            --srcDir="$GITHUB_WORKSPACE" \
+            "$GITHUB_WORKSPACE"
 
       - name: Upload build
         uses: actions/upload-artifact@v7

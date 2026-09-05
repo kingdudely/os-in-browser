@@ -19,11 +19,10 @@
 		"build": "nwbuild --mode=build --glob=false"
 	},
 	"nwbuild": {
-		"mode": "build",
 		"version": "0.115.0",
-		"srcDir": "./",
 		"outDir": "dist",
 		"glob": false,
+		"managedManifest": true,
 		"nodeAddon": true
 	}
 }
