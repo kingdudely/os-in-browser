@@ -15,13 +15,15 @@
 		"nw-builder": "^4.19.0"
 	},
 	"scripts": {
-		"start": "nwbuild --mode=run",
-		"build": "nwbuild --mode=build ."
+		"start": "nwbuild --mode=run --glob=false",
+		"build": "nwbuild --mode=build --glob=false"
 	},
 	"nwbuild": {
+		"mode": "build",
 		"version": "0.115.0",
-		"srcDir": ".",
+		"srcDir": "./",
 		"outDir": "dist",
+		"glob": false,
 		"nodeAddon": true
 	}
 }
