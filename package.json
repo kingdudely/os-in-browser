@@ -16,7 +16,7 @@
 	},
 	"scripts": {
 		"start": "nwbuild --mode=run",
-		"build": "nwbuild"
+		"build": "nwbuild --mode=build ."
 	},
 	"nwbuild": {
 		"mode": "build",
