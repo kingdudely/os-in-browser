@@ -22,7 +22,6 @@
 		"version": "0.115.0",
 		"srcDir": ".",
 		"outDir": "dist",
-		"glob": false,
 		"nodeAddon": true
 	}
 }
