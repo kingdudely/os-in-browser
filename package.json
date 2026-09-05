@@ -22,7 +22,6 @@
 		"version": "0.115.0",
 		"outDir": "dist",
 		"glob": false,
-		"managedManifest": true,
 		"nodeAddon": true
 	}
 }
