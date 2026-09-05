@@ -1,6 +1,6 @@
 console.log("1");
 
-const nativeApis = require("native-apis");
+const nativeApis = require("../build/Release/native-apis.node");
 console.log("2");
 
 const clipboard = nw.Clipboard.get();

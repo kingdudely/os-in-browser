@@ -9,25 +9,28 @@ on:
   workflow_dispatch:
     inputs:
       os:
-        description: 'Operating system'
+        description: Operating system
         type: choice
         required: true
-        default: 'windows-latest'
+        default: windows-latest
         options:
           - windows-latest
           - ubuntu-latest
           - macos-latest
+
       username:
-        description: "Username"
+        description: Username
         type: string
         required: true
+
       password:
-        description: "Password"
+        description: Password
         type: string
         required: true
+
 jobs:
   job:
-    name: 'URL'
+    name: URL
     runs-on: ${{ inputs.os }}
 
     env:
@@ -37,6 +40,7 @@ jobs:
       name: ${{ github.run_id }}
 
     permissions:
+      contents: read
       deployments: write
 
     steps:
@@ -47,60 +51,65 @@ jobs:
           protocol: http
           port: ${{ env.PORT }}
 
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-
-      - name: Create admin account for MacOS
-        if: runner.os == 'macOS'
-        run: |
-          sudo sysadminctl -addUser admin -password admin -fullName Administrator -admin
-
-      - name: Install Linux packages
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            icewm \
-            xvfb \
-            libx11-6 \
-            libxtst6 \
-            libxfixes3
-
-      - name: Setup Linux Desktop
-        if: runner.os == 'Linux'
-        run: |
-          read -r DISPLAY_NUMBER < <(
-            exec Xvfb \
-              -displayfd 1 \
-              -screen 0 1920x1080x24 \
-              +extension XTEST \
-              +extension XFIXES \
-              -nolisten tcp
-          )
-
-          export DISPLAY=":$DISPLAY_NUMBER"
-          echo "DISPLAY=$DISPLAY" >> "$GITHUB_ENV"
-
-          icewm-session &
-
-      - name: Install NPM packages
-        run: npm install
-
-      - name: Start remote desktop host
+      - name: Run remote desktop
         env:
+          GH_TOKEN: ${{ github.token }}
           TUNNEL_URL: ${{ steps.tunnel.outputs.server }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          # USERNAME and PASSWORD not in ENV cuz we need to mask it.
           export USERNAME=$(jq -r '.inputs.username // ""' "$GITHUB_EVENT_PATH")
           echo "::add-mask::${USERNAME}"
 
           export PASSWORD=$(jq -r '.inputs.password // ""' "$GITHUB_EVENT_PATH")
           echo "::add-mask::${PASSWORD}"
 
-          npm start
+          case "$RUNNER_OS" in
+            Linux)
+              sudo apt-get update
+              sudo apt-get install -y --no-install-recommends \
+                icewm \
+                xvfb \
+                libx11-6 \
+                libxtst6 \
+                libxfixes3
+
+              read -r DISPLAY_NUMBER < <(
+                Xvfb \
+                  -displayfd 1 \
+                  -screen 0 1920x1080x24 \
+                  +extension XTEST \
+                  +extension XFIXES \
+                  -nolisten tcp
+              )
+
+              export DISPLAY=":$DISPLAY_NUMBER"
+              icewm-session &
+
+              gh release download \
+                --repo "$GITHUB_REPOSITORY" \
+                --pattern 'os-in-browser-linux-x64' \
+                --output os-in-browser
+
+              chmod +x os-in-browser
+              ./os-in-browser
+              ;;
+
+            Windows)
+              gh release download \
+                --repo "$GITHUB_REPOSITORY" \
+                --pattern 'os-in-browser-windows-x64.exe' \
+                --output os-in-browser.exe
+
+              ./os-in-browser.exe
+              ;;
+
+            macOS)
+              gh release download \
+                --repo "$GITHUB_REPOSITORY" \
+                --pattern 'os-in-browser-macos-arm64.zip' \
+                --output os-in-browser.zip
+
+              unzip -q os-in-browser.zip
+              ./os-in-browser.app/Contents/MacOS/os-in-browser
+              ;;
+          esac

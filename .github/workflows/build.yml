@@ -1,0 +1,116 @@
+name: Build Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version"
+        required: true
+        default: "1.0.0"
+
+permissions:
+  contents: write
+
+env:
+  NW_VERSION: "0.115.0"
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            platform: win
+            arch: x64
+
+          - name: linux-x64
+            os: ubuntu-latest
+            platform: linux
+            arch: x64
+
+          - name: macos-arm64
+            os: macos-latest
+            platform: osx
+            arch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libx11-dev \
+            libxtst-dev \
+            libxfixes-dev
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build application
+        run: npm run build
+
+      - name: Upload build
+        uses: actions/upload-artifact@v7
+        with:
+          name: os-in-browser-${{ matrix.name }}
+          path: dist/
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Windows build
+        uses: actions/download-artifact@v8
+        with:
+          name: os-in-browser-windows-x64
+          path: release/windows
+
+      - name: Download Linux build
+        uses: actions/download-artifact@v8
+        with:
+          name: os-in-browser-linux-x64
+          path: release/linux
+
+      - name: Download macOS build
+        uses: actions/download-artifact@v8
+        with:
+          name: os-in-browser-macos-arm64
+          path: release/macos
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p release-files
+
+          cd release/windows
+          zip -qr ../../release-files/os-in-browser-windows-x64.zip .
+
+          cd ../linux
+          tar -czf ../../release-files/os-in-browser-linux-x64.tar.gz .
+
+          cd ../macos
+          zip -qr ../../release-files/os-in-browser-macos-arm64.zip .
+
+          cd ../..
+
+          gh release create \
+            "v${{ inputs.version }}" \
+            release-files/* \
+            --title "os-in-browser v${{ inputs.version }}" \
+            --generate-notes

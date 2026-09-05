@@ -1,5 +1,6 @@
 {
 	"name": "os-in-browser",
+	"version": "1.0.0",
 	"main": "app/index.html",
 	"type": "module",
 	"chromium-args": "--enable-logging=stderr --disable-gpu --no-sandbox",
@@ -7,16 +8,23 @@
 		"express": "^5.1.0",
 		"express-basic-auth": "^1.2.1",
 		"express-ws": "^5.0.2",
-		"nw": "^0.115.0",
-		"native-apis": "^1.0.6",
 		"@octokit/action": "^8.0.4"
 	},
-	"allowScripts": {
-		"native-apis": true,
-		"nw": true,
-		"cloudflared": true
+	"devDependencies": {
+		"node-addon-api": "^8.9.1",
+		"nw-builder": "^4.19.0"
 	},
 	"scripts": {
-		"start": "nw ."
+		"start": "nwbuild --mode=run",
+		"build": "nwbuild"
+	},
+	"nwbuild": {
+		"mode": "build",
+		"version": "0.115.0",
+		"srcDir": ".",
+		"outDir": "dist",
+		"glob": false,
+		"managedManifest": true,
+		"nodeAddon": true
 	}
 }
