@@ -64,7 +64,7 @@ jobs:
           npx nwbuild \
             --mode=build \
             --glob=false \
-            "$GITHUB_WORKSPACE"
+            .
 
       - name: Upload build
         uses: actions/upload-artifact@v7
