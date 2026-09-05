@@ -15,8 +15,8 @@
 		"nw-builder": "^4.19.0"
 	},
 	"scripts": {
-		"start": "nwbuild --mode=run --glob=false",
-		"build": "nwbuild --mode=build --glob=false"
+		"start": "nwbuild --mode=run --glob=false .",
+		"build": "nwbuild --mode=build --glob=false ."
 	},
 	"nwbuild": {
 		"version": "0.115.0",
