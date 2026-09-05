@@ -64,7 +64,6 @@ jobs:
           npx nwbuild \
             --mode=build \
             --glob=false \
-            --srcDir="$GITHUB_WORKSPACE" \
             "$GITHUB_WORKSPACE"
 
       - name: Upload build
