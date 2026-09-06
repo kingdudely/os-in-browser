@@ -9,114 +9,87 @@ on:
   workflow_dispatch:
     inputs:
       os:
-        description: Operating system
+        description: 'Operating system'
         type: choice
         required: true
-        default: windows-latest
+        default: 'windows-latest'
         options:
           - windows-latest
           - ubuntu-latest
           - macos-latest
-
       username:
-        description: Username
+        description: "Username"
         type: string
         required: true
-
       password:
-        description: Password
+        description: "Password"
         type: string
         required: true
-
 jobs:
   job:
-    name: URL
+    name: 'URL'
     runs-on: ${{ inputs.os }}
-
-    env:
-      PORT: 8080
 
     environment:
       name: ${{ github.run_id }}
 
     permissions:
-      contents: read
       deployments: write
 
     steps:
-      - name: Run remote desktop
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Setup Windows
+
+      - name: Setup MacOS
+        if: runner.os == 'macOS'
+        run: |
+          sudo sysadminctl -addUser admin -password admin -fullName Administrator -admin
+
+      - name: Setup Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            icewm \
+            xvfb \
+            libx11-6 \
+            libxtst6 \
+            libxfixes3
+
+          read -r DISPLAY_NUMBER < <(
+            exec Xvfb \
+              -displayfd 1 \
+              -screen 0 1920x1080x24 \
+              +extension XTEST \
+              +extension XFIXES \
+              -nolisten tcp
+          )
+
+          export DISPLAY=":$DISPLAY_NUMBER"
+          echo "DISPLAY=$DISPLAY" >> "$GITHUB_ENV"
+
+          icewm-session &
+
+      - name: Install NPM packages
+        run: npm install
+
+      - name: Start remote desktop host
         env:
-          PORT: 8080
-          METRICS_URL: "localhost:8081"
-          GH_TOKEN: ${{ github.token }}
           TUNNEL_URL: ${{ steps.tunnel.outputs.server }}
           GITHUB_TOKEN: ${{ github.token }}
-          ZIP_NAME: ${{ runner.os }}-${{ runner.arch }}.zip
         run: |
+          # USERNAME and PASSWORD not in ENV cuz we need to mask it.
           export USERNAME=$(jq -r '.inputs.username // ""' "$GITHUB_EVENT_PATH")
           echo "::add-mask::${USERNAME}"
 
           export PASSWORD=$(jq -r '.inputs.password // ""' "$GITHUB_EVENT_PATH")
           echo "::add-mask::${PASSWORD}"
 
-          case "$RUNNER_OS" in
-            Linux)
-              sudo mkdir -p --mode=0755 /usr/share/keyrings
-              curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
-              echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
-
-              sudo apt-get update
-              sudo apt-get install -y --no-install-recommends \
-                cloudflared \
-                icewm \
-                xvfb \
-                libx11-6 \
-                libxtst6 \
-                libxfixes3
-
-              read -r DISPLAY_NUMBER < <(
-                Xvfb \
-                  -displayfd 1 \
-                  -screen 0 1920x1080x24 \
-                  +extension XTEST \
-                  +extension XFIXES \
-                  -nolisten tcp
-              )
-
-              export DISPLAY=":$DISPLAY_NUMBER"
-
-              icewm-session &
-
-              OS_IN_BROWSER=./os-in-browser
-
-              ;;
-
-            Windows)
-              choco install -y cloudflared
-              OS_IN_BROWSER=./os-in-browser.exe
-
-              ;;
-
-            macOS)
-              brew install cloudflared
-              OS_IN_BROWSER=./os-in-browser.app/Contents/MacOS/os-in-browser
-
-              ;;
-          esac
-
-          cloudflared tunnel --metrics="${METRICS_URL}" --url "http://localhost:${PORT}"
-
-          until JSON="$(curl -sS "${METRICS_URL}/quicktunnel")"; do # cloudflared ready
-            sleep 1
-          done
-
-          HOSTNAME="$(jq -r '.hostname' <<< "${QUICKTUNNEL}")"
-          TUNNEL_URL="https://${HOSTNAME}"
-
-          gh release download \
-            --repo "$GITHUB_REPOSITORY" \
-            --pattern "${ZIP_NAME}"
-
-          unzip -q "${ZIP_NAME}"
-
-          "${OS_IN_BROWSER}"
+          npm start

@@ -1,0 +1,111 @@
+name: Compare WebRTC Library Sizes
+
+on:
+  workflow_dispatch:
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            ninja-build \
+            pkg-config \
+            libssl-dev \
+            build-essential \
+            git
+
+      # ------------------------------------------------------------
+      # srtc
+      # ------------------------------------------------------------
+      - name: Clone srtc
+        run: |
+          git clone --depth 1 https://github.com/kmansoft/srtc.git
+
+      - name: Build srtc
+        run: |
+          cmake -S srtc -B srtc/build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_FLAGS="-Os -ffunction-sections -fdata-sections" \
+            -DCMAKE_EXE_LINKER_FLAGS="-Wl,--gc-sections"
+
+          cmake --build srtc/build --parallel
+
+      - name: Measure srtc
+        run: |
+          echo "===== srtc ====="
+
+          find srtc/build \
+            -type f \
+            \( -name '*.a' -o -name '*.so' -o -perm -111 \) \
+            -printf '%s %p\n' \
+            | sort -n
+
+          echo
+          echo "Build directory:"
+          du -sh srtc/build
+
+      # ------------------------------------------------------------
+      # AWS Kinesis WebRTC C SDK
+      # ------------------------------------------------------------
+      - name: Clone AWS Kinesis WebRTC SDK
+        run: |
+          git clone --depth 1 --recurse-submodules \
+            https://github.com/awslabs/amazon-kinesis-video-streams-webrtc-sdk-c.git \
+            kvs-webrtc-sdk
+
+      - name: Build AWS Kinesis WebRTC SDK
+        run: |
+          cmake -S kvs-webrtc-sdk -B kvs-webrtc-sdk/build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_STATIC_LIBS=TRUE \
+            -DBUILD_SAMPLE=OFF \
+            -DBUILD_TEST=OFF \
+            -DCMAKE_C_FLAGS="-Os -ffunction-sections -fdata-sections" \
+            -DCMAKE_CXX_FLAGS="-Os -ffunction-sections -fdata-sections" \
+            -DCMAKE_EXE_LINKER_FLAGS="-Wl,--gc-sections"
+
+          cmake --build kvs-webrtc-sdk/build --parallel
+
+      - name: Measure AWS Kinesis WebRTC SDK
+        run: |
+          echo "===== AWS Kinesis WebRTC SDK ====="
+
+          find kvs-webrtc-sdk/build \
+            -type f \
+            \( -name '*.a' -o -name '*.so' -o -perm -111 \) \
+            -printf '%s %p\n' \
+            | sort -n
+
+          echo
+          echo "Build directory:"
+          du -sh kvs-webrtc-sdk/build
+
+      # ------------------------------------------------------------
+      # Summary
+      # ------------------------------------------------------------
+      - name: Compare
+        run: |
+          echo
+          echo "========================================"
+          echo "SIZE COMPARISON"
+          echo "========================================"
+
+          echo
+          echo "--- srtc static libraries ---"
+          find srtc/build -type f -name '*.a' -exec du -ch {} + | tail -1 || true
+
+          echo
+          echo "--- AWS static libraries ---"
+          find kvs-webrtc-sdk/build -type f -name '*.a' -exec du -ch {} + | tail -1 || true
+
+          echo
+          echo "--- Total build directories ---"
+          du -sh srtc/build
+          du -sh kvs-webrtc-sdk/build
