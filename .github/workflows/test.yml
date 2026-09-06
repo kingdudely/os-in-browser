@@ -16,9 +16,9 @@ jobs:
             ninja-build \
             pkg-config \
             libssl-dev \
+            libcurl4-openssl-dev \
             build-essential \
             git
-
       # ------------------------------------------------------------
       # srtc
       # ------------------------------------------------------------
