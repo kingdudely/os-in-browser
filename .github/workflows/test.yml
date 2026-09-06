@@ -31,8 +31,7 @@ jobs:
             build-essential \
             libssl-dev \
             libsrtp2-dev \
-            libusrsctp-dev \
-            libmbedtls-dev
+            libusrsctp-dev
 
       - name: Install dependencies - macOS
         if: runner.os == 'macOS'
