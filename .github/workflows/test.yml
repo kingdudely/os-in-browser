@@ -1,111 +1,123 @@
-name: Compare WebRTC Library Sizes
+name: Build WebRTC Libraries
 
 on:
   workflow_dispatch:
 
 jobs:
-  compare:
-    runs-on: ubuntu-latest
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
 
     steps:
-      - name: Install dependencies
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies - Ubuntu
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             cmake \
             ninja-build \
             pkg-config \
-            libssl-dev \
-            libcurl4-openssl-dev \
             build-essential \
-            git
-      # ------------------------------------------------------------
-      # srtc
-      # ------------------------------------------------------------
-      - name: Clone srtc
-        run: |
-          git clone --depth 1 https://github.com/kmansoft/srtc.git
+            libssl-dev \
+            libsrtp2-dev \
+            libusrsctp-dev \
+            libmbedtls-dev
 
-      - name: Build srtc
+      - name: Install dependencies - macOS
+        if: runner.os == 'macOS'
         run: |
-          cmake -S srtc -B srtc/build \
-            -G Ninja \
+          brew install cmake ninja openssl@3 srtp libusrsctp mbedtls
+
+      - name: Install dependencies - Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          choco install cmake ninja -y
+
+      # ------------------------------------------------------------
+      # libpeer
+      # ------------------------------------------------------------
+
+      - name: Clone libpeer
+        run: |
+          git clone --recursive https://github.com/sepfy/libpeer.git
+
+      - name: Build libpeer
+        working-directory: libpeer
+        shell: bash
+        run: |
+          cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_FLAGS="-Os -ffunction-sections -fdata-sections" \
-            -DCMAKE_EXE_LINKER_FLAGS="-Wl,--gc-sections"
+            -DCMAKE_BUILD_TYPE=MinSizeRel \
+            -DBUILD_TESTING=OFF
 
-          cmake --build srtc/build --parallel
-
-      - name: Measure srtc
-        run: |
-          echo "===== srtc ====="
-
-          find srtc/build \
-            -type f \
-            \( -name '*.a' -o -name '*.so' -o -perm -111 \) \
-            -printf '%s %p\n' \
-            | sort -n
-
-          echo
-          echo "Build directory:"
-          du -sh srtc/build
+          cmake --build build --config Release --parallel
 
       # ------------------------------------------------------------
-      # AWS Kinesis WebRTC C SDK
+      # AWS KVS WebRTC C SDK
       # ------------------------------------------------------------
-      - name: Clone AWS Kinesis WebRTC SDK
+
+      - name: Clone KVS WebRTC SDK
         run: |
-          git clone --depth 1 --recurse-submodules \
+          git clone --recursive \
             https://github.com/awslabs/amazon-kinesis-video-streams-webrtc-sdk-c.git \
-            kvs-webrtc-sdk
+            kvs-webrtc
 
-      - name: Build AWS Kinesis WebRTC SDK
+      - name: Configure KVS WebRTC SDK
+        working-directory: kvs-webrtc
+        shell: bash
         run: |
-          cmake -S kvs-webrtc-sdk -B kvs-webrtc-sdk/build \
+          cmake -S . -B build \
             -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_BUILD_TYPE=MinSizeRel \
             -DBUILD_STATIC_LIBS=TRUE \
-            -DBUILD_SAMPLE=OFF \
-            -DBUILD_TEST=OFF \
-            -DCMAKE_C_FLAGS="-Os -ffunction-sections -fdata-sections" \
-            -DCMAKE_CXX_FLAGS="-Os -ffunction-sections -fdata-sections" \
-            -DCMAKE_EXE_LINKER_FLAGS="-Wl,--gc-sections"
+            -DBUILD_TEST=FALSE \
+            -DBUILD_DEPENDENCIES=TRUE \
+            -DUSE_OPENSSL=ON
 
-          cmake --build kvs-webrtc-sdk/build --parallel
-
-      - name: Measure AWS Kinesis WebRTC SDK
+      - name: Build KVS WebRTC SDK
+        working-directory: kvs-webrtc
+        shell: bash
         run: |
-          echo "===== AWS Kinesis WebRTC SDK ====="
-
-          find kvs-webrtc-sdk/build \
-            -type f \
-            \( -name '*.a' -o -name '*.so' -o -perm -111 \) \
-            -printf '%s %p\n' \
-            | sort -n
-
-          echo
-          echo "Build directory:"
-          du -sh kvs-webrtc-sdk/build
+          cmake --build build --parallel
 
       # ------------------------------------------------------------
-      # Summary
+      # Show output
       # ------------------------------------------------------------
-      - name: Compare
+
+      - name: Show libraries
+        shell: bash
         run: |
-          echo
-          echo "========================================"
-          echo "SIZE COMPARISON"
-          echo "========================================"
+          echo "=== libpeer ==="
+          find libpeer/build -type f \
+            \( -name '*.a' -o -name '*.so' -o -name '*.dylib' -o -name '*.dll' \) \
+            -print || true
 
-          echo
-          echo "--- srtc static libraries ---"
-          find srtc/build -type f -name '*.a' -exec du -ch {} + | tail -1 || true
+          echo "=== KVS WebRTC ==="
+          find kvs-webrtc/build -type f \
+            \( -name '*.a' -o -name '*.so' -o -name '*.dylib' -o -name '*.dll' \) \
+            -print || true
 
-          echo
-          echo "--- AWS static libraries ---"
-          find kvs-webrtc-sdk/build -type f -name '*.a' -exec du -ch {} + | tail -1 || true
+      # ------------------------------------------------------------
+      # Artifacts
+      # ------------------------------------------------------------
 
-          echo
-          echo "--- Total build directories ---"
-          du -sh srtc/build
-          du -sh kvs-webrtc-sdk/build
+      - name: Upload libraries
+        uses: actions/upload-artifact@v4
+        with:
+          name: webrtc-libraries-${{ matrix.os }}
+          path: |
+            libpeer/build/**
+            kvs-webrtc/build/**
+          if-no-files-found: error
