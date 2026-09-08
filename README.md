@@ -16,5 +16,6 @@
 # Video tutorial
 
 
-<video src="https://github.com/user-attachments/assets/bc8d15d5-c849-443b-bf69-c3033778038e"></video>
 
+
+<video src="https://github.com/user-attachments/assets/8f6e5547-b517-4241-b4a1-7ff4f5485f32"></video>
