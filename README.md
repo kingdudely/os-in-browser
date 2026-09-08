@@ -14,4 +14,4 @@
 <!-- add a GIF tutorial -->
 
 # Video tutorial
-<video src="https://github.com/user-attachments/assets/653d5873-0b0a-408c-9f2b-abab4374f082"></video>
+<video src="https://github.com/user-attachments/assets/d235cbc7-4343-4b33-8f5b-5ce0381637c6"></video>
