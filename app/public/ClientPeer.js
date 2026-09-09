@@ -30,6 +30,10 @@ export default class ClientPeer extends RTCPeerConnection {
 				direction: "recvonly"
 			});
 
+			this.addTransceiver("audio", {
+				direction: "recvonly"
+			});
+
 			this.#initializeDataChannels();
 		});
 
