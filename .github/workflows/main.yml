@@ -135,6 +135,22 @@ jobs:
 
           Start-Service audiosrv
 
+          Install-Module AudioDeviceCmdlets -Force -Confirm:$false
+          Import-Module AudioDeviceCmdlets
+
+          $cable = Get-AudioDevice -List |
+            Where-Object { $_.Name -like "CABLE Input*" } |
+            Select-Object -First 1
+
+          if (-not $cable) {
+            Get-AudioDevice -List | Format-Table -AutoSize
+            throw "VB-CABLE playback device not found"
+          }
+
+          Set-AudioDevice -Index $cable.Index
+
+          Get-AudioDevice -Playback
+
       - name: Install Electron binary
         run: |
           case "$RUNNER_OS" in
