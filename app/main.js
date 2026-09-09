@@ -67,13 +67,42 @@ app.whenReady().then(() => {
      * navigator.mediaDevices.getDisplayMedia()
      */
     session.setDisplayMediaRequestHandler((request, callback) => {
+        console.log("[display-media] request received");
+        console.log("[display-media] audioRequested:", request.audioRequested);
+        console.log("[display-media] videoRequested:", request.videoRequested);
+
         desktopCapturer.getSources({
             types: ["screen"]
-        }).then(([source]) => {
+        }).then((sources) => {
+            console.log(
+                "[display-media] sources:",
+                sources.map(({ id, name }) => ({ id, name }))
+            );
+
+            const [source] = sources;
+
+            if (!source) {
+                console.error("[display-media] No screen source found");
+                callback({});
+                return;
+            }
+
+            console.log("[display-media] using source:", source.name);
+            console.log("[display-media] granting loopback audio");
+
             callback({
                 video: source,
                 audio: "loopback"
             });
+
+            console.log("[display-media] callback completed");
+        }).catch((error) => {
+            console.error(
+                "[display-media] getSources failed:",
+                error
+            );
+
+            callback({});
         });
     });
 
