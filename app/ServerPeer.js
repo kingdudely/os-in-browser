@@ -5,9 +5,10 @@ console.log("B")
 const { clipboard } = require("electron"); // navigator.clipboard requires document focus, and electron 44.0.0 removed the clipboard module in the renderer. Really gotta put clipboard read and write in native-apis module instead. . .
 console.log("C")
 
-const stream = await navigator.mediaDevices.getDisplayMedia({
-	video: true,
-	audio: true
+const { getLoopbackAudioMediaStream } = require('electron-audio-loopback');
+
+const stream = await getLoopbackAudioMediaStream({
+	removeVideo: false
 });
 console.log("D")
 
