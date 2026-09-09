@@ -115,10 +115,32 @@ jobs:
           )
 
           export DISPLAY=":$DISPLAY_NUMBER"
-          echo "DISPLAY=${DISPLAY}" >> $GITHUB_ENV
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+
+          mkdir -p "$XDG_RUNTIME_DIR"
+          chmod 700 "$XDG_RUNTIME_DIR"
+
+          echo "DISPLAY=$DISPLAY" >> "$GITHUB_ENV"
+          echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR" >> "$GITHUB_ENV"
+
+          pulseaudio --start --exit-idle-time=-1
+
+          pactl load-module module-null-sink \
+            sink_name=remote_desktop \
+            sink_properties=device.description=RemoteDesktop
+
+          pactl set-default-sink remote_desktop
+
+          echo "=== PulseAudio ==="
+          pactl info
+
+          echo "=== Sinks ==="
+          pactl list short sinks
+
+          echo "=== Sources ==="
+          pactl list short sources
 
           icewm-session &
-          pulseaudio --start --exit-idle-time=-1
 
       - name: Setup Windows audio
         if: runner.os == 'Windows'
