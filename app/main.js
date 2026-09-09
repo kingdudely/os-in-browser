@@ -4,6 +4,34 @@ const {
     desktopCapturer
 } = require("electron");
 
+/*
+const features = [];
+switch (process.platform) {
+    case "linux": {
+        features.push(
+            "PulseaudioLoopbackForScreenShare"
+        );
+        break;
+    }
+
+    case "darwin": {
+        features.push(
+            "MacLoopbackAudioForScreenShare",
+            "MacSckSystemAudioLoopbackOverride"
+            // "MacCatapSystemAudioLoopbackCapture"
+        );
+        break;
+    }
+}
+
+if (features.length > 0) {
+    app.commandLine.appendSwitch(
+        "enable-features",
+        features.join(",")
+    );
+}
+*/
+
 app.whenReady().then(() => {
     const window = new BrowserWindow({
         width: 1280,
@@ -75,7 +103,7 @@ app.whenReady().then(() => {
             video: source
         };
 
-        if (process.platform === "win32") {
+        if (request.audioRequested) {
             options.audio = "loopback";
         }
 
