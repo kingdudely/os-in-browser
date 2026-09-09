@@ -115,6 +115,7 @@ jobs:
           )
 
           export DISPLAY=":$DISPLAY_NUMBER"
+          echo "DISPLAY=${DISPLAY}" >> $GITHUB_ENV
 
           icewm-session &
           pulseaudio --start --exit-idle-time=-1
