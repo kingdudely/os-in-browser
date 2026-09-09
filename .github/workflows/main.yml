@@ -205,6 +205,6 @@ jobs:
 
             macOS)
               chmod +x ./os-in-browser.app/Contents/MacOS/os-in-browser
-              ./os-in-browser.app/Contents/MacOS/os-in-browser --disable-features=MacCatapLoopbackAudioForScreenShare
+              ./os-in-browser.app/Contents/MacOS/os-in-browser --enable-features=MacLoopbackAudioForScreenShare,MacCatapSystemAudioLoopbackCapture
               ;;
           esac
