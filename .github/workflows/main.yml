@@ -91,7 +91,7 @@ jobs:
 
           echo "url=${TUNNEL_URL}" >> "$GITHUB_OUTPUT"
 
-      - name: Setup Ubuntu
+      - name: Setup Ubuntu desktop and audio
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
@@ -119,7 +119,7 @@ jobs:
           icewm-session &
           pulseaudio --start --exit-idle-time=-1
 
-      - name: Setup Windows
+      - name: Setup Windows audio
         if: runner.os == 'Windows'
         uses: AlekseyMartynov/action-vbcable-win@main
 
