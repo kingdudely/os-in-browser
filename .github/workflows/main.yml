@@ -229,6 +229,6 @@ jobs:
 
             macOS)
               chmod +x ./os-in-browser.app/Contents/MacOS/os-in-browser
-              ./os-in-browser.app/Contents/MacOS/os-in-browser --enable-features=MacLoopbackAudioForScreenShare, MacCatapLoopbackAudioForScreenShare # --enable-features=MacLoopbackAudioForScreenShare,MacCatapSystemAudioLoopbackCapture
+              ./os-in-browser.app/Contents/MacOS/os-in-browser --enable-features=MacLoopbackAudioForScreenShare,MacSckSystemAudioLoopbackOverride # --enable-features=MacLoopbackAudioForScreenShare,MacCatapSystemAudioLoopbackCapture
               ;;
           esac
