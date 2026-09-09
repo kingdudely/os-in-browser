@@ -166,4 +166,4 @@ jobs:
 
           export PASSWORD=$(jq -r '.inputs.password // ""' "$GITHUB_EVENT_PATH")
           echo "::add-mask::${PASSWORD}"
-          npx electron app/main.js
+          npx electron .
