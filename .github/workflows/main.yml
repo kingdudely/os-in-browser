@@ -45,6 +45,7 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
 
     steps:
+      - uses: actions/checkout@v7
       - name: Start tunnel
         id: tunnel
         env:
