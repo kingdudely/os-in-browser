@@ -94,8 +94,6 @@ jobs:
       - name: Setup Ubuntu desktop and audio
         if: runner.os == 'Linux'
         run: |
-          unset DBUS_SESSION_BUS_ADDRESS
-
           sudo apt-get update
 
           sudo apt-get install -y --no-install-recommends \
@@ -117,7 +115,13 @@ jobs:
           )
 
           export DISPLAY=":$DISPLAY_NUMBER"
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+
+          mkdir -p "$XDG_RUNTIME_DIR"
+          chmod 700 "$XDG_RUNTIME_DIR"
+
           echo "DISPLAY=$DISPLAY" >> "$GITHUB_ENV"
+          echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR" >> "$GITHUB_ENV"
 
           pulseaudio --start --exit-idle-time=-1
 
