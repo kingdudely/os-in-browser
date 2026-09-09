@@ -19,6 +19,8 @@ export default class ClientPeer extends RTCPeerConnection {
 	constructor (signalingUrl) {
 		// Pointer lock makes events added to "screenshare" element not work since document.documentElement is the one requesting for pointer lock - a child of "window".
 		super(ClientPeer.#Init);
+		window.alert("Make sure to click to view the screenshare!");
+
 		this.signalingWs = new WebSocket(signalingUrl);
 		const pingInterval = setInterval(() => this.#sendWSMessage("ping"), 1337);
 		this.signalingWs.addEventListener("close", () => clearInterval(pingInterval));
@@ -158,7 +160,7 @@ export default class ClientPeer extends RTCPeerConnection {
 
 	static #OnTrack(event) {
 		screenshare.srcObject = event.streams[0];
-		screenshare.play().catch(console.error);
+		// screenshare.play().catch(console.error);
 	}
 
 	static #SetRemoteControlMode(isInRemoteControlMode) {
@@ -294,6 +296,8 @@ async function triggerImmersiveMode() {
 			{}
 		])
 	}
+
+	await screenshare.play();
 }
 
 async function syncClipboard() {

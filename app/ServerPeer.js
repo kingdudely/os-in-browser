@@ -3,8 +3,10 @@ const { clipboard } = require("electron"); // navigator.clipboard requires docum
 
 const stream = await navigator.mediaDevices.getDisplayMedia({
 	video: true,
-	audio: false
+	audio: true
 });
+
+const tracks = stream.getTracks();
 
 export default class ServerPeer extends RTCPeerConnection {
 	static #Init = {
@@ -53,7 +55,7 @@ export default class ServerPeer extends RTCPeerConnection {
 
 		this.#initializeDataChannels();
 
-		this.addTrack(stream.getVideoTracks()[0], stream);
+		tracks.forEach((track) => this.addTrack(track, stream));
 	}
 
 	#initializeDataChannels() {
