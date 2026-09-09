@@ -150,6 +150,7 @@ app.whenReady().then(() => {
     /*
      * Load renderer.
      */
+    // window.loadFile("app/index.html");
     window.loadFile(
         path.join(__dirname, "index.html")
     );
