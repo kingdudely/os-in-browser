@@ -4,8 +4,6 @@ const {
     desktopCapturer
 } = require("electron");
 const path = require("node:path");
-const { initMain } = require('electron-audio-loopback');
-initMain();
 
 /*
 const features = [];
@@ -95,6 +93,8 @@ app.whenReady().then(() => {
     */
 
     /*
+     * navigator.mediaDevices.getDisplayMedia()
+     */
     session.setDisplayMediaRequestHandler(async (request, callback) => {
         console.log("[display-media] request received");
         console.log("[display-media] audioRequested:", request.audioRequested);
@@ -152,7 +152,6 @@ app.whenReady().then(() => {
             callback({});
         }
     });
-    */
 
     /*
      * Load renderer.

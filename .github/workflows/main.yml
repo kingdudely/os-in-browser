@@ -220,7 +220,7 @@ jobs:
             Linux)
               sudo chown root:root ./os-in-browser-linux-x64/chrome-sandbox
               sudo chmod 4755 ./os-in-browser-linux-x64/chrome-sandbox
-              ./os-in-browser-linux-x64/os-in-browser
+              ./os-in-browser-linux-x64/os-in-browser --enable-features=PulseaudioLoopbackForScreenShare
 
               ;;
 
@@ -231,6 +231,6 @@ jobs:
 
             macOS)
               chmod +x ./os-in-browser.app/Contents/MacOS/os-in-browser
-              ./os-in-browser.app/Contents/MacOS/os-in-browser
+              ./os-in-browser.app/Contents/MacOS/os-in-browser --disable-features=MacCatapLoopbackAudioForScreenShare
               ;;
           esac
