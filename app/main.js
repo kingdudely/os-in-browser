@@ -96,61 +96,21 @@ app.whenReady().then(() => {
      * navigator.mediaDevices.getDisplayMedia()
      */
     session.setDisplayMediaRequestHandler(async (request, callback) => {
-        console.log("[display-media] request received");
-        console.log("[display-media] audioRequested:", request.audioRequested);
-        console.log("[display-media] videoRequested:", request.videoRequested);
+        const options = {};
 
-        try {
-            const options = {};
-
-            if (request.audioRequested) {
-                console.log("[display-media] audio requested");
-                console.log("[display-media] using loopback audio");
-
-                options.audio = "loopback";
-            } else {
-                console.log("[display-media] audio not requested");
-            }
-
-            if (request.videoRequested) {
-                console.log("[display-media] video requested");
-                console.log("[display-media] getting screen sources...");
-
-                const sources = await desktopCapturer.getSources({
-                    types: ["screen"]
-                });
-
-                console.log(
-                    "[display-media] sources:",
-                    sources.map(source => ({
-                        id: source.id,
-                        name: source.name
-                    }))
-                );
-
-                const [source] = sources;
-
-                if (!source) {
-                    console.error("[display-media] no screen source found");
-                    callback({});
-                    return;
-                }
-
-                console.log("[display-media] using screen source");
-                options.video = source;
-            } else {
-                console.log("[display-media] video not requested");
-            }
-
-            console.log("[display-media] callback options:", options);
-
-            callback(options);
-
-            console.log("[display-media] callback completed");
-        } catch (error) {
-            console.error("[display-media] handler failed:", error);
-            callback({});
+        if (request.audioRequested) {
+            options.audio = "loopback";
         }
+
+        if (request.videoRequested) {
+            const [source] = await desktopCapturer.getSources({
+                types: ["screen"]
+            });
+
+            options.video = source;
+        }
+
+        callback(options);
     });
 
     /*

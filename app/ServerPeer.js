@@ -1,9 +1,5 @@
-console.log("A")
 const nativeApis = require("native-apis");
-console.log("B")
-
 const { clipboard } = require("electron"); // navigator.clipboard requires document focus, and electron 44.0.0 removed the clipboard module in the renderer. Really gotta put clipboard read and write in native-apis module instead. . .
-console.log("C")
 
 const stream = await navigator.mediaDevices.getDisplayMedia({
 	video: true,
@@ -11,10 +7,8 @@ const stream = await navigator.mediaDevices.getDisplayMedia({
 		suppressLocalAudioPlayback: false
 	}
 });
-console.log("D")
 
 const tracks = stream.getTracks();
-console.log("E")
 
 export default class ServerPeer extends RTCPeerConnection {
 	static #Init = {
