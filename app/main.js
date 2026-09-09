@@ -8,6 +8,7 @@ const path = require("node:path");
 const features = [];
 switch (process.platform) {
     case "linux": {
+        app.commandLine.appendSwitch("no-sandbox");
         features.push(
             "PulseaudioLoopbackForScreenShare"
         );
