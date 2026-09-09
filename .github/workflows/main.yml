@@ -94,6 +94,8 @@ jobs:
       - name: Setup Ubuntu desktop and audio
         if: runner.os == 'Linux'
         run: |
+          sudo rm -rf /var/lib/apt/lists/*
+          sudo apt-get clean
           sudo apt-get update
 
           sudo apt-get install -y --no-install-recommends \
