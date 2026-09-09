@@ -5,6 +5,7 @@ const {
 } = require("electron");
 const path = require("node:path");
 
+/*
 const features = [];
 switch (process.platform) {
     case "linux": {
@@ -30,6 +31,7 @@ if (features.length > 0) {
         features.join(",")
     );
 }
+*/
 
 app.whenReady().then(() => {
     const window = new BrowserWindow({

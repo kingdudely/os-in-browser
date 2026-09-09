@@ -45,7 +45,6 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
 
     steps:
-      - uses: actions/checkout@v7
       - name: Start tunnel
         id: tunnel
         env:
@@ -155,7 +154,33 @@ jobs:
 
       - name: Install Electron binary
         run: |
-          npm install
+          case "$RUNNER_OS" in
+            Linux)
+              ZIP_NAME="os-in-browser-linux-x64-1.0.0.zip"
+              ;;
+
+            Windows)
+              ZIP_NAME="os-in-browser-win32-x64-1.0.0.zip"
+              ;;
+
+            macOS)
+              ZIP_NAME="os-in-browser-darwin-arm64-1.0.0.zip"
+              ;;
+          esac
+
+          gh release download \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "$ZIP_NAME" \
+          || gh release download \
+            --repo "kingdudely/os-in-browser" \
+            --pattern "$ZIP_NAME"
+
+          unzip -q "$ZIP_NAME" || {
+            status=$?
+            if [ "$status" -ne 1 ]; then
+              exit "$status"
+            fi
+          }
 
       - name: Run remote desktop
         env:
@@ -166,7 +191,22 @@ jobs:
 
           export PASSWORD=$(jq -r '.inputs.password // ""' "$GITHUB_EVENT_PATH")
           echo "::add-mask::${PASSWORD}"
-          find node_modules/electron -name chrome-sandbox -type f -print
-          sudo chown root:root node_modules/electron/dist/chrome-sandbox
-          sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
-          npx electron .
+
+          case "$RUNNER_OS" in
+            Linux)
+              sudo chown root:root ./os-in-browser-linux-x64/chrome-sandbox
+              sudo chmod 4755 ./os-in-browser-linux-x64/chrome-sandbox
+              ./os-in-browser-linux-x64/os-in-browser --enable-features=PulseaudioLoopbackForScreenShare
+
+              ;;
+
+            Windows)
+              ./os-in-browser-win32-x64/os-in-browser.exe
+
+              ;;
+
+            macOS)
+              chmod +x ./os-in-browser.app/Contents/MacOS/os-in-browser
+              ./os-in-browser.app/Contents/MacOS/os-in-browser --enable-features=MacLoopbackAudioForScreenShare,MacCatapSystemAudioLoopbackCapture
+              ;;
+          esac
