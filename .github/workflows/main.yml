@@ -80,16 +80,16 @@ jobs:
 
           "${CLOUDFLARED}" tunnel \
             --metrics="${METRICS_URL}" \
-            --url "http://localhost:${PORT}" 2>&1 |
-          while read -r line; do
-            echo "$line"
+            --url "http://localhost:${PORT}" &
 
-            if JSON="$(curl -sf "${METRICS_URL}/quicktunnel")"; then
-              HOSTNAME="$(jq -r '.hostname' <<< "$JSON")"
-              echo "url=https://${HOSTNAME}" >> "$GITHUB_OUTPUT"
-              break
-            fi
+          until JSON="$(curl -sS "${METRICS_URL}/quicktunnel")"; do
+            sleep 0.1
           done
+
+          HOSTNAME="$(jq -r '.hostname' <<< "${JSON}")"
+          TUNNEL_URL="https://${HOSTNAME}"
+
+          echo "url=${TUNNEL_URL}" >> "$GITHUB_OUTPUT"
 
       - name: Setup Ubuntu desktop and audio
         if: runner.os == 'Linux'
