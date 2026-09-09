@@ -191,20 +191,23 @@ jobs:
 
           export PASSWORD=$(jq -r '.inputs.password // ""' "$GITHUB_EVENT_PATH")
           echo "::add-mask::${PASSWORD}"
-
+          npm install
           case "$RUNNER_OS" in
             Linux)
-              ./os-in-browser-linux-x64/os-in-browser --no-sandbox --enable-features=PulseaudioLoopbackForScreenShare
-
+              npx electron \
+                --no-sandbox \
+                --enable-features=PulseaudioLoopbackForScreenShare \
+                app/main.js
               ;;
 
             Windows)
-              ./os-in-browser-win32-x64/os-in-browser.exe
-
+              npx electron \
+                app/main.js
               ;;
 
             macOS)
-              chmod +x ./os-in-browser.app/Contents/MacOS/os-in-browser
-              ./os-in-browser.app/Contents/MacOS/os-in-browser --enable-features=MacLoopbackAudioForScreenShare,MacCatapSystemAudioLoopbackCapture
+              npx electron \
+                --enable-features=MacLoopbackAudioForScreenShare,MacCatapSystemAudioLoopbackCapture \
+                app/main.js
               ;;
           esac
