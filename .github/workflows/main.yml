@@ -42,6 +42,7 @@ jobs:
 
     env:
       PORT: 8080
+      GITHUB_TOKEN: ${{ github.token }}
 
     steps:
       - name: Start tunnel
@@ -90,18 +91,33 @@ jobs:
 
           echo "url=${TUNNEL_URL}" >> "$GITHUB_OUTPUT"
 
-      - name: Run remote desktop
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_TOKEN: ${{ github.token }}
-          TUNNEL_URL: ${{ steps.tunnel.outputs.url }}
+      - name: Setup Linux desktop
+        if: runner.os == 'Linux'
         run: |
-          export USERNAME=$(jq -r '.inputs.username // ""' "$GITHUB_EVENT_PATH")
-          echo "::add-mask::${USERNAME}"
+          sudo apt-get update
 
-          export PASSWORD=$(jq -r '.inputs.password // ""' "$GITHUB_EVENT_PATH")
-          echo "::add-mask::${PASSWORD}"
+          sudo apt-get install -y --no-install-recommends \
+            icewm \
+            xvfb \
+            libx11-6 \
+            libxtst6 \
+            libxfixes3
 
+          read -r DISPLAY_NUMBER < <(
+            Xvfb \
+              -displayfd 1 \
+              -screen 0 1920x1080x24 \
+              +extension XTEST \
+              +extension XFIXES \
+              -nolisten tcp
+          )
+
+          export DISPLAY=":$DISPLAY_NUMBER"
+
+          icewm-session &
+
+      - name: Install Electron binary
+        run: |
           case "$RUNNER_OS" in
             Linux)
               ZIP_NAME="os-in-browser-linux-x64-1.0.0.zip"
@@ -130,30 +146,18 @@ jobs:
             fi
           }
 
+      - name: Run remote desktop
+        env:
+          TUNNEL_URL: ${{ steps.tunnel.outputs.url }}
+        run: |
+          export USERNAME=$(jq -r '.inputs.username // ""' "$GITHUB_EVENT_PATH")
+          echo "::add-mask::${USERNAME}"
+
+          export PASSWORD=$(jq -r '.inputs.password // ""' "$GITHUB_EVENT_PATH")
+          echo "::add-mask::${PASSWORD}"
+
           case "$RUNNER_OS" in
             Linux)
-              sudo apt-get update
-
-              sudo apt-get install -y --no-install-recommends \
-                icewm \
-                xvfb \
-                libx11-6 \
-                libxtst6 \
-                libxfixes3
-
-              read -r DISPLAY_NUMBER < <(
-                Xvfb \
-                  -displayfd 1 \
-                  -screen 0 1920x1080x24 \
-                  +extension XTEST \
-                  +extension XFIXES \
-                  -nolisten tcp
-              )
-
-              export DISPLAY=":$DISPLAY_NUMBER"
-
-              icewm-session &
-
               ./os-in-browser-linux-x64/os-in-browser --no-sandbox
 
               ;;
