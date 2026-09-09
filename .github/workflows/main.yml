@@ -121,7 +121,7 @@ jobs:
 
       - name: Setup Windows
         if: runner.os == 'Windows'
-        run: choco install -y vb-cable
+        uses: AlekseyMartynov/action-vbcable-win@main
 
       - name: Install Electron binary
         run: |
