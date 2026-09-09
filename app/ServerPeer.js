@@ -7,7 +7,9 @@ console.log("C")
 
 const stream = await navigator.mediaDevices.getDisplayMedia({
 	video: true,
-	audio: true
+	audio: { // true
+		suppressLocalAudioPlayback: false
+	}
 });
 console.log("D")
 
