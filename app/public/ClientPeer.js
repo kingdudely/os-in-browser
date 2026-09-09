@@ -88,7 +88,7 @@ export default class ClientPeer extends RTCPeerConnection {
         });
 
 		clipboardSyncChannel.addEventListener("message", ({ data }) => {
-			if (typeof(navigator.clipboard?.writeText) !== "function") return;
+			if (typeof(navigator.clipboard?.writeText) !== "function" || !document.hasFocus()) return;
 			navigator.clipboard.writeText(data);
 		});
 	}
