@@ -121,7 +121,19 @@ jobs:
 
       - name: Setup Windows audio
         if: runner.os == 'Windows'
-        uses: AlekseyMartynov/action-vbcable-win@main
+        shell: pwsh
+        run: |
+          Invoke-WebRequest `
+            https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack45.zip `
+            -OutFile "$env:RUNNER_TEMP\VBCABLE.zip"
+
+          Expand-Archive `
+            "$env:RUNNER_TEMP\VBCABLE.zip" `
+            -DestinationPath "$env:RUNNER_TEMP\VBCABLE"
+
+          & "$env:RUNNER_TEMP\VBCABLE\VBCABLE_Setup_x64.exe" -i -h
+
+          Start-Service audiosrv
 
       - name: Install Electron binary
         run: |
