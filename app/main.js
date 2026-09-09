@@ -3,6 +3,7 @@ const {
     BrowserWindow,
     desktopCapturer
 } = require("electron");
+const path = require("node:path");
 
 /*
 const features = [];
@@ -149,7 +150,9 @@ app.whenReady().then(() => {
     /*
      * Load renderer.
      */
-    window.loadFile("app/index.html");
+    window.loadFile(
+        path.join(__dirname, "index.html")
+    );
 });
 
 app.on("window-all-closed", () => app.quit());
